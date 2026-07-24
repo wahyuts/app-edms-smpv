@@ -144,8 +144,8 @@ INSERT INTO users (
 ) VALUES (
   1,
   'USR-000001',
-  'wahyuts',
-  'Wahyu Trisna Setiadi',
+  'deny',
+  'Deny Budiarso',
   'wahyu.trisna100@gmail.com',
   1,
   'No Department',
