@@ -73,6 +73,8 @@ const login = async (req, res, next) => {
         user: result.user,
         role: result.role,
         permissions: result.permissions,
+        activeProject: result.activeProject,
+        officialRole: result.officialRole,
       },
     });
   } catch (error) {
@@ -123,6 +125,8 @@ const refresh = async (req, res, next) => {
         user: result.user,
         role: result.role,
         permissions: result.permissions,
+        activeProject: result.activeProject,
+        officialRole: result.officialRole,
       },
     });
   } catch (error) {
@@ -138,6 +142,8 @@ const me = async (req, res, next) => {
         user: req.user,
         role: req.role,
         permissions: req.permissions,
+        activeProject: req.activeProject,
+        officialRole: req.officialRole,
       },
     });
   } catch (error) {
