@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 
 import AuthLayout from "@/app/layouts/AuthLayout";
+import GuestRoute from "@/app/routes/GuestRoute";
 import ProjectContextRoute from "@/app/routes/ProjectContextRoute";
 import ProtectedRoute from "@/app/routes/ProtectedRoute";
 import AppShell from "@/app/shell";
@@ -94,7 +95,11 @@ const rootRoute = [
     children: [
       {
         path: "/login",
-        element: createElement(LoginPage),
+        element: createElement(
+          GuestRoute,
+          null,
+          createElement(LoginPage),
+        ),
       },
       {
         path: "/forgot-password",

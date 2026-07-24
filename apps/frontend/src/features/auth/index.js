@@ -6,3 +6,4 @@ export { default as MockEmailDetailPage } from "./pages/MockEmailDetailPage";
 export { default as ProfilePage } from "./pages/ProfilePage";
 export { default as ResetPasswordPage } from "./pages/ResetPasswordPage";
 export { default as UserManagementPage } from "./pages/UserManagementPage";
+export { default as useAuthStore } from "./stores/auth.store";

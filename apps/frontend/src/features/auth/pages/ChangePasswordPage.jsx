@@ -1,33 +1,99 @@
+import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
 import { AuthService } from "@/features/auth/services/auth.service";
 import PasswordInput from "@/shared/components/form/PasswordInput";
 import { useToast } from "@/shared/components/toast";
 import { usePermission } from "@/shared/hooks/usePermission";
+import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 const ChangePasswordPage = () => {
   const currentUser = AuthService.getCurrentUser();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const currentPasswordRef = useRef(null);
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const { hasPermission } = usePermission();
+  const clearProjectContext = useProjectContextStore(
+    (state) => state.clearProjectContext,
+  );
+
+  const showChangePasswordToast = ({ message, title, variant = "error" }) => {
+    showToast({
+      message,
+      title,
+      variant,
+    });
+  };
 
   const handleChangePassword = async (event) => {
     event.preventDefault();
 
     const form = event.currentTarget;
     const formData = new FormData(form);
+    const currentPassword = String(formData.get("currentPassword") ?? "");
+    const newPassword = String(formData.get("newPassword") ?? "");
+    const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      showChangePasswordToast({
+        message: "Semua field wajib diisi.",
+        title: "Data Belum Lengkap",
+      });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      showChangePasswordToast({
+        message: "Confirm Password tidak sama.",
+        title: "Konfirmasi Password Tidak Sesuai",
+      });
+      return;
+    }
+
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(newPassword)) {
+      showChangePasswordToast({
+        message: "Password Baru tidak memenuhi ketentuan.",
+        title: "Password Baru Tidak Valid",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
     const response = await AuthService.changePassword({
       username: currentUser?.username ?? "",
-      currentPassword: String(formData.get("currentPassword") ?? ""),
-      newPassword: String(formData.get("newPassword") ?? ""),
-      confirmPassword: String(formData.get("confirmPassword") ?? ""),
+      currentPassword,
+      newPassword,
+      confirmPassword,
     });
-
-    showToast({
-      message: response.message,
-      variant: response.success ? "success" : "error",
-    });
+    setIsSubmitting(false);
 
     if (response.success) {
+      showChangePasswordToast({
+        message: "Silakan login kembali.",
+        title: "Password Berhasil Diubah",
+        variant: "success",
+      });
       form.reset();
+      clearProjectContext();
+      navigate("/login", { replace: true });
+      return;
     }
+
+    if (response.message.includes("Current Password")) {
+      showChangePasswordToast({
+        message: "Current Password tidak benar.",
+        title: "Gagal Mengubah Password",
+      });
+      form.elements.currentPassword.value = "";
+      currentPasswordRef.current?.focus();
+      return;
+    }
+
+    showChangePasswordToast({
+      message: "Gagal mengubah Password.",
+      title: "Terjadi Kesalahan",
+    });
   };
 
   return (
@@ -53,6 +119,7 @@ const ChangePasswordPage = () => {
               autoComplete="current-password"
               name="currentPassword"
               placeholder="Enter current password"
+              ref={currentPasswordRef}
             />
           </label>
 
@@ -76,10 +143,11 @@ const ChangePasswordPage = () => {
 
           {hasPermission("password.change") ? (
             <button
-              className="h-11 rounded-md bg-[#0F7BFF] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30"
+              className="h-11 rounded-md bg-[#0F7BFF] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isSubmitting}
               type="submit"
             >
-              Change Password
+              {isSubmitting ? "Changing..." : "Change Password"}
             </button>
           ) : null}
 

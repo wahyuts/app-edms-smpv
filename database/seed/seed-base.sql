@@ -149,7 +149,7 @@ INSERT INTO users (
   'wahyu.trisna100@gmail.com',
   1,
   'No Department',
-  'EDMS Admin',
+  NULL,
   1,
   'Active',
   '2026-01-01 00:00:00.000',

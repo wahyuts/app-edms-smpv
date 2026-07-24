@@ -21,7 +21,6 @@ const ForgotPasswordPage = () => {
     setError,
   } = useForm({
     defaultValues: {
-      email: "",
       username: "",
     },
   });
@@ -43,7 +42,7 @@ const ForgotPasswordPage = () => {
       return;
     }
 
-    navigate(`/check-email?requestId=${encodeURIComponent(response.data.requestId)}`);
+    navigate("/check-email");
   };
 
   return (
@@ -56,7 +55,7 @@ const ForgotPasswordPage = () => {
           Forgot Password
         </h1>
         <p className="mt-2 text-sm text-[#CBD5E1]">
-          Enter your username and registered email address to request a password reset link.
+          Enter your username to request a password reset link.
         </p>
       </div>
 
@@ -76,20 +75,6 @@ const ForgotPasswordPage = () => {
           />
           {errors.username ? (
             <span className="text-xs text-[#FCA5A5]">{errors.username.message}</span>
-          ) : null}
-        </label>
-
-        <label className="flex flex-col gap-2 text-sm font-medium text-[#CBD5E1]">
-          <span>Registered Email</span>
-          <input
-            autoComplete="email"
-            className={inputClassName}
-            placeholder="Enter registered email"
-            type="email"
-            {...register("email")}
-          />
-          {errors.email ? (
-            <span className="text-xs text-[#FCA5A5]">{errors.email.message}</span>
           ) : null}
         </label>
 

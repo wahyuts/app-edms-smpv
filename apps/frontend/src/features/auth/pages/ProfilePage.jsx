@@ -15,6 +15,7 @@ const primaryButtonClassName =
   "inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0F7BFF] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] disabled:cursor-not-allowed disabled:bg-[#123A5A] disabled:text-[#94A3B8]";
 
 const NO_ACTIVE_PROJECT_OFFICIAL_ROLE = "No Official Role on Active Project";
+const NO_ACTIVE_PROJECT_ACCESS = "No Project Access";
 
 const getDisplayOfficialRole = ({ activeOfficialRole }) => {
   if (activeOfficialRole) {
@@ -165,6 +166,7 @@ const ProfilePage = () => {
   const activeOfficialRole = useProjectContextStore(
     (state) => state.activeOfficialRole,
   );
+  const activeProject = useProjectContextStore((state) => state.activeProject);
   const displayOfficialRole = getDisplayOfficialRole({
     activeOfficialRole,
   });
@@ -188,6 +190,10 @@ const ProfilePage = () => {
     {
       label: "Official Role",
       value: displayOfficialRole,
+    },
+    {
+      label: "Active Project",
+      value: activeProject?.projectName ?? activeProject?.name ?? NO_ACTIVE_PROJECT_ACCESS,
     },
     {
       label: "Status",

@@ -6,7 +6,6 @@ const requiredText = (fieldName) =>
   }).trim().min(1, `${fieldName} is required.`);
 
 export const forgotPasswordSchema = z.object({
-  email: requiredText("Registered Email").email("Registered Email is not valid."),
   username: requiredText("Username"),
 });
 
