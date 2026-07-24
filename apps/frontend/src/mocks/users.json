@@ -1,0 +1,431 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "userCode": "USR-000001",
+      "username": "wahyuts",
+      "fullName": "Wahyu Trisna Setiadi",
+      "email": "wahyu.trisna100@gmail.com",
+      "department": "DIV 2",
+      "position": "EDMS Admin",
+      "roleId": 1,
+      "status": "Active",
+      "isActive": true,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": null
+    }
+  ],
+  "userCredentials": [
+    {
+      "userId": 1,
+      "password": "kmzwhy182t",
+      "isActive": true,
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "roles": [
+    {
+      "id": 1,
+      "roleCode": "ROLE-ADMIN",
+      "roleName": "Admin",
+      "isActive": true
+    },
+    {
+      "id": 2,
+      "roleCode": "ROLE-DOCUMENT-OWNER",
+      "roleName": "Document Owner",
+      "isActive": true
+    },
+    {
+      "id": 3,
+      "roleCode": "ROLE-TEAM-PROCESS",
+      "roleName": "Team Process",
+      "isActive": true
+    },
+    {
+      "id": 4,
+      "roleCode": "ROLE-TEAM-PROJECT",
+      "roleName": "Team Project",
+      "isActive": true
+    }
+  ],
+  "permissions": [
+    {
+      "id": 1,
+      "permissionCode": "dashboard.view",
+      "permissionName": "View Dashboard"
+    },
+    {
+      "id": 2,
+      "permissionCode": "document-register.view",
+      "permissionName": "View Document Register"
+    },
+    {
+      "id": 3,
+      "permissionCode": "document-register.create",
+      "permissionName": "Create Document Register"
+    },
+    {
+      "id": 4,
+      "permissionCode": "document-register.edit",
+      "permissionName": "Edit Document Register"
+    },
+    {
+      "id": 5,
+      "permissionCode": "document-register.archive",
+      "permissionName": "Archive Document Register"
+    },
+    {
+      "id": 6,
+      "permissionCode": "document-register.upload",
+      "permissionName": "Upload Document Register"
+    },
+    {
+      "id": 7,
+      "permissionCode": "document-register.download",
+      "permissionName": "Download Document Register"
+    },
+    {
+      "id": 8,
+      "permissionCode": "transmittal.view",
+      "permissionName": "View Transmittal"
+    },
+    {
+      "id": 9,
+      "permissionCode": "transmittal.incoming",
+      "permissionName": "Access Incoming Transmittal"
+    },
+    {
+      "id": 10,
+      "permissionCode": "transmittal.outgoing",
+      "permissionName": "Access Outgoing Transmittal"
+    },
+    {
+      "id": 11,
+      "permissionCode": "sla-monitoring.view",
+      "permissionName": "View SLA Monitoring"
+    },
+    {
+      "id": 12,
+      "permissionCode": "escalation.view",
+      "permissionName": "View Escalation"
+    },
+    {
+      "id": 13,
+      "permissionCode": "audit-trail.view",
+      "permissionName": "View Audit Trail"
+    },
+    {
+      "id": 14,
+      "permissionCode": "notifications.view",
+      "permissionName": "View Notifications"
+    },
+    {
+      "id": 15,
+      "permissionCode": "storage.view",
+      "permissionName": "View Storage Repository"
+    },
+    {
+      "id": 16,
+      "permissionCode": "profile.view",
+      "permissionName": "View Profile"
+    },
+    {
+      "id": 17,
+      "permissionCode": "profile.edit",
+      "permissionName": "Edit Profile"
+    },
+    {
+      "id": 18,
+      "permissionCode": "password.change",
+      "permissionName": "Change Password"
+    },
+    {
+      "id": 19,
+      "permissionCode": "approval.a",
+      "permissionName": "Approval A"
+    },
+    {
+      "id": 20,
+      "permissionCode": "approval.b",
+      "permissionName": "Approval B"
+    },
+    {
+      "id": 21,
+      "permissionCode": "approval.c",
+      "permissionName": "Approval C"
+    },
+    {
+      "id": 22,
+      "permissionCode": "auth.logout",
+      "permissionName": "Logout"
+    },
+    {
+      "id": 23,
+      "permissionCode": "user-management.view",
+      "permissionName": "View User Management"
+    }
+  ],
+  "rolePermissions": [
+    {
+      "roleId": 1,
+      "permissionId": 1
+    },
+    {
+      "roleId": 1,
+      "permissionId": 2
+    },
+    {
+      "roleId": 1,
+      "permissionId": 3
+    },
+    {
+      "roleId": 1,
+      "permissionId": 4
+    },
+    {
+      "roleId": 1,
+      "permissionId": 5
+    },
+    {
+      "roleId": 1,
+      "permissionId": 6
+    },
+    {
+      "roleId": 1,
+      "permissionId": 7
+    },
+    {
+      "roleId": 1,
+      "permissionId": 8
+    },
+    {
+      "roleId": 1,
+      "permissionId": 9
+    },
+    {
+      "roleId": 1,
+      "permissionId": 10
+    },
+    {
+      "roleId": 1,
+      "permissionId": 11
+    },
+    {
+      "roleId": 1,
+      "permissionId": 12
+    },
+    {
+      "roleId": 1,
+      "permissionId": 13
+    },
+    {
+      "roleId": 1,
+      "permissionId": 14
+    },
+    {
+      "roleId": 1,
+      "permissionId": 15
+    },
+    {
+      "roleId": 1,
+      "permissionId": 16
+    },
+    {
+      "roleId": 1,
+      "permissionId": 17
+    },
+    {
+      "roleId": 1,
+      "permissionId": 18
+    },
+    {
+      "roleId": 1,
+      "permissionId": 19
+    },
+    {
+      "roleId": 1,
+      "permissionId": 20
+    },
+    {
+      "roleId": 1,
+      "permissionId": 21
+    },
+    {
+      "roleId": 1,
+      "permissionId": 22
+    },
+    {
+      "roleId": 1,
+      "permissionId": 23
+    },
+    {
+      "roleId": 2,
+      "permissionId": 1
+    },
+    {
+      "roleId": 2,
+      "permissionId": 2
+    },
+    {
+      "roleId": 2,
+      "permissionId": 3
+    },
+    {
+      "roleId": 2,
+      "permissionId": 4
+    },
+    {
+      "roleId": 2,
+      "permissionId": 6
+    },
+    {
+      "roleId": 2,
+      "permissionId": 7
+    },
+    {
+      "roleId": 2,
+      "permissionId": 11
+    },
+    {
+      "roleId": 2,
+      "permissionId": 12
+    },
+    {
+      "roleId": 2,
+      "permissionId": 13
+    },
+    {
+      "roleId": 2,
+      "permissionId": 14
+    },
+    {
+      "roleId": 2,
+      "permissionId": 16
+    },
+    {
+      "roleId": 2,
+      "permissionId": 17
+    },
+    {
+      "roleId": 2,
+      "permissionId": 18
+    },
+    {
+      "roleId": 2,
+      "permissionId": 22
+    },
+    {
+      "roleId": 3,
+      "permissionId": 1
+    },
+    {
+      "roleId": 3,
+      "permissionId": 2
+    },
+    {
+      "roleId": 3,
+      "permissionId": 7
+    },
+    {
+      "roleId": 3,
+      "permissionId": 11
+    },
+    {
+      "roleId": 3,
+      "permissionId": 12
+    },
+    {
+      "roleId": 3,
+      "permissionId": 13
+    },
+    {
+      "roleId": 3,
+      "permissionId": 14
+    },
+    {
+      "roleId": 3,
+      "permissionId": 16
+    },
+    {
+      "roleId": 3,
+      "permissionId": 17
+    },
+    {
+      "roleId": 3,
+      "permissionId": 18
+    },
+    {
+      "roleId": 3,
+      "permissionId": 19
+    },
+    {
+      "roleId": 3,
+      "permissionId": 20
+    },
+    {
+      "roleId": 3,
+      "permissionId": 21
+    },
+    {
+      "roleId": 3,
+      "permissionId": 22
+    },
+    {
+      "roleId": 4,
+      "permissionId": 1
+    },
+    {
+      "roleId": 4,
+      "permissionId": 2
+    },
+    {
+      "roleId": 4,
+      "permissionId": 7
+    },
+    {
+      "roleId": 4,
+      "permissionId": 11
+    },
+    {
+      "roleId": 4,
+      "permissionId": 12
+    },
+    {
+      "roleId": 4,
+      "permissionId": 13
+    },
+    {
+      "roleId": 4,
+      "permissionId": 14
+    },
+    {
+      "roleId": 4,
+      "permissionId": 16
+    },
+    {
+      "roleId": 4,
+      "permissionId": 17
+    },
+    {
+      "roleId": 4,
+      "permissionId": 18
+    },
+    {
+      "roleId": 4,
+      "permissionId": 19
+    },
+    {
+      "roleId": 4,
+      "permissionId": 20
+    },
+    {
+      "roleId": 4,
+      "permissionId": 21
+    },
+    {
+      "roleId": 4,
+      "permissionId": 22
+    }
+  ]
+}

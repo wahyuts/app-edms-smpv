@@ -1,0 +1,507 @@
+CREATE DATABASE IF NOT EXISTS edms_smpv_staging
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+USE edms_smpv_staging;
+
+CREATE TABLE departments (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name VARCHAR(255) NOT NULL,
+  name_key VARCHAR(255) NOT NULL,
+  status VARCHAR(64) NOT NULL DEFAULT 'Active',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_departments_name_key (name_key),
+  KEY idx_departments_status (status),
+  CONSTRAINT chk_departments_status CHECK (status IN ('Active', 'Inactive'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE roles (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  role_code VARCHAR(64) NOT NULL,
+  role_name VARCHAR(255) NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_roles_role_code (role_code),
+  KEY idx_roles_is_active (is_active),
+  CONSTRAINT chk_roles_is_active CHECK (is_active IN (0, 1))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE permissions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  permission_code VARCHAR(255) NOT NULL,
+  permission_name VARCHAR(255) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_permissions_permission_code (permission_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE document_types (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  document_type_code VARCHAR(64) NOT NULL,
+  document_type_name VARCHAR(255) NOT NULL,
+  drawing_context VARCHAR(64) NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_document_types_document_type_code (document_type_code),
+  KEY idx_document_types_drawing_context (drawing_context),
+  KEY idx_document_types_is_active (is_active),
+  CONSTRAINT chk_document_types_drawing_context CHECK (drawing_context IN ('PFD', 'P&ID')),
+  CONSTRAINT chk_document_types_is_active CHECK (is_active IN (0, 1))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE users (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_code VARCHAR(64) NOT NULL,
+  username VARCHAR(255) NOT NULL,
+  full_name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  department_id BIGINT UNSIGNED NULL,
+  department_name_snapshot VARCHAR(255) NULL,
+  position VARCHAR(255) NULL,
+  role_id BIGINT UNSIGNED NOT NULL,
+  status VARCHAR(64) NOT NULL DEFAULT 'Active',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_users_user_code (user_code),
+  UNIQUE KEY uq_users_username (username),
+  UNIQUE KEY uq_users_email (email),
+  KEY idx_users_role_id (role_id),
+  KEY idx_users_department_id (department_id),
+  KEY idx_users_status (status),
+  CONSTRAINT chk_users_status CHECK (status IN ('Active', 'Inactive')),
+  CONSTRAINT fk_users_department_id FOREIGN KEY (department_id) REFERENCES departments (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_users_role_id FOREIGN KEY (role_id) REFERENCES roles (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE role_permissions (
+  role_id BIGINT UNSIGNED NOT NULL,
+  permission_id BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (role_id, permission_id),
+  KEY idx_role_permissions_permission_id (permission_id),
+  CONSTRAINT fk_role_permissions_role_id FOREIGN KEY (role_id) REFERENCES roles (id) ON UPDATE RESTRICT ON DELETE CASCADE,
+  CONSTRAINT fk_role_permissions_permission_id FOREIGN KEY (permission_id) REFERENCES permissions (id) ON UPDATE RESTRICT ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE user_credentials (
+  user_id BIGINT UNSIGNED NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  password_changed_at DATETIME(3) NULL,
+  PRIMARY KEY (user_id),
+  CONSTRAINT chk_user_credentials_is_active CHECK (is_active IN (0, 1)),
+  CONSTRAINT fk_user_credentials_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE password_reset_tokens (
+  id VARCHAR(64) NOT NULL,
+  token_hash VARCHAR(255) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  request_id VARCHAR(64) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  expires_at DATETIME(3) NOT NULL,
+  used_at DATETIME(3) NULL,
+  revoked_at DATETIME(3) NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_password_reset_tokens_token_hash (token_hash),
+  KEY idx_password_reset_tokens_user_id (user_id),
+  KEY idx_password_reset_tokens_expires_at (expires_at),
+  KEY idx_password_reset_tokens_used_at (used_at),
+  KEY idx_password_reset_tokens_request_id (request_id),
+  CONSTRAINT fk_password_reset_tokens_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE refresh_sessions (
+  id VARCHAR(64) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  session_family_id VARCHAR(64) NOT NULL,
+  device_id VARCHAR(255) NOT NULL,
+  device_name VARCHAR(255) NULL,
+  refresh_token_hash VARCHAR(255) NOT NULL,
+  previous_token_hash VARCHAR(255) NULL,
+  issued_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  expires_at DATETIME(3) NOT NULL,
+  rotated_at DATETIME(3) NULL,
+  revoked_at DATETIME(3) NULL,
+  revoked_reason VARCHAR(64) NULL,
+  last_used_at DATETIME(3) NULL,
+  created_ip VARCHAR(64) NULL,
+  last_ip VARCHAR(64) NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_refresh_sessions_refresh_token_hash (refresh_token_hash),
+  KEY idx_refresh_sessions_user_id (user_id),
+  KEY idx_refresh_sessions_session_family_id (session_family_id),
+  KEY idx_refresh_sessions_revoked_at (revoked_at),
+  KEY idx_refresh_sessions_expires_at (expires_at),
+  CONSTRAINT chk_refresh_sessions_revoked_reason CHECK (revoked_reason IS NULL OR revoked_reason IN ('Logout', 'Force Logout', 'Password Change', 'Password Reset', 'Reuse Detected', 'Expired')),
+  CONSTRAINT fk_refresh_sessions_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE projects (
+  id VARCHAR(64) NOT NULL,
+  project_code VARCHAR(64) NOT NULL,
+  project_name VARCHAR(255) NOT NULL,
+  description TEXT NULL,
+  status VARCHAR(64) NOT NULL DEFAULT 'Active',
+  created_by_user_id BIGINT UNSIGNED NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(3),
+  updated_by_user_id BIGINT UNSIGNED NULL,
+  closed_at DATETIME(3) NULL,
+  closed_by_user_id BIGINT UNSIGNED NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_projects_project_code (project_code),
+  KEY idx_projects_status (status),
+  KEY idx_projects_created_by_user_id (created_by_user_id),
+  KEY idx_projects_updated_by_user_id (updated_by_user_id),
+  KEY idx_projects_closed_by_user_id (closed_by_user_id),
+  CONSTRAINT chk_projects_status CHECK (status IN ('Active', 'Inactive', 'Closed')),
+  CONSTRAINT fk_projects_created_by_user_id FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL,
+  CONSTRAINT fk_projects_updated_by_user_id FOREIGN KEY (updated_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL,
+  CONSTRAINT fk_projects_closed_by_user_id FOREIGN KEY (closed_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE project_memberships (
+  id VARCHAR(64) NOT NULL,
+  project_id VARCHAR(64) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  official_role VARCHAR(64) NOT NULL,
+  status VARCHAR(64) NOT NULL DEFAULT 'Active',
+  assigned_by_user_id BIGINT UNSIGNED NULL,
+  assigned_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(3),
+  updated_by_user_id BIGINT UNSIGNED NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_project_memberships_project_user (project_id, user_id),
+  KEY idx_project_memberships_user_id (user_id),
+  KEY idx_project_memberships_official_role (official_role),
+  KEY idx_project_memberships_status (status),
+  KEY idx_project_memberships_assigned_by_user_id (assigned_by_user_id),
+  KEY idx_project_memberships_updated_by_user_id (updated_by_user_id),
+  CONSTRAINT chk_project_memberships_official_role CHECK (official_role IN ('Admin', 'Document Owner', 'Team Process', 'Team Project')),
+  CONSTRAINT chk_project_memberships_status CHECK (status IN ('Active', 'Inactive')),
+  CONSTRAINT fk_project_memberships_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_project_memberships_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_project_memberships_assigned_by_user_id FOREIGN KEY (assigned_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL,
+  CONSTRAINT fk_project_memberships_updated_by_user_id FOREIGN KEY (updated_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE user_project_preferences (
+  user_id BIGINT UNSIGNED NOT NULL,
+  active_project_id VARCHAR(64) NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (user_id),
+  KEY idx_user_project_preferences_active_project_id (active_project_id),
+  CONSTRAINT fk_user_project_preferences_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE CASCADE,
+  CONSTRAINT fk_user_project_preferences_active_project_id FOREIGN KEY (active_project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE engineering_documents (
+  id VARCHAR(64) NOT NULL,
+  project_id VARCHAR(64) NOT NULL,
+  document_type_id BIGINT UNSIGNED NULL,
+  document_number VARCHAR(255) NOT NULL,
+  description TEXT NOT NULL,
+  drawing VARCHAR(64) NOT NULL,
+  area VARCHAR(255) NOT NULL,
+  days_until_validation INT NOT NULL,
+  workflow_status VARCHAR(64) NOT NULL,
+  lifecycle_status VARCHAR(64) NOT NULL DEFAULT 'Active',
+  revision_label VARCHAR(64) NOT NULL,
+  responsible_role VARCHAR(64) NOT NULL,
+  current_assignee_user_id BIGINT UNSIGNED NULL,
+  active_revision_id VARCHAR(64) NULL,
+  active_file_id VARCHAR(64) NULL,
+  created_by_user_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  updated_by_user_id BIGINT UNSIGNED NULL,
+  archived_at DATETIME(3) NULL,
+  archived_by_user_id BIGINT UNSIGNED NULL,
+  archive_reason TEXT NULL,
+  restored_at DATETIME(3) NULL,
+  restored_by_user_id BIGINT UNSIGNED NULL,
+  sla_started_at DATETIME(3) NOT NULL,
+  sla_stopped_at DATETIME(3) NULL,
+  sla_assignee_name_snapshot VARCHAR(255) NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_engineering_documents_project_document_number (project_id, document_number),
+  KEY idx_engineering_documents_document_type_id (document_type_id),
+  KEY idx_engineering_documents_project_workflow_status (project_id, workflow_status),
+  KEY idx_engineering_documents_project_lifecycle_status (project_id, lifecycle_status),
+  KEY idx_engineering_documents_active_file_id (active_file_id),
+  KEY idx_engineering_documents_active_revision_id (active_revision_id),
+  KEY idx_engineering_documents_current_assignee_user_id (current_assignee_user_id),
+  KEY idx_engineering_documents_created_by_user_id (created_by_user_id),
+  KEY idx_engineering_documents_updated_by_user_id (updated_by_user_id),
+  KEY idx_engineering_documents_archived_by_user_id (archived_by_user_id),
+  KEY idx_engineering_documents_restored_by_user_id (restored_by_user_id),
+  KEY idx_engineering_documents_drawing (drawing),
+  KEY idx_engineering_documents_area (area),
+  KEY idx_engineering_documents_revision_label (revision_label),
+  KEY idx_engineering_documents_description (description(191)),
+  KEY idx_engineering_documents_search (project_id, drawing, area, workflow_status, lifecycle_status, current_assignee_user_id, revision_label),
+  CONSTRAINT chk_engineering_documents_days_until_validation CHECK (days_until_validation >= 0),
+  CONSTRAINT chk_engineering_documents_drawing CHECK (drawing IN ('PFD', 'P&ID')),
+  CONSTRAINT chk_engineering_documents_workflow_status CHECK (workflow_status IN ('Process Review', 'Process Comment', 'Process Reject', 'Project Review', 'Project Comment', 'Project Reject', 'Approved')),
+  CONSTRAINT chk_engineering_documents_lifecycle_status CHECK (lifecycle_status IN ('Active', 'Archived')),
+  CONSTRAINT chk_engineering_documents_revision_label CHECK (revision_label IN ('IFR-Submitted', 'IFA-Submitted', 'AS-Built')),
+  CONSTRAINT chk_engineering_documents_responsible_role CHECK (responsible_role IN ('Document Owner', 'Team Process', 'Team Project', 'None')),
+  CONSTRAINT fk_engineering_documents_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_engineering_documents_document_type_id FOREIGN KEY (document_type_id) REFERENCES document_types (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_engineering_documents_current_assignee_user_id FOREIGN KEY (current_assignee_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL,
+  CONSTRAINT fk_engineering_documents_created_by_user_id FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_engineering_documents_updated_by_user_id FOREIGN KEY (updated_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL,
+  CONSTRAINT fk_engineering_documents_archived_by_user_id FOREIGN KEY (archived_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL,
+  CONSTRAINT fk_engineering_documents_restored_by_user_id FOREIGN KEY (restored_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE stored_files (
+  file_id VARCHAR(64) NOT NULL,
+  project_id VARCHAR(64) NOT NULL,
+  document_id VARCHAR(64) NULL,
+  original_file_name VARCHAR(255) NOT NULL,
+  physical_file_name VARCHAR(255) NOT NULL,
+  file_extension VARCHAR(64) NOT NULL,
+  mime_type VARCHAR(255) NOT NULL,
+  file_size BIGINT UNSIGNED NOT NULL,
+  storage_key VARCHAR(255) NOT NULL,
+  relative_path VARCHAR(1024) NULL,
+  file_category VARCHAR(64) NOT NULL,
+  checksum VARCHAR(255) NULL,
+  uploaded_by_user_id BIGINT UNSIGNED NOT NULL,
+  uploaded_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (file_id),
+  UNIQUE KEY uq_stored_files_storage_key (storage_key),
+  KEY idx_stored_files_project_id (project_id),
+  KEY idx_stored_files_document_id (document_id),
+  KEY idx_stored_files_file_category (file_category),
+  KEY idx_stored_files_uploaded_by_user_id (uploaded_by_user_id),
+  CONSTRAINT chk_stored_files_file_size CHECK (file_size >= 0),
+  CONSTRAINT chk_stored_files_file_category CHECK (file_category IN ('Active Document File', 'Revision File', 'Workflow Attachment')),
+  CONSTRAINT chk_stored_files_is_active CHECK (is_active IN (0, 1)),
+  CONSTRAINT fk_stored_files_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_stored_files_document_id FOREIGN KEY (document_id) REFERENCES engineering_documents (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_stored_files_uploaded_by_user_id FOREIGN KEY (uploaded_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE document_revisions (
+  id VARCHAR(64) NOT NULL,
+  project_id VARCHAR(64) NOT NULL,
+  document_id VARCHAR(64) NOT NULL,
+  revision_label VARCHAR(64) NOT NULL,
+  revision_sequence BIGINT UNSIGNED NOT NULL,
+  file_id VARCHAR(64) NOT NULL,
+  storage_path_legacy VARCHAR(1024) NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  active_document_id VARCHAR(64) GENERATED ALWAYS AS (CASE WHEN is_active = 1 THEN document_id ELSE NULL END) STORED,
+  source_status VARCHAR(64) NULL,
+  result_status VARCHAR(64) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  created_by_user_id BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_document_revisions_document_revision_sequence (document_id, revision_sequence),
+  UNIQUE KEY uq_document_revisions_active_document_id (active_document_id),
+  KEY idx_document_revisions_project_id (project_id),
+  KEY idx_document_revisions_document_is_active (document_id, is_active),
+  KEY idx_document_revisions_file_id (file_id),
+  KEY idx_document_revisions_created_by_user_id (created_by_user_id),
+  CONSTRAINT chk_document_revisions_revision_label CHECK (revision_label IN ('IFR-Submitted', 'IFA-Submitted', 'AS-Built')),
+  CONSTRAINT chk_document_revisions_is_active CHECK (is_active IN (0, 1)),
+  CONSTRAINT chk_document_revisions_source_status CHECK (source_status IS NULL OR source_status IN ('Process Review', 'Process Comment', 'Process Reject', 'Project Review', 'Project Comment', 'Project Reject', 'Approved')),
+  CONSTRAINT chk_document_revisions_result_status CHECK (result_status IS NULL OR result_status IN ('Process Review', 'Process Comment', 'Process Reject', 'Project Review', 'Project Comment', 'Project Reject', 'Approved')),
+  CONSTRAINT fk_document_revisions_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_document_revisions_document_id FOREIGN KEY (document_id) REFERENCES engineering_documents (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_document_revisions_file_id FOREIGN KEY (file_id) REFERENCES stored_files (file_id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_document_revisions_created_by_user_id FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE engineering_documents
+  ADD CONSTRAINT fk_engineering_documents_active_revision_id FOREIGN KEY (active_revision_id) REFERENCES document_revisions (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  ADD CONSTRAINT fk_engineering_documents_active_file_id FOREIGN KEY (active_file_id) REFERENCES stored_files (file_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+CREATE TABLE workflow_comments (
+  id VARCHAR(64) NOT NULL,
+  project_id VARCHAR(64) NOT NULL,
+  document_id VARCHAR(64) NOT NULL,
+  revision_id VARCHAR(64) NULL,
+  workflow_action VARCHAR(64) NOT NULL,
+  workflow_comment TEXT NULL,
+  created_by_user_id BIGINT UNSIGNED NULL,
+  created_by_name_snapshot VARCHAR(255) NULL,
+  created_by_official_role_snapshot VARCHAR(64) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_workflow_comments_project_document (project_id, document_id),
+  KEY idx_workflow_comments_revision_id (revision_id),
+  KEY idx_workflow_comments_created_at (created_at),
+  KEY idx_workflow_comments_created_by_user_id (created_by_user_id),
+  CONSTRAINT chk_workflow_comments_workflow_action CHECK (workflow_action IN ('Approval B', 'Approval C')),
+  CONSTRAINT chk_workflow_comments_created_by_official_role CHECK (created_by_official_role_snapshot IS NULL OR created_by_official_role_snapshot IN ('Admin', 'Document Owner', 'Team Process', 'Team Project')),
+  CONSTRAINT fk_workflow_comments_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_workflow_comments_document_id FOREIGN KEY (document_id) REFERENCES engineering_documents (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_workflow_comments_revision_id FOREIGN KEY (revision_id) REFERENCES document_revisions (id) ON UPDATE RESTRICT ON DELETE SET NULL,
+  CONSTRAINT fk_workflow_comments_created_by_user_id FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE workflow_attachments (
+  attachment_id VARCHAR(64) NOT NULL,
+  comment_id VARCHAR(64) NOT NULL,
+  project_id VARCHAR(64) NOT NULL,
+  document_id VARCHAR(64) NOT NULL,
+  file_id VARCHAR(64) NOT NULL,
+  uploaded_by_user_id BIGINT UNSIGNED NOT NULL,
+  uploaded_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (attachment_id),
+  UNIQUE KEY uq_workflow_attachments_comment_id (comment_id),
+  KEY idx_workflow_attachments_file_id (file_id),
+  KEY idx_workflow_attachments_project_document (project_id, document_id),
+  KEY idx_workflow_attachments_uploaded_by_user_id (uploaded_by_user_id),
+  CONSTRAINT fk_workflow_attachments_comment_id FOREIGN KEY (comment_id) REFERENCES workflow_comments (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_workflow_attachments_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_workflow_attachments_document_id FOREIGN KEY (document_id) REFERENCES engineering_documents (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_workflow_attachments_file_id FOREIGN KEY (file_id) REFERENCES stored_files (file_id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_workflow_attachments_uploaded_by_user_id FOREIGN KEY (uploaded_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE document_history (
+  id VARCHAR(64) NOT NULL,
+  project_id VARCHAR(64) NOT NULL,
+  document_id VARCHAR(64) NOT NULL,
+  workflow_event VARCHAR(255) NOT NULL,
+  activity VARCHAR(255) NOT NULL,
+  workflow_status VARCHAR(64) NULL,
+  revision_label VARCHAR(64) NULL,
+  lifecycle_status VARCHAR(64) NULL,
+  reason TEXT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  created_by_user_id BIGINT UNSIGNED NULL,
+  created_by_name_snapshot VARCHAR(255) NULL,
+  created_by_official_role_snapshot VARCHAR(64) NULL,
+  PRIMARY KEY (id),
+  KEY idx_document_history_project_document (project_id, document_id),
+  KEY idx_document_history_project_document_created_at (project_id, document_id, created_at),
+  KEY idx_document_history_created_by_user_id (created_by_user_id),
+  CONSTRAINT chk_document_history_workflow_status CHECK (workflow_status IS NULL OR workflow_status IN ('Process Review', 'Process Comment', 'Process Reject', 'Project Review', 'Project Comment', 'Project Reject', 'Approved')),
+  CONSTRAINT chk_document_history_revision_label CHECK (revision_label IS NULL OR revision_label IN ('IFR-Submitted', 'IFA-Submitted', 'AS-Built')),
+  CONSTRAINT chk_document_history_lifecycle_status CHECK (lifecycle_status IS NULL OR lifecycle_status IN ('Active', 'Archived')),
+  CONSTRAINT chk_document_history_created_by_official_role CHECK (created_by_official_role_snapshot IS NULL OR created_by_official_role_snapshot IN ('Admin', 'Document Owner', 'Team Process', 'Team Project')),
+  CONSTRAINT fk_document_history_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_document_history_document_id FOREIGN KEY (document_id) REFERENCES engineering_documents (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_document_history_created_by_user_id FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE comment_read_receipts (
+  id VARCHAR(128) NOT NULL,
+  project_id VARCHAR(64) NOT NULL,
+  document_id VARCHAR(64) NOT NULL,
+  comment_id VARCHAR(64) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  read_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_comment_read_receipts_user_comment (user_id, comment_id),
+  KEY idx_comment_read_receipts_document_id (document_id),
+  KEY idx_comment_read_receipts_user_document (user_id, document_id),
+  KEY idx_comment_read_receipts_project_id (project_id),
+  KEY idx_comment_read_receipts_comment_id (comment_id),
+  CONSTRAINT fk_comment_read_receipts_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_comment_read_receipts_document_id FOREIGN KEY (document_id) REFERENCES engineering_documents (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_comment_read_receipts_comment_id FOREIGN KEY (comment_id) REFERENCES workflow_comments (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_comment_read_receipts_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE document_sla_evaluations (
+  id VARCHAR(64) NOT NULL,
+  project_id VARCHAR(64) NOT NULL,
+  document_id VARCHAR(64) NOT NULL,
+  cycle_id VARCHAR(255) NOT NULL,
+  current_state VARCHAR(64) NOT NULL,
+  notified_states JSON NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_document_sla_evaluations_document_cycle (document_id, cycle_id),
+  KEY idx_document_sla_evaluations_project_id (project_id),
+  CONSTRAINT chk_document_sla_evaluations_current_state CHECK (current_state IN ('On Track', 'At Risk', 'Overdue', 'Final As-Built')),
+  CONSTRAINT fk_document_sla_evaluations_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_document_sla_evaluations_document_id FOREIGN KEY (document_id) REFERENCES engineering_documents (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE notifications (
+  id VARCHAR(64) NOT NULL,
+  identity_key VARCHAR(255) NOT NULL,
+  project_id VARCHAR(64) NOT NULL,
+  recipient_user_id BIGINT UNSIGNED NOT NULL,
+  recipient_project_membership_id VARCHAR(64) NULL,
+  event_type VARCHAR(64) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  message TEXT NOT NULL,
+  priority VARCHAR(64) NOT NULL DEFAULT 'Normal',
+  official_role VARCHAR(64) NULL,
+  recipient_role VARCHAR(64) NULL,
+  related_resource_type VARCHAR(64) NULL,
+  related_resource_id VARCHAR(64) NULL,
+  related_document_number VARCHAR(255) NULL,
+  action_target VARCHAR(255) NULL,
+  is_read TINYINT(1) NOT NULL DEFAULT 0,
+  read_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  metadata JSON NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_notifications_identity_key (identity_key),
+  KEY idx_notifications_recipient_project_read (recipient_user_id, project_id, is_read),
+  KEY idx_notifications_project_id (project_id),
+  KEY idx_notifications_recipient_project_membership_id (recipient_project_membership_id),
+  KEY idx_notifications_created_at (created_at),
+  CONSTRAINT chk_notifications_priority CHECK (priority IN ('Low', 'Normal', 'High', 'Critical')),
+  CONSTRAINT chk_notifications_official_role CHECK (official_role IS NULL OR official_role IN ('Admin', 'Document Owner', 'Team Process', 'Team Project')),
+  CONSTRAINT chk_notifications_recipient_role CHECK (recipient_role IS NULL OR recipient_role IN ('Admin', 'Document Owner', 'Team Process', 'Team Project')),
+  CONSTRAINT chk_notifications_is_read CHECK (is_read IN (0, 1)),
+  CONSTRAINT fk_notifications_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_notifications_recipient_user_id FOREIGN KEY (recipient_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_notifications_recipient_project_membership_id FOREIGN KEY (recipient_project_membership_id) REFERENCES project_memberships (id) ON UPDATE RESTRICT ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE audit_trail (
+  id VARCHAR(64) NOT NULL,
+  identity_key VARCHAR(255) NOT NULL,
+  project_id VARCHAR(64) NULL,
+  actor_user_id BIGINT UNSIGNED NULL,
+  actor_name VARCHAR(255) NULL,
+  department VARCHAR(255) NULL,
+  official_role VARCHAR(64) NULL,
+  action VARCHAR(255) NOT NULL,
+  business_event VARCHAR(255) NOT NULL,
+  detail TEXT NOT NULL,
+  resource_type VARCHAR(64) NOT NULL,
+  resource_id VARCHAR(64) NULL,
+  reference VARCHAR(255) NULL,
+  metadata JSON NULL,
+  occurred_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  is_hidden TINYINT(1) NOT NULL DEFAULT 0,
+  hidden_at DATETIME(3) NULL,
+  hidden_by_user_id BIGINT UNSIGNED NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_audit_trail_identity_key (identity_key),
+  KEY idx_audit_trail_project_occurred_at (project_id, occurred_at),
+  KEY idx_audit_trail_actor_user_id (actor_user_id),
+  KEY idx_audit_trail_resource (resource_type, resource_id),
+  KEY idx_audit_trail_hidden_by_user_id (hidden_by_user_id),
+  CONSTRAINT chk_audit_trail_official_role CHECK (official_role IS NULL OR official_role IN ('Admin', 'Document Owner', 'Team Process', 'Team Project')),
+  CONSTRAINT chk_audit_trail_is_hidden CHECK (is_hidden IN (0, 1)),
+  CONSTRAINT fk_audit_trail_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE SET NULL,
+  CONSTRAINT fk_audit_trail_actor_user_id FOREIGN KEY (actor_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL,
+  CONSTRAINT fk_audit_trail_hidden_by_user_id FOREIGN KEY (hidden_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE system_metadata (
+  `key` VARCHAR(255) NOT NULL,
+  `value` JSON NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
