@@ -1,22 +1,27 @@
 import { z } from "zod";
 
+const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
 const requiredText = (fieldName) =>
   z.string({
-    error: `${fieldName} is required.`,
-  }).trim().min(1, `${fieldName} is required.`);
+    error: `${fieldName} wajib diisi.`,
+  }).trim().min(1, `${fieldName} wajib diisi.`);
 
 export const forgotPasswordSchema = z.object({
-  email: requiredText("Registered Email").email("Registered Email is not valid."),
+  registeredEmail: requiredText("Registered Email").email("Registered Email tidak valid."),
   username: requiredText("Username"),
 });
 
 export const resetPasswordSchema = z.object({
   confirmPassword: requiredText("Confirm Password"),
-  newPassword: requiredText("New Password"),
+  newPassword: requiredText("New Password").regex(
+    PASSWORD_PATTERN,
+    "Password Baru tidak memenuhi ketentuan.",
+  ),
 }).refine(
   (value) => value.newPassword === value.confirmPassword,
   {
-    message: "New Password and Confirm Password must match.",
+    message: "Confirm Password tidak sama.",
     path: ["confirmPassword"],
   },
 );

@@ -10,7 +10,12 @@ const authorizeAnyPermission = (...permissionCodes) => {
       });
     }
 
-    if (!authorizationService.canAccessAnyPermission(req.user, permissionCodes)) {
+    if (
+      !authorizationService.canAccessAnyPermission(
+        { ...req.user, permissions: req.permissions },
+        permissionCodes
+      )
+    ) {
       return errorResponse(res, {
         statusCode: 403,
         message: 'Access forbidden',
@@ -30,7 +35,12 @@ const authorizeAllPermissions = (...permissionCodes) => {
       });
     }
 
-    if (!authorizationService.canAccessAllPermissions(req.user, permissionCodes)) {
+    if (
+      !authorizationService.canAccessAllPermissions(
+        { ...req.user, permissions: req.permissions },
+        permissionCodes
+      )
+    ) {
       return errorResponse(res, {
         statusCode: 403,
         message: 'Access forbidden',

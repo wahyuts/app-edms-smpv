@@ -16,8 +16,21 @@ const requiredSecurityEnv = [
   'BCRYPT_ROUNDS',
 ];
 const productionEmailEnv = ['RESEND_API_KEY', 'EMAIL_FROM', 'FRONTEND_RESET_PASSWORD_URL'];
+const supportedEmailProviders = ['dummy', 'resend'];
 const hasResendApiKey = () => {
   return process.env.RESEND_API_KEY !== undefined && process.env.RESEND_API_KEY.trim() !== '';
+};
+const getEmailProvider = () => {
+  return (process.env.EMAIL_PROVIDER || (hasResendApiKey() ? 'resend' : 'dummy')).trim().toLowerCase();
+};
+const getBooleanEnv = (key, defaultValue = false) => {
+  const value = process.env[key];
+
+  if (value === undefined || value.trim() === '') {
+    return defaultValue;
+  }
+
+  return value.trim().toLowerCase() === 'true';
 };
 
 const validateRequiredEnv = (keys, label) => {
@@ -97,8 +110,26 @@ const validateSecurityEnv = () => {
 validateSecurityEnv();
 
 const validateEmailEnv = () => {
+  const emailProvider = getEmailProvider();
+
+  if (!supportedEmailProviders.includes(emailProvider)) {
+    throw new Error(`[ENV] EMAIL_PROVIDER must be one of: ${supportedEmailProviders.join(', ')}`);
+  }
+
+  if (emailProvider === 'resend' && !hasResendApiKey()) {
+    throw new Error('[ENV] RESEND_API_KEY is required when EMAIL_PROVIDER=resend');
+  }
+
   if (process.env.APP_ENV === 'production') {
     validateRequiredEnv(productionEmailEnv, 'email');
+
+    if (emailProvider !== 'resend') {
+      throw new Error('[ENV] EMAIL_PROVIDER must be resend in production');
+    }
+
+    if (getBooleanEnv('ENABLE_DEV_EMAIL_OUTBOX', false)) {
+      throw new Error('[ENV] ENABLE_DEV_EMAIL_OUTBOX must be false in production');
+    }
 
     if (!process.env.RESEND_API_KEY.startsWith('re_')) {
       throw new Error('[ENV] RESEND_API_KEY must be a valid Resend key in production');
@@ -143,8 +174,13 @@ const env = {
   },
   passwordResetExpiresIn: process.env.PASSWORD_RESET_EXPIRES_IN,
   email: {
+    provider: getEmailProvider(),
+    enableDevEmailOutbox: getBooleanEnv(
+      'ENABLE_DEV_EMAIL_OUTBOX',
+      process.env.APP_ENV !== 'production' && getEmailProvider() === 'dummy'
+    ),
     resendApiKey: process.env.RESEND_API_KEY || '',
-    useResend: hasResendApiKey() && process.env.RESEND_API_KEY.startsWith('re_'),
+    useResend: getEmailProvider() === 'resend',
     from: process.env.EMAIL_FROM || 'EDMS <noreply@example.test>',
     frontendResetPasswordUrl: process.env.FRONTEND_RESET_PASSWORD_URL || 'http://localhost:5173/reset-password',
   },

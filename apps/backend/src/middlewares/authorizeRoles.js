@@ -10,7 +10,7 @@ const authorizeRoles = (...allowedRoles) => {
       });
     }
 
-    if (!authorizationService.canAccessRole(req.user, allowedRoles)) {
+    if (!authorizationService.canAccessRole({ ...req.user, role: req.role }, allowedRoles)) {
       return errorResponse(res, {
         statusCode: 403,
         message: 'Access forbidden',

@@ -29,6 +29,8 @@ const authenticate = async (req, res, next) => {
     req.user = currentUser.user;
     req.role = currentUser.role;
     req.permissions = currentUser.permissions;
+    req.activeProject = currentUser.activeProject;
+    req.officialRole = currentUser.officialRole;
 
     next();
   } catch (error) {

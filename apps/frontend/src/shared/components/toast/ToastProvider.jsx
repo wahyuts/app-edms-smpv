@@ -55,8 +55,8 @@ const ToastViewport = ({ onClose, toasts }) => {
           }}
         >
           <div>
-            <p className="font-semibold">{variantLabels[toast.variant]}</p>
-            <p className="mt-1 text-[#CBD5E1]">{toast.message}</p>
+            <p className="font-semibold">{toast.title ?? variantLabels[toast.variant]}</p>
+            <p className="mt-1 whitespace-pre-line text-[#CBD5E1]">{toast.message}</p>
           </div>
 
           <button
@@ -99,11 +99,12 @@ export const ToastProvider = ({ children }) => {
   }, []);
 
   const showToast = useCallback(
-    ({ message, variant = "info" }) => {
+    ({ message, title, variant = "info" }) => {
       const toastId = crypto.randomUUID();
       const nextToast = {
         id: toastId,
         message,
+        title,
         variant,
         isClosing: false,
       };

@@ -6,9 +6,9 @@ import { env } from "@/app/config/env";
 import { AuthService } from "@/features/auth/services/auth.service";
 
 const GENERIC_MESSAGE = [
-  "If the account information is valid, a password reset link has been sent to the registered email address.",
+  "Jika data akun valid, link Reset Password telah dikirim ke Registered Email.",
   "",
-  "Please check your inbox and follow the instructions to continue.",
+  "Periksa inbox dan ikuti instruksi untuk melanjutkan.",
 ].join("\n");
 
 const formatDateTime = (value) => {
@@ -50,7 +50,7 @@ const MockEmailInbox = ({ requestId }) => {
           Development Only
         </p>
         <h2 className="mt-1 text-lg font-semibold text-[#F8FAFC]">
-          Mock Email Inbox
+          Development Email Inbox
         </h2>
       </div>
 
@@ -78,13 +78,13 @@ const MockEmailInbox = ({ requestId }) => {
                 >
                   <span className="block font-semibold">{email.subject}</span>
                   <span className="mt-1 block text-xs text-[#94A3B8]">
-                    {formatDateTime(email.createdAt)}
+                    {formatDateTime(email.requestedAt ?? email.createdAt)}
                   </span>
                 </button>
               );
             }) : (
               <p className="rounded-md border border-dashed border-[#123A5A] px-4 py-5 text-sm text-[#94A3B8]">
-                No mock email was generated for this request.
+                Email development tidak ditemukan untuk request ini.
               </p>
             )}
           </div>
@@ -101,18 +101,18 @@ const MockEmailInbox = ({ requestId }) => {
               <p><span className="text-[#94A3B8]">Subject:</span> {selectedEmail.subject}</p>
               <p>
                 <span className="text-[#94A3B8]">Requested Date/Time:</span>{" "}
-                {formatDateTime(selectedEmail.createdAt)}
+                {formatDateTime(selectedEmail.requestedAt ?? selectedEmail.createdAt)}
               </p>
               <Link
                 className="inline-flex h-10 items-center rounded-md bg-[#0F7BFF] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30"
                 to={`/mock-email/${selectedEmail.id}`}
               >
-                Open Email
+                Buka Email
               </Link>
             </div>
           ) : (
             <div className="p-4 text-sm text-[#94A3B8]">
-              Select an email to preview it.
+              Pilih email untuk melihat preview.
             </div>
           )}
         </div>
@@ -134,7 +134,7 @@ const CheckEmailPage = () => {
         Account Recovery
       </p>
       <h1 className="mt-3 text-3xl font-bold text-[#F8FAFC]">
-        Check Your Email
+        Periksa Email Anda
       </h1>
       <p className="mx-auto mt-3 max-w-xl whitespace-pre-line text-sm leading-6 text-[#CBD5E1]">
         {GENERIC_MESSAGE}
@@ -148,7 +148,7 @@ const CheckEmailPage = () => {
         className="mt-8 inline-flex text-sm font-medium text-[#00C8FF] transition-colors hover:text-[#F8FAFC]"
         to="/login"
       >
-        Back to Login
+        Kembali ke Login
       </Link>
     </section>
   );
