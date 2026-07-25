@@ -5,9 +5,6 @@ import {
   getAuthState,
   useAuthStore,
 } from "../stores/auth.store";
-import {
-  MockEmailRepository,
-} from "../repositories/password-reset.repository";
 
 const PASSWORD_RESET_GENERIC_MESSAGE =
   "If the account exists, password recovery instructions have been sent.";
@@ -270,15 +267,15 @@ const updateCurrentProfile = async () => {
   });
 };
 
-const forgotPassword = async ({ username }) => {
+const forgotPassword = async ({ registeredEmail, username }) => {
   try {
     const response = assertBackendSuccess(
-      await apiClient.post("/v1/password/forgot", { username }),
+      await apiClient.post("/v1/password/forgot", { registeredEmail, username }),
       PASSWORD_RESET_GENERIC_MESSAGE,
     );
     return createSuccessResponse(
       response.data?.message ?? PASSWORD_RESET_GENERIC_MESSAGE,
-      { requestId: null },
+      response.data?.data ?? { requestId: null },
     );
   } catch (error) {
     return createFailedResponse(
@@ -304,7 +301,10 @@ const resetPassword = async ({ token, newPassword, confirmPassword }) => {
 
     return createSuccessResponse(response.data?.message ?? "Password reset successfully.");
   } catch (error) {
-    return createFailedResponse(getErrorMessage(error, "Reset password link is not valid."));
+    return createFailedResponse(
+      getErrorMessage(error, "Reset password link is not valid."),
+      { state: "invalid" },
+    );
   }
 };
 
@@ -316,20 +316,32 @@ const validatePasswordResetToken = async (token) => {
 };
 
 const getMockEmails = async ({ requestId } = {}) => {
-  const emails = await MockEmailRepository.getAll();
+  const emails = await (async () => {
+    try {
+      const response = await apiClient.get("/v1/dev/email-outbox");
+      return response.data?.data?.emails ?? [];
+    } catch {
+      return [];
+    }
+  })();
+
   const filteredEmails = requestId
     ? emails.filter((email) => email.requestId === requestId)
     : emails;
 
   return filteredEmails.sort((firstEmail, secondEmail) =>
-    new Date(secondEmail.createdAt).getTime() -
-    new Date(firstEmail.createdAt).getTime(),
+    new Date(secondEmail.requestedAt ?? secondEmail.createdAt).getTime() -
+    new Date(firstEmail.requestedAt ?? firstEmail.createdAt).getTime(),
   );
 };
 
 const getMockEmailDetail = async (emailId) => {
-  const email = await MockEmailRepository.getById(emailId);
-  return email ? JSON.parse(JSON.stringify(email)) : null;
+  try {
+    const response = await apiClient.get(`/v1/dev/email-outbox/${emailId}`);
+    return response.data?.data?.email ?? null;
+  } catch {
+    return null;
+  }
 };
 
 const setCurrentUser = (currentUser) => {

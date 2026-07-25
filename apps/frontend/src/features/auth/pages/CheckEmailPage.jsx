@@ -78,7 +78,7 @@ const MockEmailInbox = ({ requestId }) => {
                 >
                   <span className="block font-semibold">{email.subject}</span>
                   <span className="mt-1 block text-xs text-[#94A3B8]">
-                    {formatDateTime(email.createdAt)}
+                    {formatDateTime(email.requestedAt ?? email.createdAt)}
                   </span>
                 </button>
               );
@@ -101,7 +101,7 @@ const MockEmailInbox = ({ requestId }) => {
               <p><span className="text-[#94A3B8]">Subject:</span> {selectedEmail.subject}</p>
               <p>
                 <span className="text-[#94A3B8]">Requested Date/Time:</span>{" "}
-                {formatDateTime(selectedEmail.createdAt)}
+                {formatDateTime(selectedEmail.requestedAt ?? selectedEmail.createdAt)}
               </p>
               <Link
                 className="inline-flex h-10 items-center rounded-md bg-[#0F7BFF] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30"

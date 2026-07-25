@@ -16,11 +16,19 @@ const validateForgotPasswordRequest = (body) => {
     });
   }
 
+  if (!body || typeof body.registeredEmail !== 'string' || body.registeredEmail.trim() === '') {
+    errors.push({
+      field: 'registeredEmail',
+      message: 'Registered email is required',
+    });
+  }
+
   return {
     isValid: errors.length === 0,
     errors,
     value: {
       username: typeof body?.username === 'string' ? body.username.trim() : '',
+      registeredEmail: typeof body?.registeredEmail === 'string' ? body.registeredEmail.trim() : '',
     },
   };
 };

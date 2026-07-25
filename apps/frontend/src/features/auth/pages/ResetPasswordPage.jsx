@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   formatValidationIssues,
@@ -8,6 +8,7 @@ import {
 } from "@/features/auth/schemas/password-recovery.schema";
 import { AuthService } from "@/features/auth/services/auth.service";
 import PasswordInput from "@/shared/components/form/PasswordInput";
+import { useToast } from "@/shared/components/toast";
 
 const TokenStateMessage = ({ description, title }) => (
   <section className="text-center">
@@ -18,9 +19,9 @@ const TokenStateMessage = ({ description, title }) => (
     <p className="mt-3 text-sm leading-6 text-[#CBD5E1]">{description}</p>
     <Link
       className="mt-8 inline-flex h-11 items-center rounded-md bg-[#0F7BFF] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30"
-      to="/forgot-password"
+      to="/login"
     >
-      Back to Forgot Password
+      Back to Login
     </Link>
   </section>
 );
@@ -42,6 +43,8 @@ const tokenStateContent = {
 
 const ResetPasswordPage = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { showToast } = useToast();
   const token = searchParams.get("token") ?? "";
   const [tokenValidation, setTokenValidation] = useState({
     state: "loading",
@@ -85,7 +88,32 @@ const ResetPasswordPage = () => {
     const validationResult = resetPasswordSchema.safeParse(formValues);
 
     if (!validationResult.success) {
-      formatValidationIssues(validationResult.error.issues).forEach((issue) => {
+      const issues = formatValidationIssues(validationResult.error.issues);
+      const hasEmptyField = issues.some((issue) => issue.message.includes("is required"));
+      const hasConfirmationMismatch = issues.some((issue) => issue.field === "confirmPassword");
+      const hasPasswordPolicyIssue = issues.some((issue) => issue.field === "newPassword");
+
+      if (hasEmptyField) {
+        showToast({
+          message: "Semua field wajib diisi.",
+          title: "Data Belum Lengkap",
+          variant: "error",
+        });
+      } else if (hasConfirmationMismatch) {
+        showToast({
+          message: "Confirm Password tidak sama.",
+          title: "Konfirmasi Password Tidak Sesuai",
+          variant: "error",
+        });
+      } else if (hasPasswordPolicyIssue) {
+        showToast({
+          message: "Password Baru tidak memenuhi ketentuan.",
+          title: "Password Baru Tidak Valid",
+          variant: "error",
+        });
+      }
+
+      issues.forEach((issue) => {
         setError(issue.field, { message: issue.message, type: "validate" });
       });
       return;
@@ -97,6 +125,11 @@ const ResetPasswordPage = () => {
     });
 
     if (!response.success) {
+      showToast({
+        message: "Link reset password tidak valid atau telah kedaluwarsa.",
+        title: "Link Reset Tidak Valid",
+        variant: "error",
+      });
       setTokenValidation({
         state: response.data?.state ?? "invalid",
         token,
@@ -104,11 +137,17 @@ const ResetPasswordPage = () => {
       return;
     }
 
+    showToast({
+      message: "Silakan login menggunakan password baru.",
+      title: "Password Berhasil Diubah",
+      variant: "success",
+    });
     setResetResult(response);
     setTokenValidation({
       state: "success",
       token,
     });
+    navigate("/login", { replace: true });
   };
 
   if (tokenState === "loading") {

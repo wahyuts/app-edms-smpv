@@ -4,6 +4,18 @@ const isAuthEndpoint = (url = "", endpoint) => {
   return String(url).includes(`/auth/${endpoint}`);
 };
 
+const isPasswordRecoveryEndpoint = (url = "") => {
+  return String(url).includes("/password/forgot") ||
+    String(url).includes("/password/reset");
+};
+
+const isPublicRecoveryPath = (pathname = "") => {
+  return pathname === "/forgot-password" ||
+    pathname === "/check-email" ||
+    pathname === "/reset-password" ||
+    pathname.startsWith("/mock-email");
+};
+
 const setupInterceptors = (axiosInstance) => {
   axiosInstance.interceptors.request.use(
     (config) => {
@@ -24,6 +36,7 @@ const setupInterceptors = (axiosInstance) => {
         !originalRequest ||
         originalRequest._retry ||
         originalRequest._skipAuthRefresh ||
+        isPasswordRecoveryEndpoint(requestUrl) ||
         isAuthEndpoint(requestUrl, "change-password") ||
         isAuthEndpoint(requestUrl, "login") ||
         isAuthEndpoint(requestUrl, "refresh") ||
@@ -47,7 +60,11 @@ const setupInterceptors = (axiosInstance) => {
       } catch (refreshError) {
         useAuthStore.getState().clearAuth();
 
-        if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        if (
+          typeof window !== "undefined" &&
+          window.location.pathname !== "/login" &&
+          !isPublicRecoveryPath(window.location.pathname)
+        ) {
           window.location.assign("/login");
         }
 

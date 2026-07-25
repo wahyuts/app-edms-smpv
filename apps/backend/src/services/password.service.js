@@ -1,5 +1,6 @@
 const bcrypt = require('bcrypt');
 const env = require('../config/env');
+const logger = require('../config/logger');
 const passwordRepository = require('../repositories/password.repository');
 const emailService = require('./email.service');
 const {
@@ -16,16 +17,25 @@ const createPasswordError = (message = PASSWORD_MESSAGES.INVALID_RESET_TOKEN, st
   return error;
 };
 
-const forgotPassword = async ({ username }) => {
-  const user = await passwordRepository.findActiveUserByUsername(username);
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
-  if (!user) {
-    return true;
+const forgotPassword = async ({ username, registeredEmail }) => {
+  const requestId = generateResetRequestId();
+  const user = await passwordRepository.findActiveUserByUsername(username);
+  const accountMatched = Boolean(user) && normalizeEmail(user.email) === normalizeEmail(registeredEmail);
+
+  if (env.appEnv === 'development') {
+    logger.log(`[PASSWORD_RECOVERY] accountMatched=${accountMatched}`);
+  }
+
+  if (!accountMatched) {
+    return {
+      requestId,
+    };
   }
 
   const resetToken = generateResetToken();
   const tokenHash = hashResetToken(resetToken);
-  const requestId = generateResetRequestId();
   const expiresAt = getResetTokenExpiresAt(env.passwordResetExpiresIn);
 
   await passwordRepository.revokeActiveResetTokensByUserId(user.id);
@@ -42,9 +52,13 @@ const forgotPassword = async ({ username }) => {
     username: user.username,
     resetToken,
     expiresIn: env.passwordResetExpiresIn,
+    expiresAt,
+    requestId,
   });
 
-  return true;
+  return {
+    requestId,
+  };
 };
 
 const resetPassword = async ({ token, newPassword }) => {
