@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 dotenv.config({ quiet: true });
 
 const supportedAppEnvs = ['development', 'test', 'staging', 'production'];
+const supportedCookieSameSites = ['none', 'lax', 'strict'];
 const weakJwtSecrets = ['replace_with_secure_secret', 'change_this_secret', 'secret'];
 const requiredAppEnv = ['APP_NAME', 'APP_VERSION', 'APP_ENV', 'PORT'];
 const requiredDatabaseEnv = ['MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_DATABASE', 'MYSQL_USER'];
@@ -31,6 +32,10 @@ const getBooleanEnv = (key, defaultValue = false) => {
   }
 
   return value.trim().toLowerCase() === 'true';
+};
+
+const getCookieSameSite = () => {
+  return (process.env.COOKIE_SAME_SITE || 'lax').trim().toLowerCase();
 };
 
 const validateRequiredEnv = (keys, label) => {
@@ -81,9 +86,21 @@ const validateSecurityEnv = () => {
   validateRequiredEnv(requiredSecurityEnv, 'security');
 
   const bcryptRounds = Number(process.env.BCRYPT_ROUNDS);
+  const cookieSameSite = getCookieSameSite();
 
   if (!Number.isInteger(bcryptRounds) || bcryptRounds < 10 || bcryptRounds > 15) {
     throw new Error('[ENV] BCRYPT_ROUNDS must be an integer between 10 and 15');
+  }
+
+  if (
+    process.env.COOKIE_SECURE !== undefined &&
+    !['true', 'false'].includes(process.env.COOKIE_SECURE.trim().toLowerCase())
+  ) {
+    throw new Error('[ENV] COOKIE_SECURE must be true or false');
+  }
+
+  if (!supportedCookieSameSites.includes(cookieSameSite)) {
+    throw new Error(`[ENV] COOKIE_SAME_SITE must be one of: ${supportedCookieSameSites.join(', ')}`);
   }
 
   if (!/^(\d+)([smhd])$/.test(process.env.PASSWORD_RESET_EXPIRES_IN)) {
@@ -187,6 +204,10 @@ const env = {
   corsAllowedOrigins: process.env.CORS_ALLOWED_ORIGINS,
   storagePath: process.env.STORAGE_PATH,
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS),
+  cookie: {
+    secure: getBooleanEnv('COOKIE_SECURE', false),
+    sameSite: getCookieSameSite(),
+  },
 };
 
 module.exports = env;
