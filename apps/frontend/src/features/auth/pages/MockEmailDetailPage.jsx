@@ -40,7 +40,7 @@ const MockEmailDetailPage = () => {
   if (loading) {
     return (
       <section className="text-center" role="status">
-        <h1 className="text-2xl font-bold text-[#F8FAFC]">Loading Email</h1>
+        <h1 className="text-2xl font-bold text-[#F8FAFC]">Memuat Email</h1>
       </section>
     );
   }
@@ -48,12 +48,12 @@ const MockEmailDetailPage = () => {
   if (!email) {
     return (
       <section className="text-center">
-        <h1 className="text-2xl font-bold text-[#F8FAFC]">Mock Email Not Found</h1>
+        <h1 className="text-2xl font-bold text-[#F8FAFC]">Email Development Tidak Ditemukan</h1>
         <Link
           className="mt-6 inline-flex text-sm font-medium text-[#00C8FF] transition-colors hover:text-[#F8FAFC]"
           to="/check-email"
         >
-          Back to Check Email
+          Kembali ke Check Email
         </Link>
       </section>
     );
@@ -66,7 +66,7 @@ const MockEmailDetailPage = () => {
           Development Only
         </p>
         <h1 className="mt-3 text-3xl font-bold text-[#F8FAFC]">
-          Reset Your EDMS Password
+          Reset Password EDMS
         </h1>
       </div>
 
@@ -95,7 +95,7 @@ const MockEmailDetailPage = () => {
         className="mt-6 inline-flex text-sm font-medium text-[#00C8FF] transition-colors hover:text-[#F8FAFC]"
         to={email.requestId ? `/check-email?requestId=${encodeURIComponent(email.requestId)}` : "/check-email"}
       >
-        Back to Mock Inbox
+        Kembali ke Inbox
       </Link>
     </section>
   );

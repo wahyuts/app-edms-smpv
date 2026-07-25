@@ -33,6 +33,11 @@ const ForgotPasswordPage = () => {
       formatValidationIssues(validationResult.error.issues).forEach((issue) => {
         setError(issue.field, { message: issue.message, type: "validate" });
       });
+      showToast({
+        message: "Username dan Registered Email wajib diisi.",
+        title: "Data Belum Lengkap",
+        variant: "error",
+      });
       return;
     }
 
@@ -65,7 +70,7 @@ const ForgotPasswordPage = () => {
           Forgot Password
         </h1>
         <p className="mt-2 text-sm text-[#CBD5E1]">
-          Enter your username and registered email address to request a password reset link.
+          Masukkan Username dan Registered Email untuk meminta link Reset Password.
         </p>
       </div>
 
@@ -79,7 +84,7 @@ const ForgotPasswordPage = () => {
           <input
             autoComplete="username"
             className={inputClassName}
-            placeholder="Enter username"
+            placeholder="Masukkan username"
             type="text"
             {...register("username")}
           />
@@ -93,7 +98,7 @@ const ForgotPasswordPage = () => {
           <input
             autoComplete="email"
             className={inputClassName}
-            placeholder="Enter registered email"
+            placeholder="Masukkan registered email"
             type="email"
             {...register("registeredEmail")}
           />
@@ -107,14 +112,14 @@ const ForgotPasswordPage = () => {
           disabled={isSubmitting}
           type="submit"
         >
-          {isSubmitting ? "Sending..." : "Send Reset Link"}
+          {isSubmitting ? "Mengirim..." : "Kirim Link Reset"}
         </button>
 
         <Link
           className="text-center text-sm font-medium text-[#00C8FF] transition-colors hover:text-[#F8FAFC]"
           to="/login"
         >
-          Back to Login
+          Kembali ke Login
         </Link>
       </form>
     </section>

@@ -1,6 +1,5 @@
 const bcrypt = require('bcrypt');
 const env = require('../config/env');
-const logger = require('../config/logger');
 const passwordRepository = require('../repositories/password.repository');
 const emailService = require('./email.service');
 const {
@@ -23,10 +22,6 @@ const forgotPassword = async ({ username, registeredEmail }) => {
   const requestId = generateResetRequestId();
   const user = await passwordRepository.findActiveUserByUsername(username);
   const accountMatched = Boolean(user) && normalizeEmail(user.email) === normalizeEmail(registeredEmail);
-
-  if (env.appEnv === 'development') {
-    logger.log(`[PASSWORD_RECOVERY] accountMatched=${accountMatched}`);
-  }
 
   if (!accountMatched) {
     return {

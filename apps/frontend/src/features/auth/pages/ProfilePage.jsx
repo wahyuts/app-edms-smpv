@@ -14,8 +14,8 @@ const actionButtonClassName =
 const primaryButtonClassName =
   "inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0F7BFF] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] disabled:cursor-not-allowed disabled:bg-[#123A5A] disabled:text-[#94A3B8]";
 
-const NO_ACTIVE_PROJECT_OFFICIAL_ROLE = "No Official Role on Active Project";
-const NO_ACTIVE_PROJECT_ACCESS = "No Project Access";
+const NO_ACTIVE_PROJECT_OFFICIAL_ROLE = "Tidak Ada Official Role pada Active Project";
+const NO_ACTIVE_PROJECT_ACCESS = "Tidak Ada Project Access";
 
 const getDisplayOfficialRole = ({ activeOfficialRole }) => {
   if (activeOfficialRole) {
@@ -142,14 +142,14 @@ const EditProfileModal = ({
             onClick={onClose}
             type="button"
           >
-            Cancel
+            Batal
           </button>
           <button
             className={primaryButtonClassName}
             disabled={submitting}
             type="submit"
           >
-            {submitting ? "Saving..." : "Save"}
+            {submitting ? "Menyimpan..." : "Simpan"}
           </button>
         </div>
       </form>
@@ -265,7 +265,7 @@ const ProfilePage = () => {
           </p>
           <h1 className="mt-2 text-3xl font-bold">My Profile</h1>
           <p className="mt-2 text-sm text-[#CBD5E1]">
-            Account information for the current logged-in user.
+            Informasi akun untuk User yang sedang Login.
           </p>
         </div>
         <button

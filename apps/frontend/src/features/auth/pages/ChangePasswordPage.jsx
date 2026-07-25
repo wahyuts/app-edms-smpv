@@ -104,7 +104,7 @@ const ChangePasswordPage = () => {
         </p>
         <h1 className="mt-2 text-3xl font-bold">Change Password</h1>
         <p className="mt-2 text-sm text-[#CBD5E1]">
-          Update the password for the current logged-in user.
+          Ubah password untuk akun yang sedang Login.
         </p>
       </header>
 
@@ -118,7 +118,7 @@ const ChangePasswordPage = () => {
             <PasswordInput
               autoComplete="current-password"
               name="currentPassword"
-              placeholder="Enter current password"
+              placeholder="Masukkan current password"
               ref={currentPasswordRef}
             />
           </label>
@@ -128,7 +128,7 @@ const ChangePasswordPage = () => {
             <PasswordInput
               autoComplete="new-password"
               name="newPassword"
-              placeholder="Enter new password"
+              placeholder="Masukkan password baru"
             />
           </label>
 
@@ -137,7 +137,7 @@ const ChangePasswordPage = () => {
             <PasswordInput
               autoComplete="new-password"
               name="confirmPassword"
-              placeholder="Confirm new password"
+              placeholder="Masukkan confirm password"
             />
           </label>
 
@@ -147,7 +147,7 @@ const ChangePasswordPage = () => {
               disabled={isSubmitting}
               type="submit"
             >
-              {isSubmitting ? "Changing..." : "Change Password"}
+              {isSubmitting ? "Memproses..." : "Change Password"}
             </button>
           ) : null}
 

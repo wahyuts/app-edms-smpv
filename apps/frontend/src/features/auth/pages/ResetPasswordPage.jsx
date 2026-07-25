@@ -21,23 +21,23 @@ const TokenStateMessage = ({ description, title }) => (
       className="mt-8 inline-flex h-11 items-center rounded-md bg-[#0F7BFF] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30"
       to="/login"
     >
-      Back to Login
+      Kembali ke Login
     </Link>
   </section>
 );
 
 const tokenStateContent = {
   expired: {
-    description: "This password reset link has expired. Please request a new reset link.",
-    title: "Reset Link Expired",
+    description: "Link Reset Password telah kedaluwarsa.",
+    title: "Link Reset Kedaluwarsa",
   },
   invalid: {
-    description: "This password reset link is invalid. Please request a new reset link.",
-    title: "Reset Link Invalid",
+    description: "Link Reset Password tidak valid.",
+    title: "Link Reset Tidak Valid",
   },
   used: {
-    description: "This password reset link has already been used. Please request a new reset link if you still need to change your password.",
-    title: "Reset Link Already Used",
+    description: "Link Reset Password sudah digunakan.",
+    title: "Link Reset Sudah Digunakan",
   },
 };
 
@@ -89,7 +89,7 @@ const ResetPasswordPage = () => {
 
     if (!validationResult.success) {
       const issues = formatValidationIssues(validationResult.error.issues);
-      const hasEmptyField = issues.some((issue) => issue.message.includes("is required"));
+      const hasEmptyField = issues.some((issue) => issue.message.includes("wajib diisi"));
       const hasConfirmationMismatch = issues.some((issue) => issue.field === "confirmPassword");
       const hasPasswordPolicyIssue = issues.some((issue) => issue.field === "newPassword");
 
@@ -157,10 +157,10 @@ const ResetPasswordPage = () => {
           Account Recovery
         </p>
         <h1 className="mt-3 text-3xl font-bold text-[#F8FAFC]">
-          Validating Reset Link
+          Memvalidasi Link Reset
         </h1>
         <p className="mt-3 text-sm text-[#CBD5E1]">
-          Please wait while we validate your password reset link.
+          Sistem sedang memeriksa link Reset Password.
         </p>
       </section>
     );
@@ -173,10 +173,10 @@ const ResetPasswordPage = () => {
           Account Recovery
         </p>
         <h1 className="mt-3 text-3xl font-bold text-[#F8FAFC]">
-          Password Reset Successful
+          Password Berhasil Direset
         </h1>
         <p className="mt-3 text-sm leading-6 text-[#CBD5E1]">
-          Your password has been updated successfully. You can now sign in using your new password.
+          Gunakan password baru untuk Login.
         </p>
         {resetResult ? (
           <p className="sr-only" role="status">{resetResult.message}</p>
@@ -185,7 +185,7 @@ const ResetPasswordPage = () => {
           className="mt-8 inline-flex h-11 items-center rounded-md bg-[#0F7BFF] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30"
           to="/login"
         >
-          Back to Login
+          Kembali ke Login
         </Link>
       </section>
     );
@@ -206,7 +206,7 @@ const ResetPasswordPage = () => {
           Reset Password
         </h1>
         <p className="mt-2 text-sm text-[#CBD5E1]">
-          Create a new password for your EDMS account.
+          Buat password baru untuk akun EDMS Anda.
         </p>
       </div>
 
@@ -219,7 +219,7 @@ const ResetPasswordPage = () => {
           <span>New Password</span>
           <PasswordInput
             autoComplete="new-password"
-            placeholder="Enter new password"
+            placeholder="Masukkan password baru"
             {...register("newPassword")}
           />
           {errors.newPassword ? (
@@ -231,9 +231,9 @@ const ResetPasswordPage = () => {
           <span>Confirm Password</span>
           <PasswordInput
             autoComplete="new-password"
-            hideLabel="Hide confirm password"
-            placeholder="Confirm new password"
-            showLabel="Show confirm password"
+            hideLabel="Sembunyikan confirm password"
+            placeholder="Masukkan confirm password"
+            showLabel="Tampilkan confirm password"
             {...register("confirmPassword")}
           />
           {errors.confirmPassword ? (
@@ -246,14 +246,14 @@ const ResetPasswordPage = () => {
           disabled={isSubmitting}
           type="submit"
         >
-          {isSubmitting ? "Updating..." : "Reset Password"}
+          {isSubmitting ? "Memproses..." : "Reset Password"}
         </button>
 
         <Link
           className="text-center text-sm font-medium text-[#00C8FF] transition-colors hover:text-[#F8FAFC]"
           to="/login"
         >
-          Back to Login
+          Kembali ke Login
         </Link>
       </form>
     </section>

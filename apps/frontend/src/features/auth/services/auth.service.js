@@ -7,32 +7,16 @@ import {
 } from "../stores/auth.store";
 
 const PASSWORD_RESET_GENERIC_MESSAGE =
-  "If the account exists, password recovery instructions have been sent.";
+  "Jika data akun valid, instruksi Reset Password telah dikirim.";
 const LOGIN_MESSAGES = {
-  invalidCredentials: [
-    "Username atau Password yang Anda masukkan tidak benar.",
-    "",
-    "Silakan periksa kembali dan coba lagi.",
-  ].join("\n"),
+  invalidCredentials: "Username atau Password tidak benar.",
   passwordRequired: "Silakan masukkan Password Anda.",
-  serverUnavailable: [
-    "Tidak dapat terhubung ke server.",
-    "",
-    "Silakan coba beberapa saat lagi.",
-  ].join("\n"),
-  sessionExpired: [
-    "Sesi Anda telah berakhir.",
-    "",
-    "Silakan login kembali.",
-  ].join("\n"),
+  serverUnavailable: "Tidak dapat terhubung ke server.",
+  sessionExpired: "Session telah berakhir.",
   usernameRequired: "Silakan masukkan Username Anda.",
 };
 const CHANGE_PASSWORD_MESSAGES = {
-  currentPasswordIncorrect: [
-    "Current Password yang Anda masukkan tidak benar.",
-    "",
-    "Silakan periksa kembali dan coba lagi.",
-  ].join("\n"),
+  currentPasswordIncorrect: "Current Password tidak benar.",
 };
 
 let initializationPromise = null;
@@ -66,7 +50,7 @@ const getFriendlyAuthErrorMessage = (error, fallbackMessage) => {
 };
 
 const getChangePasswordErrorMessage = (error) => {
-  const backendMessage = getErrorMessage(error, "Change password failed");
+  const backendMessage = getErrorMessage(error, "Gagal mengubah Password.");
 
   if (backendMessage === "Current password is incorrect") {
     return CHANGE_PASSWORD_MESSAGES.currentPasswordIncorrect;
@@ -147,7 +131,7 @@ const getMe = async () => {
   );
   const context = setAuthContextFromResponse(response.data?.data);
 
-  return createSuccessResponse(response.data?.message ?? "Current user retrieved", context);
+    return createSuccessResponse(response.data?.message ?? "Data User berhasil dimuat.", context);
 };
 
 const initialize = async () => {
@@ -193,7 +177,7 @@ const login = async ({ username, password }) => {
     const meResponse = await getMe();
 
     return createSuccessResponse(
-      loginResponse.data?.message ?? "Login successful",
+      loginResponse.data?.message ?? "Login berhasil.",
       meResponse.data,
     );
   } catch (error) {
@@ -225,13 +209,13 @@ const logout = async () => {
   try {
     const response = assertBackendSuccess(
       await apiClient.post("/v1/auth/logout"),
-      "Logout failed",
+      "Logout gagal.",
     );
     clearCurrentUser();
-    return createSuccessResponse(response.data?.message ?? "Logout successful");
+    return createSuccessResponse(response.data?.message ?? "Logout berhasil.");
   } catch (error) {
     clearCurrentUser();
-    return createFailedResponse(getErrorMessage(error, "Logout failed"));
+    return createFailedResponse(getErrorMessage(error, "Logout gagal."));
   }
 };
 
@@ -248,12 +232,12 @@ const changePassword = async ({
         currentPassword,
         newPassword,
       }),
-      "Change password failed",
+      "Gagal mengubah Password.",
     );
 
     clearCurrentUser();
     return createSuccessResponse(
-      response.data?.message ?? "Password changed successfully. Please log in again.",
+      response.data?.message ?? "Password berhasil diubah. Login kembali.",
       response.data?.data ?? null,
     );
   } catch (error) {
@@ -262,7 +246,7 @@ const changePassword = async ({
 };
 
 const updateCurrentProfile = async () => {
-  return createFailedResponse("Profile update is not available from backend yet.", {
+  return createFailedResponse("Update Profile belum tersedia.", {
     errors: [],
   });
 };
@@ -296,20 +280,20 @@ const resetPassword = async ({ token, newPassword, confirmPassword }) => {
         newPassword,
         token,
       }),
-      "Reset password link is not valid.",
+      "Link Reset Password tidak valid.",
     );
 
-    return createSuccessResponse(response.data?.message ?? "Password reset successfully.");
+    return createSuccessResponse(response.data?.message ?? "Password berhasil direset.");
   } catch (error) {
     return createFailedResponse(
-      getErrorMessage(error, "Reset password link is not valid."),
+      getErrorMessage(error, "Link Reset Password tidak valid."),
       { state: "invalid" },
     );
   }
 };
 
 const validatePasswordResetToken = async (token) => {
-  return createSuccessResponse("Reset token validation is handled during reset.", {
+  return createSuccessResponse("Token Reset Password divalidasi saat submit.", {
     state: token ? "valid" : "invalid",
     token,
   });
