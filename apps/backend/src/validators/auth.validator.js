@@ -1,5 +1,5 @@
 const {
-  PASSWORD_POLICY_MESSAGE,
+  getPasswordPolicyMessage,
   isPasswordPolicyValid,
 } = require('./password.validator');
 
@@ -48,7 +48,7 @@ const validateChangePasswordRequest = (body) => {
   } else if (!isPasswordPolicyValid(body.newPassword)) {
     errors.push({
       field: 'newPassword',
-      message: PASSWORD_POLICY_MESSAGE,
+      message: getPasswordPolicyMessage(body.newPassword),
     });
   }
 

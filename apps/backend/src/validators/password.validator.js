@@ -1,6 +1,42 @@
 const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
-const PASSWORD_POLICY_MESSAGE =
-  'Password must be at least 8 characters and contain uppercase, lowercase, number, and symbol';
+const PASSWORD_RULE_MESSAGES = {
+  lowercase: 'Password harus mengandung minimal satu huruf kecil.',
+  minLength: 'Password minimal 8 karakter.',
+  number: 'Password harus mengandung minimal satu angka.',
+  symbol: 'Password harus mengandung minimal satu simbol.',
+  uppercase: 'Password harus mengandung minimal satu huruf besar.',
+};
+
+const getPasswordPolicyMessages = (password) => {
+  const value = String(password || '');
+  const messages = [];
+
+  if (value.length < 8) {
+    messages.push(PASSWORD_RULE_MESSAGES.minLength);
+  }
+
+  if (!/[A-Z]/.test(value)) {
+    messages.push(PASSWORD_RULE_MESSAGES.uppercase);
+  }
+
+  if (!/[a-z]/.test(value)) {
+    messages.push(PASSWORD_RULE_MESSAGES.lowercase);
+  }
+
+  if (!/\d/.test(value)) {
+    messages.push(PASSWORD_RULE_MESSAGES.number);
+  }
+
+  if (!/[^A-Za-z0-9]/.test(value)) {
+    messages.push(PASSWORD_RULE_MESSAGES.symbol);
+  }
+
+  return messages;
+};
+
+const getPasswordPolicyMessage = (password) => {
+  return getPasswordPolicyMessages(password).join('\n');
+};
 
 const isPasswordPolicyValid = (password) => {
   return typeof password === 'string' && PASSWORD_PATTERN.test(password);
@@ -46,7 +82,7 @@ const validateResetPasswordRequest = (body) => {
   if (!body || !isPasswordPolicyValid(body.newPassword)) {
     errors.push({
       field: 'newPassword',
-      message: PASSWORD_POLICY_MESSAGE,
+      message: getPasswordPolicyMessage(body?.newPassword),
     });
   }
 
@@ -61,7 +97,8 @@ const validateResetPasswordRequest = (body) => {
 };
 
 module.exports = {
-  PASSWORD_POLICY_MESSAGE,
+  getPasswordPolicyMessage,
+  getPasswordPolicyMessages,
   isPasswordPolicyValid,
   validateForgotPasswordRequest,
   validateResetPasswordRequest,
