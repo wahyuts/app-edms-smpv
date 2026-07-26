@@ -3,11 +3,11 @@
     {
       "id": 1,
       "userCode": "USR-000001",
-      "username": "wahyuts",
-      "fullName": "Wahyu Trisna Setiadi",
+      "username": "deny",
+      "fullName": "Deny Budiarso",
       "email": "wahyu.trisna100@gmail.com",
-      "department": "DIV 2",
-      "position": "EDMS Admin",
+      "department": "No Department",
+      "position": null,
       "roleId": 1,
       "status": "Active",
       "isActive": true,
@@ -18,7 +18,7 @@
   "userCredentials": [
     {
       "userId": 1,
-      "password": "kmzwhy182t",
+      "password": "Password123!",
       "isActive": true,
       "updatedAt": "2026-01-01T00:00:00.000Z"
     }

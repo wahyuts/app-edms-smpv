@@ -11,6 +11,7 @@ const errorHandler = require('./middlewares/errorHandler');
 const healthRoutes = require('./routes/health.routes');
 const authRoutes = require('./routes/auth.routes');
 const passwordRoutes = require('./routes/password.routes');
+const devEmailOutboxRoutes = require('./routes/devEmailOutbox.routes');
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use(requestLogger);
 app.use('/api/v1/health', healthRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/password', passwordRoutes);
+app.use('/api/v1/dev/email-outbox', devEmailOutboxRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

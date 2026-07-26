@@ -29,7 +29,7 @@ const AuthLayout = () => {
 
         <footer className="mt-8 text-sm text-[#94A3B8]">
           <p>(c) 2026 BIM Engineering EDMS</p>
-          <p>All Rights Reserved</p>
+          <p>Seluruh Hak Dilindungi</p>
         </footer>
       </section>
     </main>

@@ -13,7 +13,7 @@ const ProjectContextRoute = ({ children }) => {
   if (isLoading && !isInitialized) {
     return (
       <section className="flex min-h-[calc(100vh-10rem)] items-center justify-center text-sm font-semibold text-[#CBD5E1]">
-        Loading project context...
+        Memuat konteks project...
       </section>
     );
   }

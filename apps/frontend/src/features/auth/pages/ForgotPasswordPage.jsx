@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -7,13 +6,14 @@ import {
   forgotPasswordSchema,
   formatValidationIssues,
 } from "@/features/auth/schemas/password-recovery.schema";
+import { useToast } from "@/shared/components/toast";
 
 const inputClassName =
   "h-11 rounded-md border border-[#123A5A] bg-[#08233B] px-4 text-sm text-[#F8FAFC] outline-none transition-colors placeholder:text-[#94A3B8] focus:border-[#0F7BFF] focus:ring-2 focus:ring-[#0F7BFF]/20";
 
 const ForgotPasswordPage = () => {
-  const [submitError, setSubmitError] = useState("");
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const {
     formState: { errors, isSubmitting },
     handleSubmit,
@@ -21,29 +21,43 @@ const ForgotPasswordPage = () => {
     setError,
   } = useForm({
     defaultValues: {
-      email: "",
+      registeredEmail: "",
       username: "",
     },
   });
 
   const handleForgotPassword = async (formValues) => {
-    setSubmitError("");
     const validationResult = forgotPasswordSchema.safeParse(formValues);
 
     if (!validationResult.success) {
       formatValidationIssues(validationResult.error.issues).forEach((issue) => {
         setError(issue.field, { message: issue.message, type: "validate" });
       });
+      showToast({
+        message: "Username dan Registered Email wajib diisi.",
+        title: "Data Belum Lengkap",
+        variant: "error",
+      });
       return;
     }
 
     const response = await AuthService.forgotPassword(validationResult.data);
     if (!response.success) {
-      setSubmitError(response.message);
+      showToast({
+        message: "Gagal mengirim email.",
+        title: "Terjadi Kesalahan",
+        variant: "error",
+      });
       return;
     }
 
-    navigate(`/check-email?requestId=${encodeURIComponent(response.data.requestId)}`);
+    showToast({
+      message: "Silakan periksa email Anda.",
+      title: "Email Berhasil Dikirim",
+      variant: "success",
+    });
+    const requestId = response.data?.requestId;
+    navigate(requestId ? `/check-email?requestId=${encodeURIComponent(requestId)}` : "/check-email");
   };
 
   return (
@@ -56,7 +70,7 @@ const ForgotPasswordPage = () => {
           Forgot Password
         </h1>
         <p className="mt-2 text-sm text-[#CBD5E1]">
-          Enter your username and registered email address to request a password reset link.
+          Masukkan Username dan Registered Email untuk meminta link Reset Password.
         </p>
       </div>
 
@@ -70,7 +84,7 @@ const ForgotPasswordPage = () => {
           <input
             autoComplete="username"
             className={inputClassName}
-            placeholder="Enter username"
+            placeholder="Masukkan username"
             type="text"
             {...register("username")}
           />
@@ -84,12 +98,12 @@ const ForgotPasswordPage = () => {
           <input
             autoComplete="email"
             className={inputClassName}
-            placeholder="Enter registered email"
+            placeholder="Masukkan registered email"
             type="email"
-            {...register("email")}
+            {...register("registeredEmail")}
           />
-          {errors.email ? (
-            <span className="text-xs text-[#FCA5A5]">{errors.email.message}</span>
+          {errors.registeredEmail ? (
+            <span className="text-xs text-[#FCA5A5]">{errors.registeredEmail.message}</span>
           ) : null}
         </label>
 
@@ -98,20 +112,14 @@ const ForgotPasswordPage = () => {
           disabled={isSubmitting}
           type="submit"
         >
-          {isSubmitting ? "Sending..." : "Send Reset Link"}
+          {isSubmitting ? "Mengirim..." : "Kirim Link Reset"}
         </button>
-
-        {submitError ? (
-          <p className="rounded-md border border-[#EF4444] bg-[#EF4444]/10 px-4 py-3 text-sm text-[#F8FAFC]">
-            {submitError}
-          </p>
-        ) : null}
 
         <Link
           className="text-center text-sm font-medium text-[#00C8FF] transition-colors hover:text-[#F8FAFC]"
           to="/login"
         >
-          Back to Login
+          Kembali ke Login
         </Link>
       </form>
     </section>

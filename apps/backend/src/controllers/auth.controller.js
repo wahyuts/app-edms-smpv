@@ -1,50 +1,14 @@
-const env = require('../config/env');
 const authService = require('../services/auth.service');
 const {
   validateLoginRequest,
   validateChangePasswordRequest,
 } = require('../validators/auth.validator');
 const { successResponse, errorResponse } = require('../utils/response');
-const { parseDurationToMs } = require('../utils/token');
 const {
   AUTH_COOKIE_NAMES,
-  AUTH_COOKIE_PATH,
   AUTH_MESSAGES,
 } = require('../constants/auth.constants');
-const jwtConfig = require('../config/jwt');
-
-const getCookieOptions = (maxAge) => ({
-  httpOnly: true,
-  sameSite: 'lax',
-  secure: env.appEnv === 'production',
-  path: AUTH_COOKIE_PATH,
-  maxAge,
-});
-
-const setAuthCookies = (res, { accessToken, refreshToken }) => {
-  if (accessToken) {
-    res.cookie(
-      AUTH_COOKIE_NAMES.ACCESS_TOKEN,
-      accessToken,
-      getCookieOptions(parseDurationToMs(jwtConfig.accessTokenExpiresIn))
-    );
-  }
-
-  if (refreshToken) {
-    res.cookie(
-      AUTH_COOKIE_NAMES.REFRESH_TOKEN,
-      refreshToken,
-      getCookieOptions(parseDurationToMs(jwtConfig.refreshTokenExpiresIn))
-    );
-  }
-};
-
-const clearAuthCookies = (res) => {
-  const options = getCookieOptions(0);
-
-  res.clearCookie(AUTH_COOKIE_NAMES.ACCESS_TOKEN, options);
-  res.clearCookie(AUTH_COOKIE_NAMES.REFRESH_TOKEN, options);
-};
+const { clearAuthCookies, setAuthCookies } = require('../utils/authCookie');
 
 const login = async (req, res, next) => {
   try {
@@ -73,6 +37,8 @@ const login = async (req, res, next) => {
         user: result.user,
         role: result.role,
         permissions: result.permissions,
+        activeProject: result.activeProject,
+        officialRole: result.officialRole,
       },
     });
   } catch (error) {
@@ -123,6 +89,8 @@ const refresh = async (req, res, next) => {
         user: result.user,
         role: result.role,
         permissions: result.permissions,
+        activeProject: result.activeProject,
+        officialRole: result.officialRole,
       },
     });
   } catch (error) {
@@ -138,6 +106,8 @@ const me = async (req, res, next) => {
         user: req.user,
         role: req.role,
         permissions: req.permissions,
+        activeProject: req.activeProject,
+        officialRole: req.officialRole,
       },
     });
   } catch (error) {

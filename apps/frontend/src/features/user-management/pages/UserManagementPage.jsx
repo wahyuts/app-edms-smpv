@@ -480,9 +480,9 @@ const ResetDemoDataConfirmationModal = ({
 
         <div className="mt-5 space-y-2 rounded-md border border-[#7F1D1D] bg-[#450A0A]/25 p-4 text-sm text-[#FECACA]">
           <p>Seluruh Project akan dihapus.</p>
-          <p>Seluruh User selain wahyuts akan dihapus.</p>
+          <p>Seluruh User selain deny akan dihapus.</p>
           <p>Seluruh Document, Workflow Activity, SLA, Escalation, Notification, dan Audit Trail demo akan dihapus.</p>
-          <p>Hanya akun Admin wahyuts dan dependency minimum Department yang dipertahankan.</p>
+          <p>Hanya akun Admin deny dan dependency minimum Department yang dipertahankan.</p>
         </div>
 
         <label className="mt-5 flex flex-col gap-2 text-sm font-medium text-[#CBD5E1]">
@@ -806,7 +806,7 @@ const UserManagementPage = () => {
         confirmationText: resetConfirmationValue,
       });
       showToast({
-        message: "Demo data reset successfully. Please login again as wahyuts.",
+        message: "Demo data reset successfully. Please login again as deny.",
         variant: "success",
       });
       setResetModalOpen(false);

@@ -6,7 +6,6 @@ import navigation from "@/app/navigation";
 import { AuthService } from "@/features/auth/services/auth.service";
 import { useCurrentUserUnreadNotificationCount } from "@/features/notification";
 import ActiveProjectSelector from "@/features/project/components/ActiveProjectSelector";
-import { ProjectService } from "@/features/project/services/project.service";
 import { useToast } from "@/shared/components/toast";
 import { usePermission } from "@/shared/hooks/usePermission";
 import { useOutsideClick } from "@/shared/hooks/useOutsideClick";
@@ -42,8 +41,8 @@ const AppShell = ({ children }) => {
   const { hasPermission } = usePermission();
   const {
     activeOfficialRole,
+    clearProjectContext,
     setProjectContext,
-    setProjectContextError,
     setProjectContextLoading,
   } = useProjectContextStore();
   const { data: unreadNotificationCount = 0 } =
@@ -66,33 +65,24 @@ const AppShell = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    let isActive = true;
+    if (!currentUser?.id) {
+      clearProjectContext();
+      return;
+    }
 
-    const initializeProjectContext = async () => {
-      if (!currentUser?.id) return;
+    const activeProject = AuthService.getActiveProject();
+    const officialRole = AuthService.getOfficialRole();
 
-      try {
-        setProjectContextLoading(true);
-        const context = await ProjectService.resolveActiveProject(currentUser);
-        if (isActive) setProjectContext(context);
-      } catch (error) {
-        if (isActive) {
-          setProjectContextError(
-            error instanceof Error ? error.message : "Project context initialization failed.",
-          );
-        }
-      }
-    };
-
-    initializeProjectContext();
-
-    return () => {
-      isActive = false;
-    };
+    setProjectContextLoading(true);
+    setProjectContext({
+      accessibleProjects: activeProject ? [activeProject] : [],
+      activeMembership: officialRole ? { officialRole } : null,
+      activeProject,
+    });
   }, [
+    clearProjectContext,
     currentUser,
     setProjectContext,
-    setProjectContextError,
     setProjectContextLoading,
   ]);
 
@@ -236,10 +226,11 @@ const AppShell = ({ children }) => {
 
   const handleLogout = async () => {
     const response = await AuthService.logout();
+    clearProjectContext();
     setIsUserMenuOpen(false);
     showToast({
       message: response.message,
-      variant: "success",
+      variant: response.success ? "success" : "error",
     });
     navigate("/login", { replace: true });
   };
@@ -431,41 +422,39 @@ const AppShell = ({ children }) => {
           </div>
         ) : null}
 
-        {hasPermission("auth.logout") ? (
-          <div
+        <div
+          className={[
+            "shrink-0 py-3",
+            isSidebarCollapsed ? "px-3" : "px-4",
+          ].join(" ")}
+        >
+          <button
+            aria-label="Logout"
             className={[
-              "shrink-0 py-3",
-              isSidebarCollapsed ? "px-3" : "px-4",
+              "group relative flex items-center rounded-lg text-[14px] font-medium text-[#CBD5E1] transition-colors hover:bg-[#0B2B47] hover:text-[#EF4444] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF] focus:ring-offset-2 focus:ring-offset-[#031528]",
+              isSidebarCollapsed
+                ? "h-11 w-11 justify-center"
+                : "w-full gap-2.5 px-4 py-2.5 text-left",
             ].join(" ")}
+            onClick={() => {
+              closeCollapsedFlyout();
+              handleLogout();
+            }}
+            title={isSidebarCollapsed ? "Logout" : undefined}
+            type="button"
           >
-            <button
-              aria-label="Logout"
-              className={[
-                "group relative flex items-center rounded-lg text-[14px] font-medium text-[#CBD5E1] transition-colors hover:bg-[#0B2B47] hover:text-[#EF4444] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF] focus:ring-offset-2 focus:ring-offset-[#031528]",
-                isSidebarCollapsed
-                  ? "h-11 w-11 justify-center"
-                  : "w-full gap-2.5 px-4 py-2.5 text-left",
-              ].join(" ")}
-              onClick={() => {
-                closeCollapsedFlyout();
-                handleLogout();
-              }}
-              title={isSidebarCollapsed ? "Logout" : undefined}
-              type="button"
-            >
-              <LogOut className="h-5 w-5 shrink-0" aria-hidden="true" />
-              {!isSidebarCollapsed ? <span>Logout</span> : null}
-              {isSidebarCollapsed ? (
-                <span
-                  className="pointer-events-none absolute left-[calc(100%+0.75rem)] top-1/2 z-[8800] -translate-y-1/2 whitespace-nowrap rounded-md border border-[#123A5A] bg-[#061B2F] px-2.5 py-1.5 text-xs font-semibold text-[#F8FAFC] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-                  role="tooltip"
-                >
-                  Logout
-                </span>
-              ) : null}
-            </button>
-          </div>
-        ) : null}
+            <LogOut className="h-5 w-5 shrink-0" aria-hidden="true" />
+            {!isSidebarCollapsed ? <span>Logout</span> : null}
+            {isSidebarCollapsed ? (
+              <span
+                className="pointer-events-none absolute left-[calc(100%+0.75rem)] top-1/2 z-[8800] -translate-y-1/2 whitespace-nowrap rounded-md border border-[#123A5A] bg-[#061B2F] px-2.5 py-1.5 text-xs font-semibold text-[#F8FAFC] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                role="tooltip"
+              >
+                Logout
+              </span>
+            ) : null}
+          </button>
+        </div>
 
         <button
           aria-label={isSidebarCollapsed ? "Expand Menu" : "Collapse Menu"}
@@ -559,15 +548,14 @@ const AppShell = ({ children }) => {
                       Change Password
                     </Link>
                   ) : null}
-                  {hasPermission("auth.logout") ? (
-                    <button
-                      className="block w-full px-4 py-2 text-left text-[#CBD5E1] transition-colors hover:bg-[#0B2B47] hover:text-white"
-                      onClick={handleLogout}
-                      type="button"
-                    >
-                      Logout
-                    </button>
-                  ) : null}
+                  <div className="my-1 border-t border-[#123A5A]" />
+                  <button
+                    className="block w-full px-4 py-2 text-left text-[#CBD5E1] transition-colors hover:bg-[#0B2B47] hover:text-white"
+                    onClick={handleLogout}
+                    type="button"
+                  >
+                    Logout
+                  </button>
                 </div>
               ) : null}
             </div>
