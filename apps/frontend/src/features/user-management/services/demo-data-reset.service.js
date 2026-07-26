@@ -13,12 +13,12 @@ import {
 import { queryClient } from "@/shared/api/query-client";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
-const BOOTSTRAP_USERNAME = "wahyuts";
+const BOOTSTRAP_USERNAME = "deny";
 const CONFIRMATION_TEXT = "RESET ALL DEMO DATA";
 const RESET_PERMISSION = "user-management.view";
 const ADMIN_ROLE_NAME = "Admin";
 
-const USER_COMPATIBILITY_VERSION = 1;
+const USER_COMPATIBILITY_VERSION = 2;
 const DEPARTMENT_SEED_VERSION = 1;
 const DOCUMENT_SEED_VERSION = 2;
 const PROJECT_SEED_VERSION = 1;
@@ -109,10 +109,10 @@ const validateBootstrapUser = ({ credentials, departments, users }) => {
   );
 
   if (bootstrapUsers.length === 0) {
-    throw new DemoDataResetError("Protected bootstrap user wahyuts was not found.");
+    throw new DemoDataResetError("Protected bootstrap user deny was not found.");
   }
   if (bootstrapUsers.length > 1) {
-    throw new DemoDataResetError("Protected bootstrap user wahyuts has duplicate records.");
+    throw new DemoDataResetError("Protected bootstrap user deny has duplicate records.");
   }
 
   const bootstrapUserRecord = bootstrapUsers[0];

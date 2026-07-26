@@ -40,7 +40,7 @@ const MockEmailDetailPage = () => {
   if (loading) {
     return (
       <section className="text-center" role="status">
-        <h1 className="text-2xl font-bold text-[#F8FAFC]">Loading Email</h1>
+        <h1 className="text-2xl font-bold text-[#F8FAFC]">Memuat Email</h1>
       </section>
     );
   }
@@ -48,12 +48,12 @@ const MockEmailDetailPage = () => {
   if (!email) {
     return (
       <section className="text-center">
-        <h1 className="text-2xl font-bold text-[#F8FAFC]">Mock Email Not Found</h1>
+        <h1 className="text-2xl font-bold text-[#F8FAFC]">Email Development Tidak Ditemukan</h1>
         <Link
           className="mt-6 inline-flex text-sm font-medium text-[#00C8FF] transition-colors hover:text-[#F8FAFC]"
           to="/check-email"
         >
-          Back to Check Email
+          Kembali ke Check Email
         </Link>
       </section>
     );
@@ -66,7 +66,7 @@ const MockEmailDetailPage = () => {
           Development Only
         </p>
         <h1 className="mt-3 text-3xl font-bold text-[#F8FAFC]">
-          Reset Your EDMS Password
+          Reset Password EDMS
         </h1>
       </div>
 
@@ -75,30 +75,27 @@ const MockEmailDetailPage = () => {
           <p><span className="text-[#94A3B8]">From:</span> {email.from}</p>
           <p><span className="text-[#94A3B8]">To:</span> {email.to}</p>
           <p><span className="text-[#94A3B8]">Subject:</span> {email.subject}</p>
-          <p><span className="text-[#94A3B8]">Requested Date/Time:</span> {formatDateTime(email.createdAt)}</p>
+          <p><span className="text-[#94A3B8]">Requested Date/Time:</span> {formatDateTime(email.requestedAt ?? email.createdAt)}</p>
         </div>
 
-        <div className="space-y-5 px-5 py-6 text-sm leading-6 text-[#CBD5E1]">
-          <p className="text-base font-semibold text-[#F8FAFC]">APP Engineering EDMS</p>
-          <h2 className="text-2xl font-bold text-[#F8FAFC]">Reset Your Password</h2>
-          <p>We received a request to reset the password for your EDMS account.</p>
-          <p>If you made this request, use the button below to create a new password.</p>
-          <Link
-            className="inline-flex h-11 items-center rounded-md bg-[#0F7BFF] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30"
-            to={`/reset-password?token=${encodeURIComponent(email.token)}`}
-          >
-            Reset Password
-          </Link>
-          <p>This reset link will expire in 15 minutes and can only be used once.</p>
-          <p>If you did not request a password reset, you can safely ignore this email.</p>
-        </div>
+        {email.html ? (
+          <div
+            className="space-y-5 px-5 py-6 text-sm leading-6 text-[#CBD5E1] [&_a]:inline-flex [&_a]:h-11 [&_a]:items-center [&_a]:rounded-md [&_a]:bg-[#0F7BFF] [&_a]:px-5 [&_a]:text-sm [&_a]:font-semibold [&_a]:text-white [&_a]:transition-colors hover:[&_a]:bg-[#0B63CC] [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-[#F8FAFC] [&_strong]:text-[#F8FAFC]"
+            dangerouslySetInnerHTML={{ __html: email.html }}
+          />
+        ) : (
+          <pre className="whitespace-pre-wrap px-5 py-6 text-sm leading-6 text-[#CBD5E1]">
+            {email.text}
+          </pre>
+        )}
+
       </div>
 
       <Link
         className="mt-6 inline-flex text-sm font-medium text-[#00C8FF] transition-colors hover:text-[#F8FAFC]"
-        to={`/check-email?requestId=${encodeURIComponent(email.requestId)}`}
+        to={email.requestId ? `/check-email?requestId=${encodeURIComponent(email.requestId)}` : "/check-email"}
       >
-        Back to Mock Inbox
+        Kembali ke Inbox
       </Link>
     </section>
   );

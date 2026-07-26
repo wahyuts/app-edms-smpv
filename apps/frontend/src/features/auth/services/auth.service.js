@@ -1,38 +1,25 @@
-import { USER_STATUSES, UserService } from "@/features/user-management";
-import {
-  AUDIT_RESOURCE_TYPE,
-  AUDIT_TRAIL_ACTION,
-  AuditTrailService,
-} from "@/features/audit-trail";
+import { apiClient } from "@/shared/api";
 
 import {
-  MockEmailRepository,
-  PasswordResetRepository,
-  PasswordResetTokenRepository,
-} from "../repositories/password-reset.repository";
-import { AuthSeedService } from "./auth-seed.service";
+  CURRENT_USER_CHANGED_EVENT,
+  getAuthState,
+  useAuthStore,
+} from "../stores/auth.store";
 
-const CURRENT_USER_STORAGE_KEY = "edms.currentUser";
-const CURRENT_USER_CHANGED_EVENT = "edms.current-user.changed";
-const PASSWORD_RESET_GENERIC_MESSAGE = [
-  "If the account information is valid, a password reset link has been sent to the registered email address.",
-  "",
-  "Please check your inbox and follow the instructions to continue.",
-].join("\n");
-const PASSWORD_RESET_TOKEN_TTL_MINUTES = 15;
+const PASSWORD_RESET_GENERIC_MESSAGE =
+  "Jika data akun valid, instruksi Reset Password telah dikirim.";
+const LOGIN_MESSAGES = {
+  invalidCredentials: "Username atau Password tidak benar.",
+  passwordRequired: "Silakan masukkan Password Anda.",
+  serverUnavailable: "Tidak dapat terhubung ke server.",
+  sessionExpired: "Session telah berakhir.",
+  usernameRequired: "Silakan masukkan Username Anda.",
+};
+const CHANGE_PASSWORD_MESSAGES = {
+  currentPasswordIncorrect: "Current Password tidak benar.",
+};
 
 let initializationPromise = null;
-
-const initialize = async () => {
-  if (!initializationPromise) {
-    initializationPromise = AuthSeedService.initialize().catch((error) => {
-      initializationPromise = null;
-      throw error;
-    });
-  }
-
-  return initializationPromise;
-};
 
 const createSuccessResponse = (message, data = null) => ({
   success: true,
@@ -46,94 +33,82 @@ const createFailedResponse = (message, data = null) => ({
   data,
 });
 
-const mapAuthenticatedUser = (user) => ({
-  id: user.id,
-  name: user.name,
-  userCode: user.userCode,
-  username: user.username,
-  fullName: user.fullName,
-  email: user.email,
-  department: user.department,
-  position: user.position,
-  roleId: user.roleId,
-  isActive: user.isActive,
-  status: user.status,
+const getErrorMessage = (error, fallbackMessage) => {
+  return error?.response?.data?.message ?? error?.message ?? fallbackMessage;
+};
+
+const getFriendlyAuthErrorMessage = (error, fallbackMessage) => {
+  if (!error?.response) {
+    return LOGIN_MESSAGES.serverUnavailable;
+  }
+
+  if (error.response.status === 401) {
+    return fallbackMessage;
+  }
+
+  return fallbackMessage;
+};
+
+const getChangePasswordErrorMessage = (error) => {
+  const backendMessage = getErrorMessage(error, "Gagal mengubah Password.");
+
+  if (backendMessage === "Current password is incorrect") {
+    return CHANGE_PASSWORD_MESSAGES.currentPasswordIncorrect;
+  }
+
+  return backendMessage;
+};
+
+const assertBackendSuccess = (response, fallbackMessage) => {
+  if (response?.data?.success === false) {
+    const error = new Error(response.data.message ?? fallbackMessage);
+    error.response = response;
+    throw error;
+  }
+
+  return response;
+};
+
+const mapUserIdentity = (user = {}) => ({
+  department: user.departmentNameSnapshot ?? user.department ?? "",
+  departmentId: user.departmentId ?? null,
+  departmentNameSnapshot: user.departmentNameSnapshot ?? null,
+  email: user.email ?? "",
+  fullName: user.fullName ?? user.name ?? "",
+  id: user.id ?? null,
+  isActive: user.status ? user.status === "Active" : Boolean(user.isActive),
+  name: user.fullName ?? user.name ?? "",
+  position: user.position ?? null,
+  roleId: user.roleId ?? null,
+  status: user.status ?? (user.isActive ? "Active" : "Inactive"),
+  userCode: user.userCode ?? "",
+  username: user.username ?? "",
 });
 
-const canUseStorage = () => (
-  typeof window !== "undefined" && Boolean(window.localStorage)
-);
+const mapAuthContext = (data = {}) => ({
+  activeProject: data.activeProject ?? null,
+  officialRole: data.officialRole ?? null,
+  permissions: Array.isArray(data.permissions) ? data.permissions : [],
+  role: data.role ?? null,
+  user: data.user ? mapUserIdentity(data.user) : null,
+});
 
-const setCurrentUser = (currentUser) => {
-  if (!canUseStorage()) return;
-  window.localStorage.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(currentUser));
-  window.dispatchEvent(
-    new CustomEvent(CURRENT_USER_CHANGED_EVENT, { detail: currentUser }),
-  );
+const setAuthContextFromResponse = (data = {}) => {
+  const context = mapAuthContext(data);
+  useAuthStore.getState().setAuthContext(context);
+  return context;
 };
 
 const clearCurrentUser = () => {
-  if (!canUseStorage()) return;
-  window.localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
-  window.dispatchEvent(
-    new CustomEvent(CURRENT_USER_CHANGED_EVENT, { detail: null }),
-  );
+  useAuthStore.getState().clearAuth();
 };
 
-const getCurrentUser = () => {
-  if (!canUseStorage()) return null;
-  const storedCurrentUser = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY);
-  if (!storedCurrentUser) return null;
-
-  try {
-    return JSON.parse(storedCurrentUser);
-  } catch {
-    clearCurrentUser();
-    return null;
-  }
-};
-
-const getPersistentAccount = async (username) => {
-  await initialize();
-  const user = await UserService.getUserByUsername(username);
-  const credential = user
-    ? await UserService.getCredentialByUserId(user.id)
-    : null;
-
-  return { credential, user };
-};
-
-const normalizeText = (value) => String(value ?? "").trim();
-const normalizeKey = (value) => normalizeText(value).toLowerCase();
-
-const createEntityId = (prefix) => {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-};
-
-const createMockResetToken = () => createEntityId("mock-reset-token");
-
-const createExpiresAt = (createdAt) => {
-  const expiresAt = new Date(createdAt);
-  expiresAt.setMinutes(expiresAt.getMinutes() + PASSWORD_RESET_TOKEN_TTL_MINUTES);
-  return expiresAt.toISOString();
-};
-
-const mapTokenValidationState = ({
-  credential,
-  now = new Date(),
-  tokenRecord,
-  user,
-}) => {
-  if (!tokenRecord || !user) return "invalid";
-  if (tokenRecord.revokedAt) return "invalid";
-  if (tokenRecord.usedAt) return "used";
-  if (new Date(tokenRecord.expiresAt).getTime() <= now.getTime()) return "expired";
-  if (!user.isActive || credential?.isActive === false) return "invalid";
-  return "valid";
-};
+const getCurrentUser = () => getAuthState().user;
+const getCurrentRole = () => getAuthState().role;
+const getCurrentPermissions = () => getAuthState().permissions;
+const getActiveProject = () => getAuthState().activeProject;
+const getOfficialRole = () => getAuthState().officialRole;
+const isAuthenticated = () => getAuthState().authenticated;
 
 const subscribeCurrentUserChange = (listener) => {
   if (typeof window === "undefined") return () => {};
@@ -149,184 +124,149 @@ const subscribeCurrentUserChange = (listener) => {
   };
 };
 
+const getMe = async () => {
+  const response = assertBackendSuccess(
+    await apiClient.get("/v1/auth/me"),
+    LOGIN_MESSAGES.sessionExpired,
+  );
+  const context = setAuthContextFromResponse(response.data?.data);
+
+    return createSuccessResponse(response.data?.message ?? "Data User berhasil dimuat.", context);
+};
+
+const initialize = async () => {
+  if (!initializationPromise) {
+    initializationPromise = (async () => {
+      useAuthStore.getState().setAuthLoading(true);
+
+      try {
+        await getMe();
+      } catch {
+        useAuthStore.getState().clearAuth();
+      } finally {
+        useAuthStore.getState().setAuthLoading(false);
+      }
+    })().catch((error) => {
+      initializationPromise = null;
+      throw error;
+    });
+  }
+
+  return initializationPromise;
+};
+
 const login = async ({ username, password }) => {
-  const { credential, user } = await getPersistentAccount(username);
+  const normalizedUsername = String(username ?? "").trim();
 
-  if (!user || !credential || !user.isActive || !credential.isActive) {
-    return createFailedResponse("Invalid username or password.");
-  }
-  if (credential.password !== password) {
-    return createFailedResponse("Invalid username or password.");
+  if (!normalizedUsername) {
+    return createFailedResponse(LOGIN_MESSAGES.usernameRequired);
   }
 
-  const authenticatedUser = mapAuthenticatedUser(user);
-  setCurrentUser(authenticatedUser);
-  await AuditTrailService.recordActivitySafely({
-    action: AUDIT_TRAIL_ACTION.LOGIN,
-    actor: authenticatedUser,
-    resourceId: authenticatedUser.id,
-    resourceType: AUDIT_RESOURCE_TYPE.AUTHENTICATION,
-  });
-  return createSuccessResponse("Login success.", { user: authenticatedUser });
-};
-
-const changePassword = async ({
-  username,
-  currentPassword,
-  newPassword,
-  confirmPassword,
-}) => {
-  const { credential, user } = await getPersistentAccount(username);
-
-  if (!user || !credential || !user.isActive || !credential.isActive) {
-    return createFailedResponse("User account is not available.");
-  }
-  if (credential.password !== currentPassword) {
-    return createFailedResponse("Current password is not valid.");
-  }
-  if (newPassword !== confirmPassword) {
-    return createFailedResponse("New password and confirmation password must match.");
-  }
-
-  await UserService.updateUserPassword(user.id, {
-    confirmPassword,
-    newPassword,
-  });
-  await AuditTrailService.recordActivitySafely({
-    action: AUDIT_TRAIL_ACTION.CHANGE_PASSWORD,
-    actor: mapAuthenticatedUser(user),
-    resourceId: user.id,
-    resourceType: AUDIT_RESOURCE_TYPE.USER_PROFILE,
-  });
-  return createSuccessResponse("Password changed successfully.");
-};
-
-const updateCurrentProfile = async ({ email, fullName } = {}) => {
-  const currentUser = getCurrentUser();
-
-  if (!currentUser?.username) {
-    return createFailedResponse("User session is not available.");
-  }
-
-  const { user } = await getPersistentAccount(currentUser.username);
-
-  if (!user || !user.isActive) {
-    return createFailedResponse("User account is not available.");
+  if (!String(password ?? "")) {
+    return createFailedResponse(LOGIN_MESSAGES.passwordRequired);
   }
 
   try {
-    const updatedUser = await UserService.updateUser(user.id, {
-      department: user.department,
-      email: String(email ?? "").trim(),
-      name: String(fullName ?? "").trim(),
-      status: user.status ?? (user.isActive ? USER_STATUSES.ACTIVE : USER_STATUSES.INACTIVE),
-      username: user.username,
-    });
-    const authenticatedUser = mapAuthenticatedUser(updatedUser);
+    const loginResponse = assertBackendSuccess(
+      await apiClient.post("/v1/auth/login", {
+        password,
+        username: normalizedUsername,
+      }),
+      LOGIN_MESSAGES.invalidCredentials,
+    );
+    const meResponse = await getMe();
 
-    setCurrentUser(authenticatedUser);
-    await AuditTrailService.recordActivitySafely({
-      action: AUDIT_TRAIL_ACTION.EDIT_PROFILE,
-      actor: authenticatedUser,
-      resourceId: authenticatedUser.id,
-      resourceType: AUDIT_RESOURCE_TYPE.USER_PROFILE,
-    });
-
-    return createSuccessResponse("Profile updated successfully.", {
-      user: authenticatedUser,
-    });
+    return createSuccessResponse(
+      loginResponse.data?.message ?? "Login berhasil.",
+      meResponse.data,
+    );
   } catch (error) {
+    clearCurrentUser();
     return createFailedResponse(
-      error?.errors?.[0]?.message ?? error?.message ?? "Profile update failed.",
-      { errors: error?.errors ?? [] },
+      getFriendlyAuthErrorMessage(error, LOGIN_MESSAGES.invalidCredentials),
     );
   }
 };
 
-const forgotPassword = async ({ email, username }) => {
-  await initialize();
-  const requestId = createEntityId("password-reset-request");
-  const requestedUsername = normalizeText(username);
-  const requestedEmail = normalizeText(email);
-  const { credential, user } = await getPersistentAccount(requestedUsername);
-  const isAccountMatch =
-    Boolean(user) &&
-    Boolean(credential) &&
-    user.isActive &&
-    credential.isActive &&
-    normalizeKey(user.email) === normalizeKey(requestedEmail);
+const refresh = async () => {
+  try {
+    const response = assertBackendSuccess(
+      await apiClient.post("/v1/auth/refresh"),
+      LOGIN_MESSAGES.sessionExpired,
+    );
+    const context = setAuthContextFromResponse(response.data?.data);
 
-  if (!isAccountMatch) {
-    return createSuccessResponse(PASSWORD_RESET_GENERIC_MESSAGE, {
-      requestId,
-    });
+    return createSuccessResponse(response.data?.message ?? "Token refreshed", context);
+  } catch (error) {
+    clearCurrentUser();
+    return createFailedResponse(
+      getFriendlyAuthErrorMessage(error, LOGIN_MESSAGES.sessionExpired),
+    );
   }
+};
 
-  const now = new Date().toISOString();
-  const token = createMockResetToken();
-  const emailId = createEntityId("mock-email");
-  const tokenRecord = {
-    createdAt: now,
-    expiresAt: createExpiresAt(now),
-    requestId,
-    revokedAt: null,
-    token,
-    usedAt: null,
-    userId: user.id,
-  };
-  const mockEmail = {
-    createdAt: now,
-    from: "APP Engineering EDMS",
-    id: emailId,
-    requestId,
-    subject: "Reset Your EDMS Password",
-    to: user.email,
-    token,
-    userId: user.id,
-    username: user.username,
-  };
+const logout = async () => {
+  try {
+    const response = assertBackendSuccess(
+      await apiClient.post("/v1/auth/logout"),
+      "Logout gagal.",
+    );
+    clearCurrentUser();
+    return createSuccessResponse(response.data?.message ?? "Logout berhasil.");
+  } catch (error) {
+    clearCurrentUser();
+    return createFailedResponse(getErrorMessage(error, "Logout gagal."));
+  }
+};
 
-  await PasswordResetRepository.revokeActiveTokensForUser(user.id, now);
-  await PasswordResetRepository.createRequest({
-    email: mockEmail,
-    tokenRecord,
-  });
-  await AuditTrailService.recordActivitySafely({
-    action: AUDIT_TRAIL_ACTION.PASSWORD_RESET_REQUESTED,
-    actor: mapAuthenticatedUser(user),
-    metadata: {
-      requestId,
-      targetUsername: user.username,
-    },
-    projectId: null,
-    resourceId: user.id,
-    resourceType: AUDIT_RESOURCE_TYPE.AUTHENTICATION,
-  });
+const changePassword = async ({
+  currentPassword,
+  newPassword,
+  confirmNewPassword,
+  confirmPassword,
+}) => {
+  try {
+    const response = assertBackendSuccess(
+      await apiClient.post("/v1/auth/change-password", {
+        confirmNewPassword: confirmNewPassword ?? confirmPassword,
+        currentPassword,
+        newPassword,
+      }),
+      "Gagal mengubah Password.",
+    );
 
-  return createSuccessResponse(PASSWORD_RESET_GENERIC_MESSAGE, {
-    requestId,
+    clearCurrentUser();
+    return createSuccessResponse(
+      response.data?.message ?? "Password berhasil diubah. Login kembali.",
+      response.data?.data ?? null,
+    );
+  } catch (error) {
+    return createFailedResponse(getChangePasswordErrorMessage(error));
+  }
+};
+
+const updateCurrentProfile = async () => {
+  return createFailedResponse("Update Profile belum tersedia.", {
+    errors: [],
   });
 };
 
-const validatePasswordResetToken = async (token) => {
-  await initialize();
-  const tokenValue = normalizeText(token);
-  if (!tokenValue) {
-    return createSuccessResponse("Reset token validated.", { state: "invalid" });
+const forgotPassword = async ({ registeredEmail, username }) => {
+  try {
+    const response = assertBackendSuccess(
+      await apiClient.post("/v1/password/forgot", { registeredEmail, username }),
+      PASSWORD_RESET_GENERIC_MESSAGE,
+    );
+    return createSuccessResponse(
+      response.data?.message ?? PASSWORD_RESET_GENERIC_MESSAGE,
+      response.data?.data ?? { requestId: null },
+    );
+  } catch (error) {
+    return createFailedResponse(
+      getErrorMessage(error, PASSWORD_RESET_GENERIC_MESSAGE),
+      { requestId: null },
+    );
   }
-
-  const tokenRecord = await PasswordResetTokenRepository.getByToken(tokenValue);
-  const user = tokenRecord
-    ? await UserService.getUserDetail(tokenRecord.userId)
-    : null;
-  const credential = user
-    ? await UserService.getCredentialByUserId(user.id)
-    : null;
-
-  return createSuccessResponse("Reset token validated.", {
-    state: mapTokenValidationState({ credential, tokenRecord, user }),
-    token: tokenValue,
-  });
 };
 
 const resetPassword = async ({ token, newPassword, confirmPassword }) => {
@@ -334,80 +274,84 @@ const resetPassword = async ({ token, newPassword, confirmPassword }) => {
     return createFailedResponse("New password and confirmation password must match.");
   }
 
-  const tokenValue = normalizeText(token);
-  const tokenRecord = await PasswordResetTokenRepository.getByToken(tokenValue);
-  const user = tokenRecord
-    ? await UserService.getUserDetail(tokenRecord.userId)
-    : null;
-  const credential = user
-    ? await UserService.getCredentialByUserId(user.id)
-    : null;
-  const state = mapTokenValidationState({ credential, tokenRecord, user });
+  try {
+    const response = assertBackendSuccess(
+      await apiClient.post("/v1/password/reset", {
+        newPassword,
+        token,
+      }),
+      "Link Reset Password tidak valid.",
+    );
 
-  if (state !== "valid" || !credential?.isActive) {
-    return createFailedResponse("Reset password link is not valid.", { state });
+    return createSuccessResponse(response.data?.message ?? "Password berhasil direset.");
+  } catch (error) {
+    return createFailedResponse(
+      getErrorMessage(error, "Link Reset Password tidak valid."),
+      { state: "invalid" },
+    );
   }
+};
 
-  await UserService.updateUserPassword(user.id, {
-    confirmPassword,
-    newPassword,
+const validatePasswordResetToken = async (token) => {
+  return createSuccessResponse("Token Reset Password divalidasi saat submit.", {
+    state: token ? "valid" : "invalid",
+    token,
   });
-  await PasswordResetTokenRepository.update({
-    ...tokenRecord,
-    usedAt: new Date().toISOString(),
-  });
-  await AuditTrailService.recordActivitySafely({
-    action: AUDIT_TRAIL_ACTION.PASSWORD_RESET_COMPLETED,
-    actor: mapAuthenticatedUser(user),
-    metadata: {
-      requestId: tokenRecord.requestId,
-      targetUsername: user.username,
-    },
-    projectId: null,
-    resourceId: user.id,
-    resourceType: AUDIT_RESOURCE_TYPE.AUTHENTICATION,
-  });
-  return createSuccessResponse("Password reset successfully.");
 };
 
 const getMockEmails = async ({ requestId } = {}) => {
-  const emails = await MockEmailRepository.getAll();
+  const emails = await (async () => {
+    try {
+      const response = await apiClient.get("/v1/dev/email-outbox");
+      return response.data?.data?.emails ?? [];
+    } catch {
+      return [];
+    }
+  })();
+
   const filteredEmails = requestId
     ? emails.filter((email) => email.requestId === requestId)
     : emails;
 
   return filteredEmails.sort((firstEmail, secondEmail) =>
-    new Date(secondEmail.createdAt).getTime() - new Date(firstEmail.createdAt).getTime(),
+    new Date(secondEmail.requestedAt ?? secondEmail.createdAt).getTime() -
+    new Date(firstEmail.requestedAt ?? firstEmail.createdAt).getTime(),
   );
 };
 
 const getMockEmailDetail = async (emailId) => {
-  const email = await MockEmailRepository.getById(emailId);
-  return email ? JSON.parse(JSON.stringify(email)) : null;
+  try {
+    const response = await apiClient.get(`/v1/dev/email-outbox/${emailId}`);
+    return response.data?.data?.email ?? null;
+  } catch {
+    return null;
+  }
 };
 
-const logout = async () => {
-  const currentUser = getCurrentUser();
-  clearCurrentUser();
-  await AuditTrailService.recordActivitySafely({
-    action: AUDIT_TRAIL_ACTION.LOGOUT,
-    actor: currentUser,
-    resourceId: currentUser?.id ?? null,
-    resourceType: AUDIT_RESOURCE_TYPE.AUTHENTICATION,
+const setCurrentUser = (currentUser) => {
+  useAuthStore.getState().setAuthContext({
+    ...getAuthState(),
+    user: currentUser ? mapUserIdentity(currentUser) : null,
   });
-  return createSuccessResponse("Logout success.");
 };
 
 export const AuthService = {
   changePassword,
   clearCurrentUser,
   forgotPassword,
+  getActiveProject,
+  getCurrentPermissions,
+  getCurrentRole,
   getCurrentUser,
+  getMe,
   getMockEmailDetail,
   getMockEmails,
+  getOfficialRole,
   initialize,
+  isAuthenticated,
   login,
   logout,
+  refresh,
   resetPassword,
   setCurrentUser,
   subscribeCurrentUserChange,

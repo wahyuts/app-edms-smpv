@@ -13,10 +13,11 @@ import {
   UserRepository,
 } from "../repositories/user.repository";
 
-const USER_COMPATIBILITY_VERSION = 1;
+const USER_COMPATIBILITY_VERSION = 2;
 const USER_COMPATIBILITY_VERSION_KEY = "userCompatibilityVersion";
 const AUTH_SEED_COMPLETED_KEY = "authSeedCompleted";
 const AUTH_SEED_VERSION_KEY = "authSeedVersion";
+const LEGACY_BOOTSTRAP_USERNAME = "wahyuts";
 
 const cloneValue = (value) => JSON.parse(JSON.stringify(value));
 
@@ -47,6 +48,31 @@ export const normalizeUserRecord = (user = {}) => {
 
 const buildSeedUsers = () =>
   cloneValue(usersDataset.users).map(normalizeUserRecord);
+
+const getBootstrapSeedUser = () => normalizeUserRecord(cloneValue(usersDataset.users[0]));
+
+const alignLegacyBootstrapUser = (user) => {
+  if (String(user?.username ?? "").trim().toLowerCase() !== LEGACY_BOOTSTRAP_USERNAME) {
+    return user;
+  }
+
+  const bootstrapUser = getBootstrapSeedUser();
+
+  return normalizeUserRecord({
+    ...user,
+    department: bootstrapUser.department,
+    email: bootstrapUser.email,
+    fullName: bootstrapUser.fullName,
+    isActive: bootstrapUser.isActive,
+    name: bootstrapUser.name,
+    position: bootstrapUser.position,
+    roleId: bootstrapUser.roleId,
+    status: bootstrapUser.status,
+    updatedAt: new Date().toISOString(),
+    userCode: bootstrapUser.userCode,
+    username: bootstrapUser.username,
+  });
+};
 
 const buildSeedCredentials = () =>
   cloneValue(usersDataset.userCredentials).map((credential) => ({
@@ -88,7 +114,9 @@ const initialize = async () => {
   const sourceCredentials = users.length > 0
     ? await getMissingSeedCredentials()
     : buildSeedCredentials();
-  const normalizedUsers = sourceUsers.map(normalizeUserRecord);
+  const normalizedUsers = sourceUsers
+    .map(alignLegacyBootstrapUser)
+    .map(normalizeUserRecord);
   const metadata = [
     { key: USER_COMPATIBILITY_VERSION_KEY, value: USER_COMPATIBILITY_VERSION },
     { key: AUTH_SEED_VERSION_KEY, value: USER_COMPATIBILITY_VERSION },

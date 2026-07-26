@@ -2,83 +2,43 @@ import { AuthService } from "@/features/auth/services/auth.service";
 import { getActiveOfficialRole } from "@/shared/stores/project-context.store";
 import usersDataset from "@/mocks/users.json";
 
-const authorizationData = {
-  permissions: usersDataset.permissions,
-  rolePermissions: usersDataset.rolePermissions,
-  roles: usersDataset.roles,
-};
+const fallbackRoles = usersDataset.roles;
 
-const getCurrentUser = () => {
-  return AuthService.getCurrentUser();
-};
+const getCurrentRole = () => AuthService.getCurrentRole();
 
-const getCurrentRole = () => {
-  const currentUser = getCurrentUser();
+const getCurrentPermissions = () => AuthService.getCurrentPermissions();
 
-  if (!currentUser?.roleId) {
-    return null;
-  }
+const getCurrentPermissionCodes = () =>
+  getCurrentPermissions().map((permission) => permission.code ?? permission.permissionCode);
+
+const getActiveProjectRole = () => {
+  const activeOfficialRole = getActiveOfficialRole();
+  if (!activeOfficialRole) return null;
 
   return (
-    authorizationData.roles.find(
-      (role) => role.id === currentUser.roleId && role.isActive,
+    fallbackRoles.find(
+      (role) => role.roleName === activeOfficialRole && role.isActive,
     ) ?? null
   );
 };
 
-const getRoleByName = (roleName) => {
-  if (!roleName) return null;
+const getActiveProjectPermissions = () => {
+  const activeOfficialRole = getActiveOfficialRole();
+  if (!activeOfficialRole) return [];
 
-  return (
-    authorizationData.roles.find(
-      (role) => role.roleName === roleName && role.isActive,
-    ) ?? null
-  );
+  return getCurrentPermissions();
 };
-
-const getPermissionsByRole = (role) => {
-  if (!role) {
-    return [];
-  }
-
-  const permissionIds = authorizationData.rolePermissions
-    .filter((rolePermission) => rolePermission.roleId === role.id)
-    .map((rolePermission) => rolePermission.permissionId);
-
-  return authorizationData.permissions.filter((permission) =>
-    permissionIds.includes(permission.id),
-  );
-};
-
-const getCurrentPermissions = () => getPermissionsByRole(getCurrentRole());
-
-const getCurrentPermissionCodes = () => {
-  return getCurrentPermissions().map(
-    (permission) => permission.permissionCode,
-  );
-};
-
-const getActiveProjectRole = () => getRoleByName(getActiveOfficialRole());
-
-const getActiveProjectPermissions = () =>
-  getPermissionsByRole(getActiveProjectRole());
 
 const getActiveProjectPermissionCodes = () =>
-  getActiveProjectPermissions().map((permission) => permission.permissionCode);
+  getActiveProjectPermissions().map((permission) => permission.code ?? permission.permissionCode);
 
 const hasPermission = (permissionCode) => {
-  if (!permissionCode) {
-    return false;
-  }
-
+  if (!permissionCode) return false;
   return getCurrentPermissionCodes().includes(permissionCode);
 };
 
 const hasProjectPermission = (permissionCode) => {
-  if (!permissionCode || !getActiveOfficialRole()) {
-    return false;
-  }
-
+  if (!permissionCode || !getActiveOfficialRole()) return false;
   return getActiveProjectPermissionCodes().includes(permissionCode);
 };
 
@@ -87,9 +47,7 @@ const hasAnyPermission = (permissionCodes = []) => {
     return false;
   }
 
-  return permissionCodes.some((permissionCode) =>
-    hasPermission(permissionCode),
-  );
+  return permissionCodes.some((permissionCode) => hasPermission(permissionCode));
 };
 
 const hasAllPermissions = (permissionCodes = []) => {
@@ -97,9 +55,7 @@ const hasAllPermissions = (permissionCodes = []) => {
     return false;
   }
 
-  return permissionCodes.every((permissionCode) =>
-    hasPermission(permissionCode),
-  );
+  return permissionCodes.every((permissionCode) => hasPermission(permissionCode));
 };
 
 const hasAnyProjectPermission = (permissionCodes = []) => {
@@ -123,16 +79,16 @@ const hasAllProjectPermissions = (permissionCodes = []) => {
 };
 
 export const AuthorizationService = {
-  getActiveProjectRole,
   getActiveProjectPermissions,
-  getCurrentRole,
+  getActiveProjectRole,
   getCurrentPermissions,
-  hasProjectPermission,
-  hasAnyProjectPermission,
-  hasAllProjectPermissions,
-  hasPermission,
-  hasAnyPermission,
+  getCurrentRole,
   hasAllPermissions,
+  hasAllProjectPermissions,
+  hasAnyPermission,
+  hasAnyProjectPermission,
+  hasPermission,
+  hasProjectPermission,
 };
 
 export default AuthorizationService;

@@ -9,16 +9,18 @@ const { PASSWORD_MESSAGES } = require('../constants/password.constants');
 const forgotPassword = async (req, res, next) => {
   try {
     const validation = validateForgotPasswordRequest(req.body);
+    let result = null;
 
     if (validation.isValid) {
-      await passwordService.forgotPassword({
+      result = await passwordService.forgotPassword({
         username: validation.value.username,
+        registeredEmail: validation.value.registeredEmail,
       });
     }
 
     return successResponse(res, {
       message: PASSWORD_MESSAGES.RECOVERY_INSTRUCTIONS_SENT,
-      data: {},
+      data: result?.requestId ? { requestId: result.requestId } : {},
     });
   } catch (error) {
     next(error);

@@ -3,7 +3,7 @@ const resendProvider = require('./resend.provider');
 const env = require('../../config/env');
 
 const resolveEmailProvider = () => {
-  if (env.email.useResend) {
+  if (env.email.provider === 'resend') {
     return resendProvider;
   }
 

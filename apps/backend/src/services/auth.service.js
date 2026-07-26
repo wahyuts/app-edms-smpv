@@ -23,9 +23,20 @@ const createAuthError = (message = AUTH_MESSAGES.UNAUTHENTICATED, statusCode = 4
 };
 
 const stripInternalUserFields = (user) => {
-  const { passwordChangedAt, passwordChangedAtEpoch, ...publicUser } = user;
+  const {
+    passwordChangedAt,
+    passwordChangedAtEpoch,
+    permissions,
+    role,
+    ...publicUser
+  } = user;
   return publicUser;
 };
+
+const buildNeutralProjectContext = () => ({
+  activeProject: null,
+  officialRole: null,
+});
 
 const isTokenIssuedBeforePasswordChange = (tokenIssuedAt, passwordChangedAtEpoch) => {
   if (!tokenIssuedAt || !passwordChangedAtEpoch) {
@@ -44,8 +55,9 @@ const buildAuthPayload = async (user) => {
 
   return {
     user: publicUser,
-    role: publicUser.role,
-    permissions: publicUser.permissions,
+    role: authorizedUser.role,
+    permissions: authorizedUser.permissions,
+    ...buildNeutralProjectContext(),
   };
 };
 

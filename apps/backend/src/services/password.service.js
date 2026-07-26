@@ -1,5 +1,6 @@
 const bcrypt = require('bcrypt');
 const env = require('../config/env');
+const logger = require('../config/logger');
 const passwordRepository = require('../repositories/password.repository');
 const emailService = require('./email.service');
 const {
@@ -16,16 +17,56 @@ const createPasswordError = (message = PASSWORD_MESSAGES.INVALID_RESET_TOKEN, st
   return error;
 };
 
-const forgotPassword = async ({ username }) => {
-  const user = await passwordRepository.findActiveUserByUsername(username);
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
-  if (!user) {
-    return true;
+const maskEmail = (email) => {
+  const [localPart = '', domain = ''] = String(email || '').split('@');
+
+  if (!localPart || !domain) {
+    return '[invalid-email]';
+  }
+
+  const visibleLocal = localPart.slice(0, 2);
+  return `${visibleLocal}${'*'.repeat(Math.max(localPart.length - 2, 1))}@${domain}`;
+};
+
+const sanitizeLogValue = (value) => {
+  const text = String(value || '');
+  const withoutApiKey = env.email.resendApiKey
+    ? text.replaceAll(env.email.resendApiKey, '[redacted]')
+    : text;
+  const withoutEmails = withoutApiKey.replace(
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
+    (email) => maskEmail(email)
+  );
+
+  return withoutEmails.slice(0, 200);
+};
+
+const logPasswordResetEmailFailure = ({ requestId, to, error }) => {
+  logger.error('[EMAIL] Password reset delivery failed', {
+    requestId,
+    provider: env.email.provider,
+    recipient: maskEmail(to),
+    errorCode: sanitizeLogValue(error?.code || error?.name || 'EmailDeliveryError'),
+    errorMessage: sanitizeLogValue(error?.message || 'Email delivery failed'),
+    timestamp: new Date().toISOString(),
+  });
+};
+
+const forgotPassword = async ({ username, registeredEmail }) => {
+  const requestId = generateResetRequestId();
+  const user = await passwordRepository.findActiveUserByUsername(username);
+  const accountMatched = Boolean(user) && normalizeEmail(user.email) === normalizeEmail(registeredEmail);
+
+  if (!accountMatched) {
+    return {
+      requestId,
+    };
   }
 
   const resetToken = generateResetToken();
   const tokenHash = hashResetToken(resetToken);
-  const requestId = generateResetRequestId();
   const expiresAt = getResetTokenExpiresAt(env.passwordResetExpiresIn);
 
   await passwordRepository.revokeActiveResetTokensByUserId(user.id);
@@ -37,14 +78,26 @@ const forgotPassword = async ({ username }) => {
     expiresAt,
   });
 
-  await emailService.sendPasswordReset({
-    to: user.email,
-    username: user.username,
-    resetToken,
-    expiresIn: env.passwordResetExpiresIn,
-  });
+  try {
+    await emailService.sendPasswordReset({
+      to: user.email,
+      username: user.username,
+      resetToken,
+      expiresIn: env.passwordResetExpiresIn,
+      expiresAt,
+      requestId,
+    });
+  } catch (error) {
+    logPasswordResetEmailFailure({
+      requestId,
+      to: user.email,
+      error,
+    });
+  }
 
-  return true;
+  return {
+    requestId,
+  };
 };
 
 const resetPassword = async ({ token, newPassword }) => {

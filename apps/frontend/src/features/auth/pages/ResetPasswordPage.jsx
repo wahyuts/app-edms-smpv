@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   formatValidationIssues,
+  getPasswordPolicyMessage,
+  PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
   resetPasswordSchema,
 } from "@/features/auth/schemas/password-recovery.schema";
 import { AuthService } from "@/features/auth/services/auth.service";
 import PasswordInput from "@/shared/components/form/PasswordInput";
+import { useToast } from "@/shared/components/toast";
 
 const TokenStateMessage = ({ description, title }) => (
   <section className="text-center">
@@ -18,30 +21,32 @@ const TokenStateMessage = ({ description, title }) => (
     <p className="mt-3 text-sm leading-6 text-[#CBD5E1]">{description}</p>
     <Link
       className="mt-8 inline-flex h-11 items-center rounded-md bg-[#0F7BFF] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30"
-      to="/forgot-password"
+      to="/login"
     >
-      Back to Forgot Password
+      Kembali ke Login
     </Link>
   </section>
 );
 
 const tokenStateContent = {
   expired: {
-    description: "This password reset link has expired. Please request a new reset link.",
-    title: "Reset Link Expired",
+    description: "Link Reset Password telah kedaluwarsa.",
+    title: "Link Reset Kedaluwarsa",
   },
   invalid: {
-    description: "This password reset link is invalid. Please request a new reset link.",
-    title: "Reset Link Invalid",
+    description: "Link Reset Password tidak valid.",
+    title: "Link Reset Tidak Valid",
   },
   used: {
-    description: "This password reset link has already been used. Please request a new reset link if you still need to change your password.",
-    title: "Reset Link Already Used",
+    description: "Link Reset Password sudah digunakan.",
+    title: "Link Reset Sudah Digunakan",
   },
 };
 
 const ResetPasswordPage = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { showToast } = useToast();
   const token = searchParams.get("token") ?? "";
   const [tokenValidation, setTokenValidation] = useState({
     state: "loading",
@@ -85,7 +90,47 @@ const ResetPasswordPage = () => {
     const validationResult = resetPasswordSchema.safeParse(formValues);
 
     if (!validationResult.success) {
-      formatValidationIssues(validationResult.error.issues).forEach((issue) => {
+      const issues = formatValidationIssues(validationResult.error.issues)
+        .map((issue) => {
+          if (issue.field !== "newPassword" || issue.message !== "Invalid input") {
+            return issue;
+          }
+
+          return {
+            ...issue,
+            message: getPasswordPolicyMessage(formValues.newPassword),
+          };
+        });
+      const hasEmptyField = issues.some((issue) => issue.message.includes("wajib diisi"));
+      const hasConfirmationMismatch = issues.some((issue) => issue.field === "confirmPassword");
+      const hasPasswordPolicyIssue = issues.some((issue) => issue.field === "newPassword");
+
+      if (hasEmptyField) {
+        showToast({
+          message: issues.map((issue) => issue.message).join("\n"),
+          title: "Data Belum Lengkap",
+          variant: "error",
+        });
+      } else if (hasConfirmationMismatch) {
+        showToast({
+          message: PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
+          title: "Konfirmasi Password Tidak Sesuai",
+          variant: "error",
+        });
+      } else if (hasPasswordPolicyIssue) {
+        const passwordPolicyMessage = issues
+          .filter((issue) => issue.field === "newPassword")
+          .map((issue) => issue.message)
+          .join("\n");
+
+        showToast({
+          message: passwordPolicyMessage,
+          title: "Password Baru Tidak Valid",
+          variant: "error",
+        });
+      }
+
+      issues.forEach((issue) => {
         setError(issue.field, { message: issue.message, type: "validate" });
       });
       return;
@@ -97,6 +142,11 @@ const ResetPasswordPage = () => {
     });
 
     if (!response.success) {
+      showToast({
+        message: "Link reset password tidak valid atau telah kedaluwarsa.",
+        title: "Link Reset Tidak Valid",
+        variant: "error",
+      });
       setTokenValidation({
         state: response.data?.state ?? "invalid",
         token,
@@ -104,11 +154,17 @@ const ResetPasswordPage = () => {
       return;
     }
 
+    showToast({
+      message: "Silakan login menggunakan password baru.",
+      title: "Password Berhasil Diubah",
+      variant: "success",
+    });
     setResetResult(response);
     setTokenValidation({
       state: "success",
       token,
     });
+    navigate("/login", { replace: true });
   };
 
   if (tokenState === "loading") {
@@ -118,10 +174,10 @@ const ResetPasswordPage = () => {
           Account Recovery
         </p>
         <h1 className="mt-3 text-3xl font-bold text-[#F8FAFC]">
-          Validating Reset Link
+          Memvalidasi Link Reset
         </h1>
         <p className="mt-3 text-sm text-[#CBD5E1]">
-          Please wait while we validate your password reset link.
+          Sistem sedang memeriksa link Reset Password.
         </p>
       </section>
     );
@@ -134,10 +190,10 @@ const ResetPasswordPage = () => {
           Account Recovery
         </p>
         <h1 className="mt-3 text-3xl font-bold text-[#F8FAFC]">
-          Password Reset Successful
+          Password Berhasil Direset
         </h1>
         <p className="mt-3 text-sm leading-6 text-[#CBD5E1]">
-          Your password has been updated successfully. You can now sign in using your new password.
+          Gunakan password baru untuk Login.
         </p>
         {resetResult ? (
           <p className="sr-only" role="status">{resetResult.message}</p>
@@ -146,7 +202,7 @@ const ResetPasswordPage = () => {
           className="mt-8 inline-flex h-11 items-center rounded-md bg-[#0F7BFF] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30"
           to="/login"
         >
-          Back to Login
+          Kembali ke Login
         </Link>
       </section>
     );
@@ -167,7 +223,7 @@ const ResetPasswordPage = () => {
           Reset Password
         </h1>
         <p className="mt-2 text-sm text-[#CBD5E1]">
-          Create a new password for your EDMS account.
+          Buat password baru untuk akun EDMS Anda.
         </p>
       </div>
 
@@ -180,11 +236,11 @@ const ResetPasswordPage = () => {
           <span>New Password</span>
           <PasswordInput
             autoComplete="new-password"
-            placeholder="Enter new password"
+            placeholder="Masukkan password baru"
             {...register("newPassword")}
           />
           {errors.newPassword ? (
-            <span className="text-xs text-[#FCA5A5]">{errors.newPassword.message}</span>
+            <span className="whitespace-pre-line text-xs text-[#FCA5A5]">{errors.newPassword.message}</span>
           ) : null}
         </label>
 
@@ -192,9 +248,9 @@ const ResetPasswordPage = () => {
           <span>Confirm Password</span>
           <PasswordInput
             autoComplete="new-password"
-            hideLabel="Hide confirm password"
-            placeholder="Confirm new password"
-            showLabel="Show confirm password"
+            hideLabel="Sembunyikan confirm password"
+            placeholder="Masukkan confirm password"
+            showLabel="Tampilkan confirm password"
             {...register("confirmPassword")}
           />
           {errors.confirmPassword ? (
@@ -207,14 +263,14 @@ const ResetPasswordPage = () => {
           disabled={isSubmitting}
           type="submit"
         >
-          {isSubmitting ? "Updating..." : "Reset Password"}
+          {isSubmitting ? "Memproses..." : "Reset Password"}
         </button>
 
         <Link
           className="text-center text-sm font-medium text-[#00C8FF] transition-colors hover:text-[#F8FAFC]"
           to="/login"
         >
-          Back to Login
+          Kembali ke Login
         </Link>
       </form>
     </section>

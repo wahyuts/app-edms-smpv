@@ -1,7 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useCallback, useEffect } from "react";
 
-import { ProjectService } from "@/features/project/services/project.service";
 import { AuthService } from "@/features/auth/services/auth.service";
 import PasswordInput from "@/shared/components/form/PasswordInput";
 import { useToast } from "@/shared/components/toast";
@@ -12,42 +11,30 @@ const LoginPage = () => {
   const { showToast } = useToast();
   const {
     setProjectContext,
-    setProjectContextError,
     setProjectContextLoading,
   } = useProjectContextStore();
 
-  const navigateAfterAuthentication = useCallback(async (user) => {
-    try {
-      setProjectContextLoading(true);
-      const context = await ProjectService.resolveActiveProject(user);
-      setProjectContext(context);
-      navigate(
-        context.accessibleProjects.length > 0 ? "/select-project" : "/dashboard",
-        { replace: true },
-      );
-    } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : "Project context initialization failed.";
+  const navigateAfterAuthentication = useCallback(() => {
+    const activeProject = AuthService.getActiveProject();
+    const officialRole = AuthService.getOfficialRole();
 
-      setProjectContextError(message);
-      showToast({
-        message,
-        variant: "error",
-      });
-    }
+    setProjectContextLoading(true);
+    setProjectContext({
+      accessibleProjects: activeProject ? [activeProject] : [],
+      activeMembership: officialRole ? { officialRole } : null,
+      activeProject,
+    });
+    navigate("/dashboard", { replace: true });
   }, [
     navigate,
     setProjectContext,
-    setProjectContextError,
     setProjectContextLoading,
-    showToast,
   ]);
 
   useEffect(() => {
     const currentUser = AuthService.getCurrentUser();
     if (currentUser) {
-      navigateAfterAuthentication(currentUser);
+      navigateAfterAuthentication();
     }
   }, [navigateAfterAuthentication]);
 
@@ -62,11 +49,12 @@ const LoginPage = () => {
 
     showToast({
       message: response.message,
+      title: response.success ? "Login Berhasil" : "Login Gagal",
       variant: response.success ? "success" : "error",
     });
 
     if (response.success) {
-      await navigateAfterAuthentication(response.data.user);
+      navigateAfterAuthentication();
     }
   };
 
@@ -78,7 +66,7 @@ const LoginPage = () => {
         </p>
         <h1 className="mt-3 text-3xl font-bold text-[#F8FAFC]">Login</h1>
         <p className="mt-2 text-sm text-[#CBD5E1]">
-          Sign in to access BIM Engineering EDMS.
+          Masuk untuk mengakses BIM Engineering EDMS.
         </p>
       </div>
 
@@ -88,7 +76,7 @@ const LoginPage = () => {
           <input
             className="h-11 rounded-md border border-[#123A5A] bg-[#08233B] px-4 text-sm text-[#F8FAFC] outline-none transition-colors placeholder:text-[#94A3B8] focus:border-[#0F7BFF] focus:ring-2 focus:ring-[#0F7BFF]/20"
             name="username"
-            placeholder="Enter username"
+            placeholder="Masukkan username"
             type="text"
           />
         </label>
@@ -98,7 +86,7 @@ const LoginPage = () => {
           <PasswordInput
             autoComplete="current-password"
             name="password"
-            placeholder="Enter password"
+            placeholder="Masukkan password"
           />
         </label>
 
@@ -109,7 +97,7 @@ const LoginPage = () => {
               name="rememberMe"
               type="checkbox"
             />
-            <span>Remember Me</span>
+            <span>Ingat Login</span>
           </label>
 
           <Link
