@@ -4,6 +4,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   formatValidationIssues,
+  getPasswordPolicyMessage,
+  PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
   resetPasswordSchema,
 } from "@/features/auth/schemas/password-recovery.schema";
 import { AuthService } from "@/features/auth/services/auth.service";
@@ -88,26 +90,41 @@ const ResetPasswordPage = () => {
     const validationResult = resetPasswordSchema.safeParse(formValues);
 
     if (!validationResult.success) {
-      const issues = formatValidationIssues(validationResult.error.issues);
+      const issues = formatValidationIssues(validationResult.error.issues)
+        .map((issue) => {
+          if (issue.field !== "newPassword" || issue.message !== "Invalid input") {
+            return issue;
+          }
+
+          return {
+            ...issue,
+            message: getPasswordPolicyMessage(formValues.newPassword),
+          };
+        });
       const hasEmptyField = issues.some((issue) => issue.message.includes("wajib diisi"));
       const hasConfirmationMismatch = issues.some((issue) => issue.field === "confirmPassword");
       const hasPasswordPolicyIssue = issues.some((issue) => issue.field === "newPassword");
 
       if (hasEmptyField) {
         showToast({
-          message: "Semua field wajib diisi.",
+          message: issues.map((issue) => issue.message).join("\n"),
           title: "Data Belum Lengkap",
           variant: "error",
         });
       } else if (hasConfirmationMismatch) {
         showToast({
-          message: "Confirm Password tidak sama.",
+          message: PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
           title: "Konfirmasi Password Tidak Sesuai",
           variant: "error",
         });
       } else if (hasPasswordPolicyIssue) {
+        const passwordPolicyMessage = issues
+          .filter((issue) => issue.field === "newPassword")
+          .map((issue) => issue.message)
+          .join("\n");
+
         showToast({
-          message: "Password Baru tidak memenuhi ketentuan.",
+          message: passwordPolicyMessage,
           title: "Password Baru Tidak Valid",
           variant: "error",
         });
@@ -223,7 +240,7 @@ const ResetPasswordPage = () => {
             {...register("newPassword")}
           />
           {errors.newPassword ? (
-            <span className="text-xs text-[#FCA5A5]">{errors.newPassword.message}</span>
+            <span className="whitespace-pre-line text-xs text-[#FCA5A5]">{errors.newPassword.message}</span>
           ) : null}
         </label>
 

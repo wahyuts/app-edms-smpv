@@ -1,6 +1,10 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import {
+  getPasswordPolicyMessage,
+  PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
+} from "@/features/auth/schemas/password-recovery.schema";
 import { AuthService } from "@/features/auth/services/auth.service";
 import PasswordInput from "@/shared/components/form/PasswordInput";
 import { useToast } from "@/shared/components/toast";
@@ -9,6 +13,7 @@ import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 const ChangePasswordPage = () => {
   const currentUser = AuthService.getCurrentUser();
+  const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const currentPasswordRef = useRef(null);
   const navigate = useNavigate();
@@ -34,26 +39,50 @@ const ChangePasswordPage = () => {
     const currentPassword = String(formData.get("currentPassword") ?? "");
     const newPassword = String(formData.get("newPassword") ?? "");
     const confirmPassword = String(formData.get("confirmPassword") ?? "");
+    setErrors({});
 
     if (!currentPassword || !newPassword || !confirmPassword) {
+      const nextErrors = {};
+
+      if (!currentPassword) {
+        nextErrors.currentPassword = "Current Password wajib diisi.";
+      }
+
+      if (!newPassword) {
+        nextErrors.newPassword = "New Password wajib diisi.";
+      }
+
+      if (!confirmPassword) {
+        nextErrors.confirmPassword = "Confirm Password wajib diisi.";
+      }
+
+      setErrors(nextErrors);
       showChangePasswordToast({
-        message: "Semua field wajib diisi.",
+        message: Object.values(nextErrors).join("\n"),
         title: "Data Belum Lengkap",
       });
       return;
     }
 
     if (newPassword !== confirmPassword) {
+      setErrors({
+        confirmPassword: PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
+      });
       showChangePasswordToast({
-        message: "Confirm Password tidak sama.",
+        message: PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
         title: "Konfirmasi Password Tidak Sesuai",
       });
       return;
     }
 
-    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(newPassword)) {
+    const passwordPolicyMessage = getPasswordPolicyMessage(newPassword);
+
+    if (passwordPolicyMessage) {
+      setErrors({
+        newPassword: passwordPolicyMessage,
+      });
       showChangePasswordToast({
-        message: "Password Baru tidak memenuhi ketentuan.",
+        message: passwordPolicyMessage,
         title: "Password Baru Tidak Valid",
       });
       return;
@@ -84,6 +113,9 @@ const ChangePasswordPage = () => {
       showChangePasswordToast({
         message: "Current Password tidak benar.",
         title: "Gagal Mengubah Password",
+      });
+      setErrors({
+        currentPassword: "Current Password tidak benar.",
       });
       form.elements.currentPassword.value = "";
       currentPasswordRef.current?.focus();
@@ -121,6 +153,9 @@ const ChangePasswordPage = () => {
               placeholder="Masukkan current password"
               ref={currentPasswordRef}
             />
+            {errors.currentPassword ? (
+              <span className="text-xs text-[#FCA5A5]">{errors.currentPassword}</span>
+            ) : null}
           </label>
 
           <label className="flex flex-col gap-2 text-sm font-medium text-[#CBD5E1]">
@@ -130,6 +165,9 @@ const ChangePasswordPage = () => {
               name="newPassword"
               placeholder="Masukkan password baru"
             />
+            {errors.newPassword ? (
+              <span className="whitespace-pre-line text-xs text-[#FCA5A5]">{errors.newPassword}</span>
+            ) : null}
           </label>
 
           <label className="flex flex-col gap-2 text-sm font-medium text-[#CBD5E1]">
@@ -139,6 +177,9 @@ const ChangePasswordPage = () => {
               name="confirmPassword"
               placeholder="Masukkan confirm password"
             />
+            {errors.confirmPassword ? (
+              <span className="text-xs text-[#FCA5A5]">{errors.confirmPassword}</span>
+            ) : null}
           </label>
 
           {hasPermission("password.change") ? (

@@ -7,6 +7,7 @@ import { AuthService } from "@/features/auth/services/auth.service";
 
 const GENERIC_MESSAGE = [
   "Jika data akun valid, link Reset Password telah dikirim ke Registered Email.",
+  "Periksa Inbox atau Spam Email Anda jika email belum ditemukan.",
   "",
   "Periksa inbox dan ikuti instruksi untuk melanjutkan.",
 ].join("\n");

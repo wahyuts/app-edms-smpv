@@ -1,4 +1,3 @@
-USE edms_smpv_dev;
 
 START TRANSACTION;
 
