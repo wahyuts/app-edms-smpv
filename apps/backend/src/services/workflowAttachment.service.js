@@ -3,6 +3,7 @@ const logger = require('../config/logger');
 const { STORED_FILE_CATEGORY } = require('../constants/document.constants');
 const documentRepository = require('../repositories/document.repository');
 const fileAccessRepository = require('../repositories/fileAccess.repository');
+const auditService = require('./audit.service');
 const storageService = require('./storage.service');
 const { assertProjectAccess } = require('./fileAccess.service');
 const { createEntityId, createHttpError } = require('../utils/administration');
@@ -144,7 +145,22 @@ const uploadWorkflowAttachment = async ({ actorUserId, documentId, file, payload
     throw error;
   }
 
-  return fileAccessRepository.findWorkflowAttachmentById({ attachmentId, documentId });
+  const attachment = await fileAccessRepository.findWorkflowAttachmentById({ attachmentId, documentId });
+  await auditService.recordActivitySafely({
+    action: 'Workflow Attachment',
+    actorUserId,
+    identityKey: ['Workflow Attachment', documentFile.document.projectId, documentId, attachmentId].join(':'),
+    metadata: {
+      attachmentName: validatedFile.originalFileName,
+      commentId,
+    },
+    projectId: documentFile.document.projectId,
+    reference: documentFile.document.documentNumber,
+    resourceId: attachmentId,
+    resourceType: 'Workflow Attachment',
+  });
+
+  return attachment;
 };
 
 module.exports = {

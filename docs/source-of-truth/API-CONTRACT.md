@@ -2198,12 +2198,64 @@ Candidate route dari audit atau dokumen historis yang berbeda dari dokumen ini d
 | `GET /api/v1/notifications` | pagination/filter/project | notification collection | recipient is current user | `notifications.view` | Read only | None |
 | `PATCH /api/v1/notifications/{id}/read` | notification id | updated notification | recipient ownership | `notifications.view` | Notification read | Audit optional |
 | `PATCH /api/v1/notifications/read-all` | project optional | updated count | recipient ownership | `notifications.view` | Notification read all | Audit optional |
+| `DELETE /api/v1/notifications` | selected notification ids | delete summary | current user ownership, non-empty ids | `notifications.view` | User Inbox bulk hard delete | Audit Trail remains system evidence |
 | `DELETE /api/v1/notifications/{id}` | notification id | success | recipient ownership | `notifications.view` | User Inbox hard delete | Audit Trail remains system evidence |
 | `GET /api/v1/sla` | pagination/filter/project | SLA list/summary | active project membership | `sla-monitoring.view` | Read only | None |
 | `GET /api/v1/escalations` | pagination/filter/project | escalation list | active project membership | `escalation.view` | Read only | None |
 | `GET /api/v1/audit-trails` | pagination/filter/project | audit collection | project access | `audit-trail.view` | Read only | None |
 | `PATCH /api/v1/audit-trails/{id}/hide` | audit id | success | Admin, audit visible | `audit-trail.view` + Admin | Audit soft hide | Audit hide record optional |
 | `GET /api/v1/storage` | pagination/filter/project | storage metadata collection | project access | `storage.view` | Read only | None |
+
+### Bulk Delete Notification
+
+`DELETE /api/v1/notifications` menghapus notification milik current authenticated user berdasarkan daftar Notification ID yang dipilih.
+
+Authentication: required.
+
+Permission: `notifications.view`.
+
+Request body:
+
+```json
+{
+  "notificationIds": [
+    "notification-id-1",
+    "notification-id-2"
+  ]
+}
+```
+
+Validation:
+
+- `notificationIds` wajib berupa array.
+- `notificationIds` tidak boleh kosong.
+- Setiap ID wajib berupa identifier sistem yang tidak kosong.
+- Duplicate ID ditangani secara aman oleh backend.
+- User hanya boleh menghapus notification miliknya sendiri pada Project yang dapat diakses.
+
+Response mengikuti implementasi aktual:
+
+```json
+{
+  "success": true,
+  "message": "Notification Terpilih Berhasil Dihapus",
+  "data": {
+    "deletedCount": 2,
+    "deletedIds": [
+      "notification-id-1",
+      "notification-id-2"
+    ]
+  }
+}
+```
+
+Relevant error responses:
+
+- `401` apabila unauthenticated.
+- `403` apabila tidak memiliki permission `notifications.view`.
+- `422` apabila payload invalid atau daftar notification kosong.
+- `500` apabila terjadi internal error.
+
 | `GET /api/v1/users` | pagination/filter/search | user collection | admin permission | `user-management.view` | Read only | None |
 | `POST /api/v1/users` | user payload | created user | user form, department active, unique username/email | `user-management.view` | Create user and credential | Audit |
 | `PATCH /api/v1/users/{id}` | user payload | updated user | user exists, department active | `user-management.view` | Update user | Audit, cache invalidation consumer side |

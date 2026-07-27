@@ -159,6 +159,43 @@ const findActiveMembershipByProjectAndUser = async ({ projectId, userId }) => {
   return mapMembershipRow(rows[0]);
 };
 
+const findActiveMembershipByProjectAndOfficialRole = async ({ officialRole, projectId }) => {
+  const [rows] = await pool.execute(
+    `
+      ${baseSelect}
+      WHERE project_memberships.project_id = ?
+        AND project_memberships.official_role = ?
+        AND project_memberships.status = 'Active'
+        AND users.status = 'Active'
+        AND projects.status = 'Active'
+      ORDER BY users.full_name ASC, users.id ASC
+      LIMIT 1
+    `,
+    [projectId, officialRole]
+  );
+  return mapMembershipRow(rows[0]);
+};
+
+const listActiveMembershipsByProjectAndOfficialRoles = async ({ officialRoles = [], projectId }) => {
+  const roles = [...new Set(officialRoles.filter(Boolean))];
+  if (roles.length === 0) return [];
+  const placeholders = roles.map(() => '?').join(', ');
+  const [rows] = await pool.execute(
+    `
+      ${baseSelect}
+      WHERE project_memberships.project_id = ?
+        AND project_memberships.official_role IN (${placeholders})
+        AND project_memberships.status = 'Active'
+        AND users.status = 'Active'
+        AND projects.status = 'Active'
+      ORDER BY users.full_name ASC, users.id ASC
+    `,
+    [projectId, ...roles]
+  );
+
+  return rows.map(mapMembershipRow);
+};
+
 const listAccessibleProjectsByUserId = async (userId) => {
   const [rows] = await pool.execute(
     `
@@ -300,10 +337,12 @@ const updateMembershipStatus = async ({ membershipId, status, userId }) => {
 module.exports = {
   clearUserProjectPreference,
   createMembership,
+  findActiveMembershipByProjectAndOfficialRole,
   findActiveMembershipByProjectAndUser,
   findMembershipById,
   findMembershipByProjectAndUser,
   getUserProjectPreference,
+  listActiveMembershipsByProjectAndOfficialRoles,
   listAccessibleProjectsByUserId,
   listMemberships,
   setUserProjectPreference,

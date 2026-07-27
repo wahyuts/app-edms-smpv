@@ -1,6 +1,7 @@
 const logger = require('../config/logger');
 const fileAccessRepository = require('../repositories/fileAccess.repository');
 const projectMembershipRepository = require('../repositories/projectMembership.repository');
+const auditService = require('./audit.service');
 const storageService = require('./storage.service');
 const { createHttpError } = require('../utils/administration');
 const { buildContentDisposition } = require('../utils/contentDisposition');
@@ -84,6 +85,42 @@ const resolveDocumentFile = async ({ documentId, revisionId, userId }) => {
   return resolveActiveFile({ documentId, userId });
 };
 
+const resolveDocumentFileForAccess = async ({
+  action,
+  actorOfficialRole,
+  actorUserFullName,
+  documentId,
+  revisionId,
+  userId,
+}) => {
+  const documentFile = await resolveDocumentFile({ documentId, revisionId, userId });
+  const auditAction = action === 'download' ? 'Download Document' : 'View Document';
+  const revisionContext = revisionId || documentFile.document.activeRevisionId || 'active';
+
+  await auditService.recordActivitySafely({
+    action: auditAction,
+    actorOfficialRole,
+    actorUserFullName,
+    actorUserId: userId,
+    identityKey: [
+      auditAction,
+      userId,
+      documentId,
+      revisionContext,
+      new Date().toISOString(),
+    ].join(':'),
+    metadata: {
+      revisionId: revisionId || documentFile.document.activeRevisionId || null,
+    },
+    projectId: documentFile.document.projectId,
+    reference: documentFile.document.documentNumber,
+    resourceId: documentId,
+    resourceType: 'Document',
+  });
+
+  return documentFile;
+};
+
 const streamStoredFileResponse = async ({ disposition, documentFile, res }) => {
   const { storedFile } = documentFile;
   const stream = await storageService.getStream(storedFile.storageKey);
@@ -120,6 +157,7 @@ module.exports = {
   assertProjectAccess,
   resolveActiveFile,
   resolveDocumentFile,
+  resolveDocumentFileForAccess,
   resolveRevisionFile,
   streamStoredFileResponse,
 };
