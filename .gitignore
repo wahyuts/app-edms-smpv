@@ -35,7 +35,7 @@ Thumbs.db
 *.tmp
 
 # Storage
-storage/
+/storage/
 
 # Runtime Logs
 logs/

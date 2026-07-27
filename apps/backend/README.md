@@ -57,12 +57,30 @@ npm start
 
 ## Storage Requirements
 
-- Storage backend dikonfigurasi melalui `STORAGE_PATH`.
+- Storage backend dipilih melalui `STORAGE_DRIVER` (`local` atau `r2`).
+- Local development dan Railway Volume memakai driver `local`; perbedaannya hanya `STORAGE_PATH`.
 - Default local development adalah `./storage`.
-- Backend harus memiliki izin read/write pada storage.
-- Folder root storage dan `projects/` akan dibuat otomatis saat startup.
+- Backend harus memiliki izin read/write pada storage local atau credential R2 yang valid.
+- Folder root storage, `temporary/`, dan `projects/` akan dibuat otomatis saat startup untuk driver local.
 - File fisik tidak disimpan di database.
+- Database hanya menyimpan relative storage key, bukan absolute path.
 - Jangan commit isi storage atau logs ke Git.
+
+## Temporary Upload Pipeline
+
+- Temporary upload menggunakan `POST /api/v1/storage/temporary-uploads`.
+- Field multipart wajib bernama `file`.
+- Upload awal disimpan pada `temporary/{temporaryFileId}/{physicalFileName}` melalui Storage Service.
+- Response hanya berisi metadata temporary upload; belum membuat Document, Revision, Workflow, atau metadata permanen database.
+- Batas ukuran file dikonfigurasi melalui `UPLOAD_MAX_FILE_SIZE_BYTES`.
+- Metadata temporary upload disimpan persisten di tabel `temporary_uploads` dan masa berlakunya dikonfigurasi melalui `UPLOAD_TEMPORARY_TTL_HOURS`.
+
+## Document Foundation
+
+- Create Document foundation menggunakan `POST /api/v1/documents`.
+- Request memakai `temporaryFileId` dari temporary upload, lalu backend memanggil `StorageService.finalize()`.
+- File permanent disimpan sebagai relative key `projects/{projectId}/documents/{documentId}/revisions/{revisionId}/{physicalFileName}`.
+- Phase ini membuat Document, Stored File metadata, dan Revision pertama; belum menjalankan workflow review, viewer/download, SLA, notification, atau audit trail.
 
 ## Health Endpoint
 
