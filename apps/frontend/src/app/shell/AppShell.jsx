@@ -71,12 +71,13 @@ const AppShell = ({ children }) => {
     }
 
     const activeProject = AuthService.getActiveProject();
-    const officialRole = AuthService.getOfficialRole();
+    const accessibleProjects = AuthService.getAccessibleProjects();
+    const activeMembership = AuthService.getActiveMembership();
 
     setProjectContextLoading(true);
     setProjectContext({
-      accessibleProjects: activeProject ? [activeProject] : [],
-      activeMembership: officialRole ? { officialRole } : null,
+      accessibleProjects,
+      activeMembership,
       activeProject,
     });
   }, [

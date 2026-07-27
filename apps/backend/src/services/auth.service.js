@@ -7,6 +7,7 @@ const {
 } = require('../constants/auth.constants');
 const authRepository = require('../repositories/auth.repository');
 const authorizationService = require('./authorization.service');
+const projectContextService = require('./projectContext.service');
 const {
   generateAccessToken,
   generateRefreshToken,
@@ -33,11 +34,6 @@ const stripInternalUserFields = (user) => {
   return publicUser;
 };
 
-const buildNeutralProjectContext = () => ({
-  activeProject: null,
-  officialRole: null,
-});
-
 const isTokenIssuedBeforePasswordChange = (tokenIssuedAt, passwordChangedAtEpoch) => {
   if (!tokenIssuedAt || !passwordChangedAtEpoch) {
     return false;
@@ -52,12 +48,16 @@ const isTokenIssuedBeforePasswordChange = (tokenIssuedAt, passwordChangedAtEpoch
 const buildAuthPayload = async (user) => {
   const authorizedUser = await authorizationService.buildAuthorizationContext(user);
   const publicUser = stripInternalUserFields(authorizedUser);
+  const projectContext = await projectContextService.resolveProjectContext(user.id);
 
   return {
     user: publicUser,
     role: authorizedUser.role,
     permissions: authorizedUser.permissions,
-    ...buildNeutralProjectContext(),
+    activeProject: projectContext.activeProject,
+    activeMembership: projectContext.activeMembership,
+    accessibleProjects: projectContext.accessibleProjects,
+    officialRole: projectContext.officialRole,
   };
 };
 

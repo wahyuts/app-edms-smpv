@@ -16,6 +16,10 @@ const errorHandler = (err, req, res, next) => {
     message,
   };
 
+  if (err.errors !== undefined && statusCode < 500) {
+    body.errors = err.errors;
+  }
+
   if (env.appEnv === 'development' && statusCode >= 500 && err.stack) {
     body.stack = err.stack;
   }

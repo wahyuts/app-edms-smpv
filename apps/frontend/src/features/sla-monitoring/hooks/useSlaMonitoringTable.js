@@ -159,12 +159,21 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
         setIsLoading(true);
       }
 
-      const documents = await SlaMonitoringService.getDocuments();
+      try {
+        const documents = await SlaMonitoringService.getDocuments();
 
-      if (isActive) {
-        setSourceDocuments(documents);
-        hasLoadedOnceRef.current = true;
-        setIsLoading(false);
+        if (isActive) {
+          setSourceDocuments(documents);
+        }
+      } catch {
+        if (isActive) {
+          setSourceDocuments([]);
+        }
+      } finally {
+        if (isActive) {
+          hasLoadedOnceRef.current = true;
+          setIsLoading(false);
+        }
       }
     };
 

@@ -206,7 +206,7 @@ export const SlaMonitoringTable = ({
             {!isLoading && rows.length === 0 ? (
               <tr>
                 <td className="px-4 py-8 text-center text-[#94A3B8]" colSpan={9}>
-                  Tidak ada dokumen yang tersedia.
+                  No Engineering Document found.
                 </td>
               </tr>
             ) : null}

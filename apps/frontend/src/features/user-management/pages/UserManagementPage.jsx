@@ -18,9 +18,12 @@ import { useNavigate } from "react-router-dom";
 import DepartmentManagementSection from "@/features/user-management/components/DepartmentManagementSection";
 import { DEPARTMENT_STATUSES } from "@/features/user-management/constants/department.constants";
 import { USER_QUERY_KEY } from "@/features/user-management/constants/user-query.constants";
+import { USER_STATUSES } from "@/features/user-management/constants/user.constants";
 import {
-  USER_STATUSES,
-} from "@/features/user-management/constants/user.constants";
+  createUserSchema,
+  formatValidationIssues,
+  updateUserSchema,
+} from "@/features/user-management/schemas/user.schema";
 import { DepartmentService } from "@/features/user-management/services/department.service";
 import { DemoDataResetService } from "@/features/user-management/services/demo-data-reset.service";
 import {
@@ -125,6 +128,18 @@ const getErrorMessage = (error) => {
   }
 
   return error?.message ?? "User Management request failed.";
+};
+
+const validateFormState = (mode, form) => {
+  const schema = mode === "create" ? createUserSchema : updateUserSchema;
+  const result = schema.safeParse(form);
+
+  if (result.success) return result.data;
+
+  throw new UserValidationError(
+    "Data tidak valid.",
+    formatValidationIssues(result.error.issues),
+  );
 };
 
 const getEditForm = (user) => ({
@@ -697,10 +712,12 @@ const UserManagementPage = () => {
 
   const handleFormSubmit = async (event) => {
     event.preventDefault();
-    setIsSubmitting(true);
+    let requestStarted = false;
     setFormErrors({});
 
     try {
+      const validatedForm = validateFormState(formMode, formState);
+
       if (isDepartmentLoading || departmentLoadError) {
         throw new UserValidationError("Validation failed.", [
           {
@@ -719,14 +736,17 @@ const UserManagementPage = () => {
         ]);
       }
 
+      setIsSubmitting(true);
+      requestStarted = true;
+
       if (formMode === "create") {
-        await UserService.createUser(formState);
+        await UserService.createUser(validatedForm);
         showToast({
           message: "User created successfully.",
           variant: "success",
         });
       } else if (formMode === "edit" && selectedUser) {
-        await UserService.updateUser(selectedUser.id, formState);
+        await UserService.updateUser(selectedUser.id, validatedForm);
         showToast({
           message: "User updated successfully.",
           variant: "success",
@@ -745,7 +765,9 @@ const UserManagementPage = () => {
         variant: "error",
       });
     } finally {
-      setIsSubmitting(false);
+      if (requestStarted) {
+        setIsSubmitting(false);
+      }
     }
   };
 

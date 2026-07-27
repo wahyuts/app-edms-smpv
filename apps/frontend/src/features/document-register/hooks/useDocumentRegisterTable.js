@@ -128,40 +128,50 @@ export const useDocumentRegisterTable = ({
         setIsLoading(true);
       }
 
-      const sourceDocuments = drawingContext
-        ? await DocumentService.getDocumentsByDrawing(drawingContext, {
-            lifecycle: effectiveLifecycleFilter,
-          })
-        : await DocumentService.getDocumentsByLifecycle({
-            lifecycle: effectiveLifecycleFilter,
-          });
+      try {
+        const nextSourceDocuments = drawingContext
+          ? await DocumentService.getDocumentsByDrawing(drawingContext, {
+              lifecycle: effectiveLifecycleFilter,
+            })
+          : await DocumentService.getDocumentsByLifecycle({
+              lifecycle: effectiveLifecycleFilter,
+            });
 
-      const searchedDocuments = enableControls
-        ? await DocumentService.searchDocuments(searchValue, sourceDocuments)
-        : sourceDocuments;
+        const searchedDocuments = enableControls
+          ? await DocumentService.searchDocuments(searchValue, nextSourceDocuments)
+          : nextSourceDocuments;
 
-      const filteredDocuments = enableControls
-        ? await DocumentService.filterDocuments(searchedDocuments, {
-            status: statusFilter,
-            revision: revisionFilter,
-            area: areaFilter,
-            drawing: drawingFilter,
-          })
-        : searchedDocuments;
+        const filteredDocuments = enableControls
+          ? await DocumentService.filterDocuments(searchedDocuments, {
+              status: statusFilter,
+              revision: revisionFilter,
+              area: areaFilter,
+              drawing: drawingFilter,
+            })
+          : searchedDocuments;
 
-      const sortedDocuments = await DocumentService.sortDocuments(
-        filteredDocuments,
-        {
-          sortBy,
-          direction: sortBy === DEFAULT_SORT_BY ? "desc" : "asc",
-        },
-      );
+        const sortedDocuments = await DocumentService.sortDocuments(
+          filteredDocuments,
+          {
+            sortBy,
+            direction: sortBy === DEFAULT_SORT_BY ? "desc" : "asc",
+          },
+        );
 
-      if (isActive) {
-        setSourceDocuments(sourceDocuments);
-        setDocuments(sortedDocuments);
-        hasLoadedOnceRef.current = true;
-        setIsLoading(false);
+        if (isActive) {
+          setSourceDocuments(nextSourceDocuments);
+          setDocuments(sortedDocuments);
+        }
+      } catch {
+        if (isActive) {
+          setSourceDocuments([]);
+          setDocuments([]);
+        }
+      } finally {
+        if (isActive) {
+          hasLoadedOnceRef.current = true;
+          setIsLoading(false);
+        }
       }
     };
 

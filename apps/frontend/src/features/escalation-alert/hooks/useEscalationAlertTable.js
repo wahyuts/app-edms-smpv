@@ -178,12 +178,21 @@ export const useEscalationAlertTable = ({ directSearchValue = "" } = {}) => {
         setIsLoading(true);
       }
 
-      const escalationItems = await EscalationService.getEscalations();
+      try {
+        const escalationItems = await EscalationService.getEscalations();
 
-      if (isActive) {
-        setSourceEscalations(escalationItems);
-        hasLoadedOnceRef.current = true;
-        setIsLoading(false);
+        if (isActive) {
+          setSourceEscalations(escalationItems);
+        }
+      } catch {
+        if (isActive) {
+          setSourceEscalations([]);
+        }
+      } finally {
+        if (isActive) {
+          hasLoadedOnceRef.current = true;
+          setIsLoading(false);
+        }
       }
     };
 
