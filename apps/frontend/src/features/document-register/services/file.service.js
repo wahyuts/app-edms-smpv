@@ -32,8 +32,11 @@ export const FILE_VALIDATION_CONFIG = {
 const getFileExtension = (fileName = "") => {
   const extension = fileName.split(".").pop();
 
-  return extension ? extension.toLowerCase() : "";
+  return extension ? extension.trim().replace(/^\./, "").toLowerCase() : "";
 };
+
+const normalizeFileExtension = (extension = "") =>
+  String(extension).trim().replace(/^\./, "").toLowerCase();
 
 const formatFileSize = (fileSize) => {
   if (!Number.isFinite(fileSize)) {
@@ -306,7 +309,7 @@ const createPreviewFromBlob = async ({ blob, documentItem, headers = {} } = {}) 
     previewMessages: [],
     storagePath: null,
   };
-  const normalizedExtension = documentFile.metadata.fileExtension.toLowerCase();
+  const normalizedExtension = normalizeFileExtension(documentFile.metadata.fileExtension);
 
   if (normalizedExtension !== "docx") {
     return {

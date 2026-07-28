@@ -11,10 +11,24 @@ const SLA_STATUS = Object.freeze({
   OVERDUE: 'Overdue',
 });
 
+const toSlaCycleTimestamp = (value) => {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString();
+  }
+
+  const parsedDate = new Date(value);
+  if (!Number.isNaN(parsedDate.getTime())) {
+    return parsedDate.toISOString();
+  }
+
+  return String(value);
+};
+
 const createSlaCycleId = (document) => [
   document.projectId,
   document.id,
-  document.slaStartedAt || document.lastUpdated || document.createdDate,
+  toSlaCycleTimestamp(document.slaStartedAt || document.lastUpdated || document.createdDate),
 ].filter(Boolean).join(':');
 
 const resolveProjectId = async ({ activeProject, queryProjectId, userId }) => {

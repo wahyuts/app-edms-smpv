@@ -81,6 +81,9 @@ const formatTimelineActor = (timelineItem) => {
   return actorRole ? `${actorName} (${actorRole})` : actorName;
 };
 
+const normalizeFileExtension = (extension = "") =>
+  String(extension).trim().replace(/^\./, "").toLowerCase();
+
 const FileUploadField = ({
   errorMessage,
   filePreview,
@@ -305,11 +308,11 @@ export const ViewDocumentModal = ({
   const metadata = documentItem.fileMetadata;
   const fileExtension = documentFile?.error
     ? ""
-    : (
+    : normalizeFileExtension(
         documentFile?.metadata?.fileExtension ??
         metadata?.fileExtension ??
         ""
-      ).toLowerCase();
+      );
   const isDocxPreviewAvailable =
     fileExtension === "docx" && Boolean(documentFile?.previewHtml);
   const isSpreadsheetPreviewAvailable =

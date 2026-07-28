@@ -72,6 +72,78 @@ const createActionTarget = (document, eventType) => {
   return `/document-register/${drawingSegment}`;
 };
 
+const normalizeSlaCycleTimestamp = (value) => {
+  if (!value) return null;
+  const parsedDate = new Date(value);
+
+  return Number.isNaN(parsedDate.getTime()) ? String(value) : parsedDate.toISOString();
+};
+
+const parseSlaCycleId = (cycleId = '') => {
+  const parts = String(cycleId || '').split(':');
+  if (parts.length < 3) {
+    return {
+      documentId: null,
+      projectId: null,
+      rawTimestamp: null,
+      value: String(cycleId || ''),
+    };
+  }
+
+  const [projectId, documentId, ...timestampParts] = parts;
+  const rawTimestamp = timestampParts.join(':');
+  const timestamp = normalizeSlaCycleTimestamp(rawTimestamp);
+
+  return {
+    documentId,
+    projectId,
+    rawTimestamp,
+    timestamp,
+    value: [projectId, documentId, timestamp].filter(Boolean).join(':'),
+  };
+};
+
+const normalizeSlaCycleId = (cycleId = '') => parseSlaCycleId(cycleId).value;
+
+const hasMillisecondPrecision = (value = '') => /\.\d{3}/.test(String(value));
+
+const isSameSlaCycle = (existingCycleId, targetCycleId) => {
+  const existing = parseSlaCycleId(existingCycleId);
+  const target = parseSlaCycleId(targetCycleId);
+
+  if (existing.value === target.value) return true;
+  if (existing.projectId !== target.projectId || existing.documentId !== target.documentId) return false;
+  if (hasMillisecondPrecision(existing.rawTimestamp)) return false;
+
+  const existingDate = new Date(existing.timestamp);
+  const targetDate = new Date(target.timestamp);
+  if (Number.isNaN(existingDate.getTime()) || Number.isNaN(targetDate.getTime())) return false;
+
+  return Math.floor(existingDate.getTime() / 1000) === Math.floor(targetDate.getTime() / 1000);
+};
+
+const hasExistingSlaNotificationForCycle = async ({
+  cycleId,
+  document,
+  eventType,
+  recipient,
+}) => {
+  const targetCycleId = normalizeSlaCycleId(cycleId || document.slaStartedAt || document.updatedAt || document.lastUpdated);
+  const existingNotifications = await notificationRepository.listSlaNotificationsByBusinessKey({
+    eventType,
+    projectId: document.projectId,
+    recipientUserId: recipient.userId,
+    relatedResourceId: document.id,
+  });
+
+  return existingNotifications.some((notification) =>
+    isSameSlaCycle(
+      notification.metadata?.cycleId || notification.identityKey?.split(':').slice(4).join(':'),
+      targetCycleId
+    )
+  );
+};
+
 const resolveRecipientMembership = async ({ document, recipientOfficialRole, recipientUserId }) => {
   if (recipientUserId) {
     const membership = await projectMembershipRepository.findActiveMembershipByProjectAndUser({
@@ -178,36 +250,49 @@ const createSlaStateNotifications = async ({
   const recipients = await resolveOfficialSlaRecipients(document);
   const dictionary = messageDictionary[eventType];
 
-  await Promise.all(recipients.map((recipient) => notificationRepository.createNotification({
-    id: createEntityId('NTF'),
-    identityKey: [
-      eventType,
-      document.projectId,
-      document.id,
-      recipient.userId,
-      cycleId || document.slaStartedAt || document.updatedAt || document.lastUpdated,
-    ].join(':'),
-    projectId: document.projectId,
-    recipientUserId: recipient.userId,
-    recipientProjectMembershipId: recipient.id,
-    eventType,
-    title: dictionary.title,
-    message: dictionary.message,
-    priority: dictionary.priority,
-    officialRole: recipient.officialRole,
-    recipientRole: recipient.officialRole,
-    relatedResourceType: 'Document',
-    relatedResourceId: document.id,
-    relatedDocumentNumber: document.documentNumber,
-    actionTarget: createActionTarget(document, eventType),
-    metadata: {
-      ...metadata,
+  await Promise.all(recipients.map(async (recipient) => {
+    if (await hasExistingSlaNotificationForCycle({
       cycleId,
-      revision: document.revision,
-      slaStatus: document.slaStatus,
-      workflowStatus: document.status,
-    },
-  })));
+      document,
+      eventType,
+      recipient,
+    })) {
+      return;
+    }
+
+    const normalizedCycleId = normalizeSlaCycleId(cycleId || document.slaStartedAt || document.updatedAt || document.lastUpdated);
+
+    await notificationRepository.createNotification({
+      id: createEntityId('NTF'),
+      identityKey: [
+        eventType,
+        document.projectId,
+        document.id,
+        recipient.userId,
+        normalizedCycleId,
+      ].join(':'),
+      projectId: document.projectId,
+      recipientUserId: recipient.userId,
+      recipientProjectMembershipId: recipient.id,
+      eventType,
+      title: dictionary.title,
+      message: dictionary.message,
+      priority: dictionary.priority,
+      officialRole: recipient.officialRole,
+      recipientRole: recipient.officialRole,
+      relatedResourceType: 'Document',
+      relatedResourceId: document.id,
+      relatedDocumentNumber: document.documentNumber,
+      actionTarget: createActionTarget(document, eventType),
+      metadata: {
+        ...metadata,
+        cycleId: normalizedCycleId,
+        revision: document.revision,
+        slaStatus: document.slaStatus,
+        workflowStatus: document.status,
+      },
+    });
+  }));
 
   return {
     attemptedRecipientCount: recipients.length,

@@ -24,7 +24,10 @@ const throwDocumentApiError = (error, fallback) => {
 
 const normalizeFileMetadata = (file = {}) => {
   if (!file) return null;
-  const extension = file.fileExtension ?? file.extension ?? file.fileType ?? "";
+  const extension = String(file.fileExtension ?? file.extension ?? file.fileType ?? "")
+    .trim()
+    .replace(/^\./, "")
+    .toLowerCase();
   const originalFileName = file.originalFileName ?? file.fileName ?? "";
   const fileSize = Number(file.fileSize);
 
@@ -44,10 +47,13 @@ const normalizeFileMetadata = (file = {}) => {
 
 const normalizeWorkflowAttachment = (attachment = null) => {
   if (!attachment) return null;
-  const extension = attachment.fileExtension ??
+  const extension = String(attachment.fileExtension ??
     attachment.extension ??
     attachment.originalFileName?.split(".").pop() ??
-    "";
+    "")
+    .trim()
+    .replace(/^\./, "")
+    .toLowerCase();
   const fileSize = Number(attachment.fileSize);
 
   return {

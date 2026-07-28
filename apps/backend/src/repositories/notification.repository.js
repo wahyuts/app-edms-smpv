@@ -83,6 +83,28 @@ const listNotificationsByRecipient = async ({ projectId, recipientUserId }) => {
   return rows.map(mapNotificationRow);
 };
 
+const listSlaNotificationsByBusinessKey = async ({
+  eventType,
+  projectId,
+  recipientUserId,
+  relatedResourceId,
+}) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT *
+      FROM notifications
+      WHERE event_type = ?
+        AND project_id = ?
+        AND recipient_user_id = ?
+        AND related_resource_type = 'Document'
+        AND related_resource_id = ?
+    `,
+    [eventType, projectId, recipientUserId, relatedResourceId]
+  );
+
+  return rows.map(mapNotificationRow);
+};
+
 const markNotificationRead = async ({ notificationId, recipientUserId }) => {
   await pool.execute(
     `
@@ -147,6 +169,7 @@ module.exports = {
   deleteNotification,
   deleteNotifications,
   findNotificationById,
+  listSlaNotificationsByBusinessKey,
   listNotificationsByRecipient,
   markAllNotificationsRead,
   markNotificationRead,
