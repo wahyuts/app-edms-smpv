@@ -4,7 +4,11 @@ import {
   DOCUMENT_STATUS,
   SLA_STATUS,
 } from "@/features/document-register/constants/document.constants";
-import { resolveCurrentAssigneeRoleDisplay } from "@/features/sla-management/utils/sla-timer-display";
+import { useSlaRuntimeClock } from "@/features/sla-management/hooks/useSlaRuntimeClock";
+import {
+  resolveCurrentAssigneeRoleDisplay,
+  resolveLiveSlaTimer,
+} from "@/features/sla-management/utils/sla-timer-display";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 import { SlaMonitoringService } from "../services/sla-monitoring.service";
@@ -117,6 +121,7 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
   const hasLoadedOnceRef = useRef(false);
   const activeProjectIdRef = useRef(null);
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
+  const currentTimestamp = useSlaRuntimeClock();
 
   useEffect(() => {
     const resetTimeoutId = window.setTimeout(() => {
@@ -190,20 +195,24 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
     };
   }, []);
 
+  const runtimeDocuments = useMemo(
+    () => sourceDocuments.map((documentItem) => resolveLiveSlaTimer(documentItem, currentTimestamp)),
+    [currentTimestamp, sourceDocuments],
+  );
   const summary = useMemo(
-    () => SlaMonitoringService.createSummary(sourceDocuments),
-    [sourceDocuments],
+    () => SlaMonitoringService.createSummary(runtimeDocuments),
+    [runtimeDocuments],
   );
   const documents = useMemo(
     () =>
       filterDocuments({
-        documents: sourceDocuments,
+        documents: runtimeDocuments,
         searchValue,
         slaStatusFilter,
         sortBy,
         statusFilter,
       }),
-    [searchValue, slaStatusFilter, sortBy, sourceDocuments, statusFilter],
+    [runtimeDocuments, searchValue, slaStatusFilter, sortBy, statusFilter],
   );
   const totalPages = Math.max(1, Math.ceil(documents.length / pageSize));
   const normalizedPageNumber = Math.min(pageNumber, totalPages);

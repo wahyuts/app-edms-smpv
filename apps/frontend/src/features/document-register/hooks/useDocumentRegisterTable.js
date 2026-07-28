@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
+import { useSlaRuntimeClock } from "@/features/sla-management/hooks/useSlaRuntimeClock";
+import { resolveLiveSlaTimer } from "@/features/sla-management/utils/sla-timer-display";
 import {
   DOCUMENT_LIFECYCLE_FILTER,
   OFFICIAL_ROLE,
@@ -35,6 +37,7 @@ export const useDocumentRegisterTable = ({
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
   const activeOfficialRole = useProjectContextStore((state) => state.activeOfficialRole);
+  const currentTimestamp = useSlaRuntimeClock();
   const canUseLifecycleFilter = activeOfficialRole === OFFICIAL_ROLE.ADMIN;
   const effectiveLifecycleFilter = canUseLifecycleFilter
     ? lifecycleFilter
@@ -111,7 +114,10 @@ export const useDocumentRegisterTable = ({
       totalPages: 1,
     },
   };
-  const sourceDocuments = response.data;
+  const sourceDocuments = useMemo(
+    () => response.data.map((documentItem) => resolveLiveSlaTimer(documentItem, currentTimestamp)),
+    [currentTimestamp, response.data],
+  );
   const pagination = response.pagination;
   const rows = sourceDocuments;
   const totalPages = Math.max(1, pagination.totalPages ?? 1);

@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DOCUMENT_STATUS } from "@/features/document-register/constants/document.constants";
-import { resolveCurrentAssigneeRoleDisplay } from "@/features/sla-management/utils/sla-timer-display";
+import { useSlaRuntimeClock } from "@/features/sla-management/hooks/useSlaRuntimeClock";
+import {
+  resolveCurrentAssigneeRoleDisplay,
+  resolveLiveSlaTimer,
+} from "@/features/sla-management/utils/sla-timer-display";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 import { EscalationService } from "../services/escalation.service";
@@ -136,6 +140,7 @@ export const useEscalationAlertTable = ({ directSearchValue = "" } = {}) => {
   const hasLoadedOnceRef = useRef(false);
   const activeProjectIdRef = useRef(null);
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
+  const currentTimestamp = useSlaRuntimeClock();
 
   useEffect(() => {
     const resetTimeoutId = window.setTimeout(() => {
@@ -209,24 +214,28 @@ export const useEscalationAlertTable = ({ directSearchValue = "" } = {}) => {
     };
   }, []);
 
+  const runtimeEscalations = useMemo(
+    () => sourceEscalations.map((item) => resolveLiveSlaTimer(item, currentTimestamp)),
+    [currentTimestamp, sourceEscalations],
+  );
   const summary = useMemo(
-    () => createSummary(sourceEscalations),
-    [sourceEscalations],
+    () => createSummary(runtimeEscalations),
+    [runtimeEscalations],
   );
   const levelOptions = useMemo(
-    () => getUniqueOptions(sourceEscalations, "escalationLevel"),
-    [sourceEscalations],
+    () => getUniqueOptions(runtimeEscalations, "escalationLevel"),
+    [runtimeEscalations],
   );
   const escalationItems = useMemo(
     () =>
       filterEscalations({
-        escalationItems: sourceEscalations,
+        escalationItems: runtimeEscalations,
         levelFilter,
         searchValue,
         sortBy,
         statusFilter,
       }),
-    [levelFilter, searchValue, sortBy, sourceEscalations, statusFilter],
+    [levelFilter, runtimeEscalations, searchValue, sortBy, statusFilter],
   );
   const totalPages = Math.max(1, Math.ceil(escalationItems.length / pageSize));
   const normalizedPageNumber = Math.min(pageNumber, totalPages);
