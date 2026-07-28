@@ -73,14 +73,14 @@ const findAvailableTemporaryUploadByTemporaryFileId = async (temporaryFileId) =>
   return mapTemporaryUploadRow(rows[0]);
 };
 
-const markTemporaryUploadConsumed = async (connection, { temporaryFileId }) => {
+const deleteAvailableTemporaryUpload = async (connection, { temporaryFileId }) => {
   const executor = connection || pool;
   const [result] = await executor.execute(
     `
-      UPDATE temporary_uploads
-      SET consumed_at = UTC_TIMESTAMP(3)
+      DELETE FROM temporary_uploads
       WHERE temporary_file_id = ?
         AND consumed_at IS NULL
+        AND expires_at > UTC_TIMESTAMP(3)
     `,
     [temporaryFileId]
   );
@@ -90,7 +90,7 @@ const markTemporaryUploadConsumed = async (connection, { temporaryFileId }) => {
 
 module.exports = {
   createTemporaryUpload,
+  deleteAvailableTemporaryUpload,
   findAvailableTemporaryUploadByTemporaryFileId,
   findTemporaryUploadByTemporaryFileId,
-  markTemporaryUploadConsumed,
 };

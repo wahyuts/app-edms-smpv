@@ -9,6 +9,8 @@ const {
   validateArchivePayload,
   validateDocumentCreate,
   validateDocumentUpdate,
+  validateTemporaryFilePayload,
+  validateWorkflowAttachmentPayload,
 } = require('../validators/document.validator');
 const { errorResponse, successResponse } = require('../utils/response');
 
@@ -193,7 +195,7 @@ const processApproval = (type, { requireComment = false } = {}) => async (req, r
         actorUserId: req.user.id,
         comment: validation.value.comment,
         documentId: req.params.documentId,
-        file: req.file,
+        temporaryFileId: validation.value.temporaryFileId,
         type,
       }),
     });
@@ -246,6 +248,16 @@ const downloadDocumentFile = async (req, res, next) => {
 
 const uploadRevision = async (req, res, next) => {
   try {
+    const validation = validateTemporaryFilePayload(req.body);
+
+    if (!validation.isValid) {
+      return errorResponse(res, {
+        statusCode: 422,
+        message: DOCUMENT_MESSAGES.VALIDATION_ERROR,
+        errors: validation.errors,
+      });
+    }
+
     return successResponse(res, {
       statusCode: 201,
       message: 'Revision berhasil diunggah',
@@ -254,7 +266,7 @@ const uploadRevision = async (req, res, next) => {
         actorUserFullName: req.user.fullName,
         actorUserId: req.user.id,
         documentId: req.params.documentId,
-        file: req.file,
+        temporaryFileId: validation.value.temporaryFileId,
       }),
     });
   } catch (error) {
@@ -264,14 +276,23 @@ const uploadRevision = async (req, res, next) => {
 
 const uploadWorkflowAttachment = async (req, res, next) => {
   try {
+    const validation = validateWorkflowAttachmentPayload(req.body);
+
+    if (!validation.isValid) {
+      return errorResponse(res, {
+        statusCode: 422,
+        message: DOCUMENT_MESSAGES.VALIDATION_ERROR,
+        errors: validation.errors,
+      });
+    }
+
     return successResponse(res, {
       statusCode: 201,
       message: 'Workflow Attachment berhasil diunggah',
       data: await workflowAttachmentService.uploadWorkflowAttachment({
         actorUserId: req.user.id,
         documentId: req.params.documentId,
-        file: req.file,
-        payload: req.body,
+        payload: validation.value,
       }),
     });
   } catch (error) {

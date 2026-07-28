@@ -46,9 +46,12 @@ const isTokenIssuedBeforePasswordChange = (tokenIssuedAt, passwordChangedAtEpoch
 };
 
 const buildAuthPayload = async (user) => {
-  const authorizedUser = await authorizationService.buildAuthorizationContext(user);
-  const publicUser = stripInternalUserFields(authorizedUser);
   const projectContext = await projectContextService.resolveProjectContext(user.id);
+  const authorizedUser = await authorizationService.buildProjectAuthorizationContext(
+    user,
+    projectContext.officialRole
+  );
+  const publicUser = stripInternalUserFields(authorizedUser);
 
   return {
     user: publicUser,

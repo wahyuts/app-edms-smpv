@@ -2,6 +2,7 @@ const { normalizeText } = require('../utils/administration');
 
 const validateApprovalPayload = (body = {}, { requireComment = false } = {}) => {
   const comment = normalizeText(body.comment ?? body.workflowComment ?? body.reason);
+  const temporaryFileId = normalizeText(body.temporaryFileId);
   const errors = [];
 
   if (requireComment && !comment) {
@@ -13,6 +14,7 @@ const validateApprovalPayload = (body = {}, { requireComment = false } = {}) => 
     isValid: errors.length === 0,
     value: {
       comment,
+      temporaryFileId: temporaryFileId || null,
     },
   };
 };

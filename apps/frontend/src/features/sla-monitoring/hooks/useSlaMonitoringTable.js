@@ -11,13 +11,9 @@ import { SlaMonitoringService } from "../services/sla-monitoring.service";
 
 const DEFAULT_PAGE_SIZE = 5;
 const DEFAULT_SORT_BY = "slaTimer";
-const SLA_REFRESH_INTERVAL_MS = 60 * 1000;
-const FULL_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const RUNTIME_REFRESH_INTERVAL_MS = 60 * 1000;
 
 const normalizeSearchValue = (value) => String(value ?? "").trim().toLowerCase();
-
-const recalculateDocumentSla = (documentItem) =>
-  SlaMonitoringService.evaluateDocument(documentItem);
 
 const slaStatusOptions = [
   SLA_STATUS.ON_TRACK,
@@ -185,19 +181,12 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
   }, [activeProjectId, refreshKey]);
 
   useEffect(() => {
-    const slaTimerIntervalId = window.setInterval(() => {
-      setSourceDocuments((currentDocuments) =>
-        currentDocuments.map(recalculateDocumentSla),
-      );
-    }, SLA_REFRESH_INTERVAL_MS);
-
-    const fullRefreshIntervalId = window.setInterval(() => {
+    const runtimeRefreshIntervalId = window.setInterval(() => {
       setRefreshKey((currentKey) => currentKey + 1);
-    }, FULL_REFRESH_INTERVAL_MS);
+    }, RUNTIME_REFRESH_INTERVAL_MS);
 
     return () => {
-      window.clearInterval(slaTimerIntervalId);
-      window.clearInterval(fullRefreshIntervalId);
+      window.clearInterval(runtimeRefreshIntervalId);
     };
   }, []);
 

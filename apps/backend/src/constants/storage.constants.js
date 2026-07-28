@@ -3,7 +3,9 @@ const STORAGE_DIRECTORIES = {
   PROJECTS: 'projects',
   DOCUMENTS: 'documents',
   REVISIONS: 'revisions',
-  WORKFLOW_ATTACHMENTS: 'workflow-attachments',
+  ATTACHMENTS: 'attachments',
+  PROCESS_COMMENTS: 'process-comments',
+  PROJECT_COMMENTS: 'project-comments',
 };
 
 const STORAGE_DRIVERS = {
@@ -19,6 +21,7 @@ const UPLOAD_ALLOWED_MIME_TYPES = Object.freeze({
   '.jpg': ['image/jpeg'],
   '.jpeg': ['image/jpeg'],
   '.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  '.xls': ['application/vnd.ms-excel'],
   '.xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
 });
 

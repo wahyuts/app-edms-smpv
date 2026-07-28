@@ -132,7 +132,9 @@ export const DocumentRegisterTable = ({
   areaOptions = [],
   drawingFilter,
   drawingOptions = [],
+  error = null,
   isDashboard = false,
+  isError = false,
   isLoading = false,
   canUseLifecycleFilter = false,
   lifecycleFilter = DOCUMENT_LIFECYCLE_FILTER.ACTIVE,
@@ -358,7 +360,18 @@ export const DocumentRegisterTable = ({
               </tr>
             ) : null}
 
-            {!isLoading && rows.length === 0 ? (
+            {!isLoading && isError ? (
+              <tr>
+                <td
+                  className="px-4 py-8 text-center font-semibold text-[#FCA5A5]"
+                  colSpan={isDashboard ? 9 : 8}
+                >
+                  {error instanceof Error ? error.message : "Document Register gagal dimuat."}
+                </td>
+              </tr>
+            ) : null}
+
+            {!isLoading && !isError && rows.length === 0 ? (
               <tr>
                 <td
                   className="px-4 py-8 text-center text-[#94A3B8]"
@@ -369,7 +382,7 @@ export const DocumentRegisterTable = ({
               </tr>
             ) : null}
 
-            {!isLoading
+            {!isLoading && !isError
               ? rows.map((documentItem, rowIndex) => (
                   <tr
                     className="group border-t border-[#123A5A] text-[#F8FAFC] transition-colors hover:bg-[#08233B]"

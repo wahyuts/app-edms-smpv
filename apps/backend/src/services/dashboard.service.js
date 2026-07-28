@@ -21,9 +21,12 @@ const createKpiSummary = (documents) => {
   const processReject = countByStatus(documents, workflowStatuses.PROCESS_REJECT);
   const projectComment = countByStatus(documents, workflowStatuses.PROJECT_COMMENT);
   const projectReject = countByStatus(documents, workflowStatuses.PROJECT_REJECT);
+  const approved = countByStatus(documents, workflowStatuses.APPROVED);
 
   return {
-    approved: countByStatus(documents, workflowStatuses.APPROVED),
+    approved,
+    archived: documents.filter((document) => document.lifecycle === 'Archived').length,
+    finalAsBuilt: approved,
     processComment,
     processCommentReject: processComment + processReject,
     processReject,
@@ -35,6 +38,13 @@ const createKpiSummary = (documents) => {
     totalDocuments: documents.length,
   };
 };
+
+const createCurrentAssigneeSummary = (documents) => documents.reduce((summary, document) => {
+  const assigneeKey = document.currentAssignee || document.responsibleRole || 'Unassigned';
+
+  summary[assigneeKey] = (summary[assigneeKey] || 0) + 1;
+  return summary;
+}, {});
 
 const resolveProjectId = async ({ activeProject, query = {}, userId }) => {
   return slaService.resolveProjectId({
@@ -50,6 +60,7 @@ const getDashboardSummary = async ({ activeProject, query = {}, userId }) => {
   const escalations = documents.map(escalationService.createEscalationItem).filter(Boolean);
 
   return {
+    currentAssigneeSummary: createCurrentAssigneeSummary(documents),
     escalationSummary: escalationService.createSummary(escalations),
     kpiSummary: createKpiSummary(documents),
     slaSummary: slaService.createSummary(documents),
@@ -91,6 +102,7 @@ const getRecentActivities = async ({ activeProject, query = {}, userId }) => {
 };
 
 module.exports = {
+  createCurrentAssigneeSummary,
   createKpiSummary,
   getDashboardSummary,
   getDashboardStatistics,

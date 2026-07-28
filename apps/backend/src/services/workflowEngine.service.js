@@ -9,7 +9,12 @@ const {
 const documentRepository = require('../repositories/document.repository');
 const fileAccessRepository = require('../repositories/fileAccess.repository');
 const projectMembershipRepository = require('../repositories/projectMembership.repository');
+const storageService = require('./storage.service');
 const { createEntityId, createHttpError } = require('../utils/administration');
+const {
+  buildCanonicalPhysicalFileName,
+  buildRevisionStorageKey,
+} = require('../utils/storageKeyBuilder');
 
 const workflowTransitionMatrix = Object.freeze({
   [DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW]: Object.freeze({
@@ -119,6 +124,7 @@ const applyWorkflowTransition = async ({
   actorUserId,
   document,
   reason = null,
+  transactionHook = null,
   workflowAttachment = null,
   workflowComment = null,
 }) => {
@@ -143,76 +149,131 @@ const applyWorkflowTransition = async ({
     currentRevision: document.revision,
     targetStatus: nextStatus,
   });
+  const activeDocumentFile = nextRevision !== document.revision
+    ? await fileAccessRepository.findActiveDocumentFile(document.id)
+    : null;
+  const revisionStorageMove = activeDocumentFile?.storedFile
+    ? (() => {
+        const physicalFileName = buildCanonicalPhysicalFileName({
+          documentNumber: document.documentNumber,
+          fileId: activeDocumentFile.storedFile.fileId,
+          originalFileName: activeDocumentFile.storedFile.originalFileName,
+          revisionLabel: nextRevision,
+          submittedAt: activeDocumentFile.storedFile.uploadedAt || new Date(),
+        });
+        const storageKey = buildRevisionStorageKey({
+          documentNumber: document.documentNumber,
+          physicalFileName,
+          projectCode: document.projectCode,
+          revisionLabel: nextRevision,
+        });
 
-  await documentRepository.runInTransaction(async (connection) => {
-    await documentRepository.updateDocumentWorkflowState(connection, {
-      currentAssigneeUserId: nextAssignee?.userId || null,
-      documentId: document.id,
-      responsibleRole: nextResponsibleRole,
-      revisionLabel: nextRevision,
-      resetSla: true,
-      slaStoppedAtExpression: nextStatus === DOCUMENT_WORKFLOW_STATUS.APPROVED ? 'UTC_TIMESTAMP(3)' : null,
-      updatedByUserId: actorUserId,
-      workflowStatus: nextStatus,
-    });
-    await documentRepository.updateRevisionLabel(connection, {
-      revisionId: document.activeRevisionId,
-      revisionLabel: nextRevision,
-    });
-    await documentRepository.insertDocumentHistory(connection, {
-      id: createEntityId('DTH'),
-      projectId: document.projectId,
-      documentId: document.id,
-      workflowEvent: workflowEventByAction[action] || `${action} Completed`,
-      activity: action,
-      workflowStatus: nextStatus,
-      revisionLabel: nextRevision,
-      lifecycleStatus: document.lifecycle,
-      reason,
-      createdByUserId: actorUserId,
-      createdByNameSnapshot: actorUserFullName || null,
-      createdByOfficialRoleSnapshot: actorOfficialRole || actorMembership.officialRole,
-    });
-    if (workflowComment) {
-      await documentRepository.insertWorkflowComment(connection, {
-        id: workflowComment.id || createEntityId('WFC'),
+        if (storageKey === activeDocumentFile.storedFile.storageKey) {
+          return null;
+        }
+
+        return {
+          fileId: activeDocumentFile.storedFile.fileId,
+          fromStorageKey: activeDocumentFile.storedFile.storageKey,
+          physicalFileName,
+          storageKey,
+        };
+      })()
+    : null;
+  let storageMoved = false;
+
+  try {
+    await documentRepository.runInTransaction(async (connection) => {
+      await documentRepository.updateDocumentWorkflowState(connection, {
+        currentAssigneeUserId: nextAssignee?.userId || null,
+        documentId: document.id,
+        responsibleRole: nextResponsibleRole,
+        revisionLabel: nextRevision,
+        resetSla: true,
+        slaStoppedAtExpression: nextStatus === DOCUMENT_WORKFLOW_STATUS.APPROVED ? 'UTC_TIMESTAMP(3)' : null,
+        updatedByUserId: actorUserId,
+        workflowStatus: nextStatus,
+      });
+      await documentRepository.updateRevisionLabel(connection, {
+        revisionId: document.activeRevisionId,
+        revisionLabel: nextRevision,
+      });
+      if (revisionStorageMove) {
+        await documentRepository.updateStoredFileStorageMetadata(connection, {
+          fileId: revisionStorageMove.fileId,
+          physicalFileName: revisionStorageMove.physicalFileName,
+          storageKey: revisionStorageMove.storageKey,
+        });
+        await documentRepository.updateRevisionStoragePath(connection, {
+          revisionId: document.activeRevisionId,
+          storagePathLegacy: revisionStorageMove.storageKey,
+        });
+        await storageService.move(revisionStorageMove.fromStorageKey, revisionStorageMove.storageKey);
+        storageMoved = true;
+      }
+      await documentRepository.insertDocumentHistory(connection, {
+        id: createEntityId('DTH'),
         projectId: document.projectId,
         documentId: document.id,
-        revisionId: document.activeRevisionId,
-        workflowAction: action,
-        workflowComment: workflowComment.comment,
+        workflowEvent: workflowEventByAction[action] || `${action} Completed`,
+        activity: action,
+        workflowStatus: nextStatus,
+        revisionLabel: nextRevision,
+        lifecycleStatus: document.lifecycle,
+        reason,
         createdByUserId: actorUserId,
         createdByNameSnapshot: actorUserFullName || null,
         createdByOfficialRoleSnapshot: actorOfficialRole || actorMembership.officialRole,
       });
+      if (workflowComment) {
+        await documentRepository.insertWorkflowComment(connection, {
+          id: workflowComment.id || createEntityId('WFC'),
+          projectId: document.projectId,
+          documentId: document.id,
+          revisionId: document.activeRevisionId,
+          workflowAction: action,
+          workflowComment: workflowComment.comment,
+          createdByUserId: actorUserId,
+          createdByNameSnapshot: actorUserFullName || null,
+          createdByOfficialRoleSnapshot: actorOfficialRole || actorMembership.officialRole,
+        });
+      }
+      if (workflowAttachment) {
+        await documentRepository.insertStoredFile(connection, {
+          fileId: workflowAttachment.fileId,
+          projectId: document.projectId,
+          documentId: document.id,
+          originalFileName: workflowAttachment.originalFileName,
+          physicalFileName: workflowAttachment.physicalFileName,
+          extension: workflowAttachment.extension,
+          mimeType: workflowAttachment.mimeType,
+          fileSize: workflowAttachment.fileSize,
+          storageKey: workflowAttachment.storageKey,
+          relativePath: workflowAttachment.storageKey,
+          fileCategory: workflowAttachment.fileCategory,
+          checksum: workflowAttachment.checksum || null,
+          uploadedByUserId: actorUserId,
+          isActive: true,
+        });
+        await fileAccessRepository.insertWorkflowAttachment(connection, {
+          attachmentId: workflowAttachment.attachmentId,
+          commentId: workflowComment.id,
+          projectId: document.projectId,
+          documentId: document.id,
+          fileId: workflowAttachment.fileId,
+          uploadedByUserId: actorUserId,
+        });
+      }
+      if (transactionHook) {
+        await transactionHook(connection);
+      }
+    });
+  } catch (error) {
+    if (storageMoved && revisionStorageMove) {
+      await storageService.move(revisionStorageMove.storageKey, revisionStorageMove.fromStorageKey).catch(() => {});
     }
-    if (workflowAttachment) {
-      await documentRepository.insertStoredFile(connection, {
-        fileId: workflowAttachment.fileId,
-        projectId: document.projectId,
-        documentId: document.id,
-        originalFileName: workflowAttachment.originalFileName,
-        physicalFileName: workflowAttachment.physicalFileName,
-        extension: workflowAttachment.extension,
-        mimeType: workflowAttachment.mimeType,
-        fileSize: workflowAttachment.fileSize,
-        storageKey: workflowAttachment.storageKey,
-        relativePath: workflowAttachment.storageKey,
-        fileCategory: workflowAttachment.fileCategory,
-        checksum: workflowAttachment.checksum || null,
-        uploadedByUserId: actorUserId,
-        isActive: true,
-      });
-      await fileAccessRepository.insertWorkflowAttachment(connection, {
-        attachmentId: workflowAttachment.attachmentId,
-        commentId: workflowComment.id,
-        projectId: document.projectId,
-        documentId: document.id,
-        fileId: workflowAttachment.fileId,
-        uploadedByUserId: actorUserId,
-      });
-    }
-  });
+    throw error;
+  }
 
   return documentRepository.findDocumentRegisterById(document.id);
 };

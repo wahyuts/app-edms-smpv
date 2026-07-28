@@ -524,7 +524,7 @@ Attributes:
 | Evidence | Backend temporary upload pipeline and Storage Strategy temporary upload rules. |
 | Primary Key | `id` |
 | Key Strategy | Backend creates `TMP-*` row id and stable `temporary_file_id`. |
-| Lifecycle | Created after temporary file write; retained until consumed or expired cleanup; `consumed_at` marks document finalization. |
+| Lifecycle | Created after temporary file write; retained until consumed or expired cleanup; runtime consumption deletes the temporary record after successful promotion to permanent storage. `consumed_at` remains a compatibility column for historical retention strategies. |
 
 Attributes:
 
@@ -1429,3 +1429,30 @@ Seed implementation is allowed only in the backend implementation phase and must
 - Role-permission mapping.
 
 Seed must not include operational demo projects, documents, revisions, workflow comments, notifications, audit trails, SLA records, escalation records, or file records.
+
+## 15.11 Stored File Storage Key Rule
+
+`stored_files.storage_key` and `stored_files.relative_path` store normalized relative storage keys.
+
+Canonical revision file key:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/revisions/{REVISION}/{PHYSICAL_FILE_NAME}
+```
+
+Physical filename:
+
+```text
+{DOCUMENT_NUMBER}_{REVISION}_{SUBMIT_DATE_YYYYMMDD}_{SHORT_FILE_ID}_{SANITIZED_ORIGINAL_FILE_NAME}
+```
+
+Database relationships continue to use internal identifiers (`project_id`, `document_id`, `revision_id`, `file_id`). Physical project directory uses `projects.project_code`.
+
+Workflow attachment key:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/process-comments/{ATTACHMENT_FILE_NAME}
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/project-comments/{ATTACHMENT_FILE_NAME}
+```
+
+`original_file_name` remains the download/display filename.

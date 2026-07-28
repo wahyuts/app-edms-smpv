@@ -1,4 +1,3 @@
-const path = require('node:path');
 const {
   DOCUMENT_RESPONSIBLE_ROLE,
   DOCUMENT_REVISION_LABEL,
@@ -10,10 +9,13 @@ const projectMembershipRepository = require('../repositories/projectMembership.r
 const auditService = require('./audit.service');
 const notificationService = require('./notification.service');
 const storageService = require('./storage.service');
+const uploadService = require('./upload.service');
 const workflowEngine = require('./workflowEngine.service');
 const { createEntityId, createHttpError } = require('../utils/administration');
-const { sanitizeFileName } = require('../utils/fileName');
-const { validateUploadedFile } = require('../validators/upload.validator');
+const {
+  buildCanonicalPhysicalFileName,
+  buildRevisionStorageKey,
+} = require('../utils/storageKeyBuilder');
 
 const uploadRevisionTransitionMatrix = Object.freeze({
   [DOCUMENT_WORKFLOW_STATUS.PROCESS_COMMENT]: DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW,
@@ -21,24 +23,6 @@ const uploadRevisionTransitionMatrix = Object.freeze({
   [DOCUMENT_WORKFLOW_STATUS.PROJECT_COMMENT]: DOCUMENT_WORKFLOW_STATUS.PROJECT_REVIEW,
   [DOCUMENT_WORKFLOW_STATUS.PROJECT_REJECT]: DOCUMENT_WORKFLOW_STATUS.PROJECT_REVIEW,
 });
-
-const toStorageSafeSegment = (value) => {
-  const sanitized = sanitizeFileName(value)
-    .replace(/\s+/g, '_')
-    .replace(/[^A-Za-z0-9._-]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '');
-
-  return sanitized || 'file';
-};
-
-const buildRevisionPhysicalFileName = ({ documentNumber, fileId, originalFileName, revisionLabel }) => {
-  const extension = path.extname(originalFileName);
-  const baseName = path.basename(originalFileName, extension);
-  const shortFileId = fileId.split('-')[1]?.slice(0, 8) || fileId.slice(0, 8);
-
-  return toStorageSafeSegment(`${documentNumber}_${revisionLabel}_${shortFileId}_${baseName}${extension}`);
-};
 
 const assertActorCanUploadRevision = async ({ document, userId }) => {
   const membership = await projectMembershipRepository.findActiveMembershipByProjectAndUser({
@@ -57,8 +41,11 @@ const assertActorCanUploadRevision = async ({ document, userId }) => {
   return membership;
 };
 
-const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserId, documentId, file }) => {
-  const validatedFile = validateUploadedFile(file);
+const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserId, documentId, temporaryFileId }) => {
+  const temporaryMetadata = await uploadService.assertTemporaryUploadConsumable({
+    actorUserId,
+    temporaryFileId,
+  });
   const document = await documentRepository.findDocumentRegisterById(documentId);
 
   if (!document) {
@@ -89,19 +76,23 @@ const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserI
   const revisionLabel = nextStatus === DOCUMENT_WORKFLOW_STATUS.PROJECT_REVIEW
     ? DOCUMENT_REVISION_LABEL.IFA_SUBMITTED
     : DOCUMENT_REVISION_LABEL.IFR_SUBMITTED;
-  const physicalFileName = buildRevisionPhysicalFileName({
+  const submittedAt = new Date();
+  const physicalFileName = buildCanonicalPhysicalFileName({
     documentNumber: document.documentNumber,
     fileId,
-    originalFileName: validatedFile.originalFileName,
+    originalFileName: temporaryMetadata.originalFileName,
+    revisionLabel,
+    submittedAt,
+  });
+  const storageKey = buildRevisionStorageKey({
+    documentNumber: document.documentNumber,
+    physicalFileName,
+    projectCode: document.projectCode,
     revisionLabel,
   });
-  const storageKey = `projects/${document.projectId}/documents/${document.id}/revisions/${revisionId}/${physicalFileName}`;
-  let storageWritten = false;
+  let finalized = false;
 
   try {
-    await storageService.put(storageKey, validatedFile.buffer);
-    storageWritten = true;
-
     await documentRepository.runInTransaction(async (connection) => {
       await documentRepository.deactivateDocumentRevisions(connection, document.id);
       await documentRepository.deactivateDocumentRevisionFiles(connection, document.id);
@@ -109,15 +100,15 @@ const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserI
         fileId,
         projectId: document.projectId,
         documentId: document.id,
-        originalFileName: validatedFile.originalFileName,
+        originalFileName: temporaryMetadata.originalFileName,
         physicalFileName,
-        extension: validatedFile.extension,
-        mimeType: validatedFile.mimeType,
-        fileSize: validatedFile.fileSize,
+        extension: temporaryMetadata.extension,
+        mimeType: temporaryMetadata.mimeType,
+        fileSize: temporaryMetadata.fileSize,
         storageKey,
         relativePath: storageKey,
         fileCategory: STORED_FILE_CATEGORY.REVISION_FILE,
-        checksum: null,
+        checksum: temporaryMetadata.checksum || null,
         uploadedByUserId: actorUserId,
         isActive: true,
       });
@@ -164,9 +155,18 @@ const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserI
         createdByNameSnapshot: actorUserFullName || null,
         createdByOfficialRoleSnapshot: actorOfficialRole || DOCUMENT_RESPONSIBLE_ROLE.DOCUMENT_OWNER,
       });
+
+      const consumedRows = await uploadService.consumeTemporaryUploadMetadata(connection, temporaryFileId);
+      if (consumedRows !== 1) {
+        throw createHttpError('Temporary upload tidak ditemukan atau sudah digunakan', 409, [
+          { field: 'temporaryFileId', message: 'Temporary upload tidak ditemukan atau sudah digunakan' },
+        ]);
+      }
+      await storageService.finalize(temporaryMetadata.storageKey, storageKey);
+      finalized = true;
     });
   } catch (error) {
-    if (storageWritten) {
+    if (finalized) {
       await storageService.delete(storageKey).catch(() => {});
     }
     throw error;

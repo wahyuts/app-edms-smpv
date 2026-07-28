@@ -2155,6 +2155,7 @@ Status contract:
 - `lifecycle` hanya menggunakan `Active` dan `Archived`.
 - `slaStatus` hanya menggunakan `On Track`, `At Risk`, `Overdue`, dan `Final As-Built`.
 - `Done` tidak boleh menjadi API value atau enum database; `Done` hanya display wording.
+- Project-scoped permission pada authenticated response mengikuti Active Project Official Role, sedangkan permission global mengikuti system RBAC role pada user.
 
 Collection endpoint tetap wajib mendukung struktur pagination, filtering, dan sorting standar pada PART 5 dan PART 8 dokumen ini.
 
@@ -2183,18 +2184,18 @@ Candidate route dari audit atau dokumen historis yang berbeda dari dokumen ini d
 | `GET /api/v1/dashboard/statistics` | active project query/context | chart/statistics data | active project membership | `dashboard.view` | Read only | None |
 | `GET /api/v1/dashboard/recent-activities` | pagination/filter | recent activities | active project membership | `dashboard.view` | Read only | None |
 | `GET /api/v1/documents` | pagination, filter, sorting, project, search | document collection | project ownership | `document-register.view` | Read only | None |
-| `POST /api/v1/documents` | document metadata, file | document, revision, file metadata | form rules, file rules, active project | `document-register.create` | Create Document | Audit, notification |
+| `POST /api/v1/documents` | document metadata, `temporaryFileId` | document, revision, file metadata | form rules, temporary file rules, active project | `document-register.create` | Create Document | Audit, notification |
 | `GET /api/v1/documents/{id}` | document id | document detail | project ownership | `document-register.view` | Read only | None |
 | `PATCH /api/v1/documents/{id}` | editable metadata | updated document | editable state, project ownership | `document-register.edit` | Edit Document | History, audit |
 | `PATCH /api/v1/documents/{id}/archive` | archive reason optional | archived document | Approved, Active lifecycle, Active project, Admin | `document-register.archive` + Admin | Archive | History, audit |
 | `PATCH /api/v1/documents/{id}/restore` | restore reason optional | restored document | Archived lifecycle, Active project, Admin | `document-register.archive` + Admin | Restore | History, audit |
-| `POST /api/v1/documents/{id}/revisions` | file, revision metadata | updated document and revision | Comment/Reject status, file rules, active project | `document-register.edit` | Upload Revision | History, audit, notification, SLA cycle update |
+| `POST /api/v1/documents/{id}/revisions` | `temporaryFileId` | updated document and revision | Comment/Reject status, temporary file rules, active project | `document-register.edit` | Upload Revision | History, audit, notification, SLA cycle update |
 | `GET /api/v1/documents/{id}/history` | document id | history collection | project ownership | `document-register.view` | Read only | None |
 | `GET /api/v1/documents/{id}/comments` | document id | workflow comment collection | project ownership | `document-register.view` | Read only | Comment read receipt may update only through explicit read flow if implemented |
 | `GET /api/v1/documents/{id}/download` | document id or active file | file response | project ownership, file metadata valid | `document-register.download` | Read only | Audit download if enabled |
 | `POST /api/v1/documents/{id}/approve` | optional comment/attachment | updated document | Approval A status/role rule | `approval.a` | Approval | History, audit, notification |
-| `POST /api/v1/documents/{id}/approve-with-comment` | mandatory comment, optional attachment | updated document/comment | Approval B status/role/comment rule | `approval.b` | Approval | Comment, optional attachment, history, audit, notification |
-| `POST /api/v1/documents/{id}/reject` | optional comment/attachment | updated document/comment | Approval C status/role rule | `approval.c` | Approval | Comment if provided, optional attachment, history, audit, notification |
+| `POST /api/v1/documents/{id}/approve-with-comment` | mandatory comment, optional attachment `temporaryFileId` | updated document/comment | Approval B status/role/comment rule | `approval.b` | Approval | Comment, optional attachment, history, audit, notification |
+| `POST /api/v1/documents/{id}/reject` | optional comment, optional attachment `temporaryFileId` | updated document/comment | Approval C status/role rule | `approval.c` | Approval | Comment if provided, optional attachment, history, audit, notification |
 | `GET /api/v1/notifications` | pagination/filter/project | notification collection | recipient is current user | `notifications.view` | Read only | None |
 | `PATCH /api/v1/notifications/{id}/read` | notification id | updated notification | recipient ownership | `notifications.view` | Notification read | Audit optional |
 | `PATCH /api/v1/notifications/read-all` | project optional | updated count | recipient ownership | `notifications.view` | Notification read all | Audit optional |
@@ -2202,9 +2203,93 @@ Candidate route dari audit atau dokumen historis yang berbeda dari dokumen ini d
 | `DELETE /api/v1/notifications/{id}` | notification id | success | recipient ownership | `notifications.view` | User Inbox hard delete | Audit Trail remains system evidence |
 | `GET /api/v1/sla` | pagination/filter/project | SLA list/summary | active project membership | `sla-monitoring.view` | Read only | None |
 | `GET /api/v1/escalations` | pagination/filter/project | escalation list | active project membership | `escalation.view` | Read only | None |
-| `GET /api/v1/audit-trails` | pagination/filter/project | audit collection | project access | `audit-trail.view` | Read only | None |
+| `GET /api/v1/audit-trails` | pagination/filter/project (`projectId`, `page`, `pageSize`, `search`, `action`, `actorName`, `officialRole`, `resourceType`, `fromDate`, `toDate`, `sortBy`, `direction`) | audit collection | project access | `audit-trail.view` | Read only | None |
 | `PATCH /api/v1/audit-trails/{id}/hide` | audit id | success | Admin, audit visible | `audit-trail.view` + Admin | Audit soft hide | Audit hide record optional |
 | `GET /api/v1/storage` | pagination/filter/project | storage metadata collection | project access | `storage.view` | Read only | None |
+
+### Dashboard Summary Response
+
+`GET /api/v1/dashboard/summary` mengembalikan data runtime project aktif:
+
+- `kpiSummary`
+  - `totalDocuments`
+  - `processReview`
+  - `processComment`
+  - `processReject`
+  - `projectReview`
+  - `projectComment`
+  - `projectReject`
+  - `approved`
+  - `archived`
+  - `finalAsBuilt`
+- `slaSummary`
+- `escalationSummary`
+- `currentAssigneeSummary`
+
+### Unified Temporary Upload Contract
+
+Seluruh file yang dipilih user tetapi masih menunggu aksi Save atau Submit wajib melewati temporary upload terlebih dahulu.
+
+Runtime flow:
+
+1. Frontend mengirim file ke `POST /api/v1/storage/temporary-uploads` menggunakan `multipart/form-data`.
+2. Backend mengembalikan `temporaryFileId`.
+3. Frontend mengirim aksi final menggunakan JSON dan `temporaryFileId`.
+4. Backend memvalidasi temporary upload masih tersedia, belum expired, belum digunakan, dan dibuat oleh user yang sama.
+5. Backend membuat metadata permanen, memindahkan file dari `storage/temporary` ke `storage/projects`, lalu menghapus record temporary upload dalam transaksi bisnis.
+
+Endpoint final berikut tidak menerima raw multipart file:
+
+| Endpoint | Request Body |
+|---|---|
+| `POST /api/v1/documents` | metadata document + `temporaryFileId` |
+| `POST /api/v1/documents/{id}/revisions` | `temporaryFileId` |
+| `POST /api/v1/documents/{id}/approve-with-comment` | `comment`, optional `temporaryFileId` |
+| `POST /api/v1/documents/{id}/reject` | optional `comment`, optional `temporaryFileId` |
+| `POST /api/v1/documents/{id}/workflow-attachments` | `commentId`, `temporaryFileId` |
+
+Reuse `temporaryFileId`, penggunaan oleh user berbeda, file temporary yang sudah expired, atau storage temporary yang hilang wajib ditolak dan tidak boleh membuat permanent metadata.
+
+### Canonical Storage Contract
+
+Backend adalah satu-satunya authority untuk physical storage path. Frontend tidak mengirim dan tidak menghitung storage path.
+
+Project identity tetap menggunakan `projects.id` untuk API identity, permission, project membership, dan foreign key database. Physical project directory menggunakan `projects.project_code`.
+
+Canonical storage key:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/revisions/{REVISION}/{PHYSICAL_FILE_NAME}
+```
+
+Canonical revision vocabulary:
+
+```text
+IFR-Submitted
+IFA-Submitted
+AS-Built
+```
+
+Revision berbeda dari Workflow Status. Contoh: revision `IFR-Submitted` dapat berada pada Workflow Status `Process Review`, `Process Comment`, atau `Process Reject`.
+
+Physical filename:
+
+```text
+{DOCUMENT_NUMBER}_{REVISION}_{SUBMIT_DATE_YYYYMMDD}_{SHORT_FILE_ID}_{SANITIZED_ORIGINAL_FILE_NAME}
+```
+
+`SUBMIT_DATE_YYYYMMDD` berasal dari timestamp backend pada saat Upload Document atau Upload Revision diproses. `SHORT_FILE_ID` berasal dari identity `stored_files.file_id`.
+
+`stored_files.storage_key` dan `stored_files.relative_path` wajib menyimpan normalized relative path, bukan absolute path, agar kompatibel dengan local storage, NAS, dan Object Storage/R2.
+
+User-facing download filename tetap berasal dari `stored_files.original_file_name` melalui `Content-Disposition`; physical filename tidak menjadi nama file download.
+
+Workflow attachment bukan document revision dan disimpan terpisah:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/process-comments/{ATTACHMENT_FILE_NAME}
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/project-comments/{ATTACHMENT_FILE_NAME}
+```
 
 ### Bulk Delete Notification
 

@@ -1,4 +1,3 @@
-const path = require('node:path');
 const {
   DOCUMENT_WORKFLOW_ACTION,
   STORED_FILE_CATEGORY,
@@ -7,10 +6,13 @@ const documentRepository = require('../repositories/document.repository');
 const auditService = require('./audit.service');
 const notificationService = require('./notification.service');
 const storageService = require('./storage.service');
+const uploadService = require('./upload.service');
 const workflowEngine = require('./workflowEngine.service');
 const { createEntityId, createHttpError } = require('../utils/administration');
-const { sanitizeFileName } = require('../utils/fileName');
-const { validateUploadedFile } = require('../validators/upload.validator');
+const {
+  buildAttachmentPhysicalFileName,
+  buildAttachmentStorageKey,
+} = require('../utils/storageKeyBuilder');
 
 const approvalConfig = Object.freeze({
   approve: Object.freeze({
@@ -30,35 +32,13 @@ const approvalConfig = Object.freeze({
   }),
 });
 
-const toStorageSafeSegment = (value) => {
-  const sanitized = sanitizeFileName(value)
-    .replace(/\s+/g, '_')
-    .replace(/[^A-Za-z0-9._-]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '');
-
-  return sanitized || 'file';
-};
-
-const buildAttachmentPhysicalFileName = ({ attachmentId, originalFileName }) => {
-  const extension = path.extname(originalFileName);
-  const baseName = path.basename(originalFileName, extension);
-  const shortAttachmentId = attachmentId.split('-')[1]?.slice(0, 8) || attachmentId.slice(0, 8);
-
-  return toStorageSafeSegment(`${shortAttachmentId}_${baseName}${extension}`);
-};
-
-const buildAttachmentStorageKey = ({ attachmentId, documentId, physicalFileName, projectId }) => {
-  return `projects/${projectId}/documents/${documentId}/workflow-attachments/${attachmentId}/${physicalFileName}`;
-};
-
 const processApproval = async ({
   actorOfficialRole,
   actorUserFullName,
   actorUserId,
   comment = '',
   documentId,
-  file = null,
+  temporaryFileId = null,
   type,
 }) => {
   const config = approvalConfig[type];
@@ -68,6 +48,10 @@ const processApproval = async ({
   }
 
   const document = await documentRepository.findDocumentRegisterById(documentId);
+  if (!document) {
+    throw createHttpError('Document Tidak Ditemukan', 404);
+  }
+
   const reason = comment || config.defaultReason;
   const shouldCreateWorkflowComment = [
     DOCUMENT_WORKFLOW_ACTION.APPROVAL_B,
@@ -80,43 +64,45 @@ const processApproval = async ({
       }
     : null;
   let workflowAttachment = null;
-  let storageWritten = false;
+  let finalized = false;
+  let temporaryMetadata = null;
 
-  if (file) {
+  if (temporaryFileId) {
     if (!workflowComment) {
       throw createHttpError('Workflow Attachment hanya tersedia untuk Approval B/C', 422, [
-        { field: 'file', message: 'Workflow Attachment hanya tersedia untuk Approval B/C' },
+        { field: 'temporaryFileId', message: 'Workflow Attachment hanya tersedia untuk Approval B/C' },
       ]);
     }
 
-    const validatedFile = validateUploadedFile(file);
+    temporaryMetadata = await uploadService.assertTemporaryUploadConsumable({
+      actorUserId,
+      temporaryFileId,
+    });
     const attachmentId = createEntityId('WFA');
     const fileId = createEntityId('FILE');
     const physicalFileName = buildAttachmentPhysicalFileName({
       attachmentId,
-      originalFileName: validatedFile.originalFileName,
+      originalFileName: temporaryMetadata.originalFileName,
     });
     const storageKey = buildAttachmentStorageKey({
-      attachmentId,
-      documentId: document.id,
+      documentNumber: document.documentNumber,
       physicalFileName,
-      projectId: document.projectId,
+      projectCode: document.projectCode,
+      workflowStatus: document.status,
     });
 
     workflowAttachment = {
       attachmentId,
-      checksum: null,
-      extension: validatedFile.extension,
+      checksum: temporaryMetadata.checksum || null,
+      extension: temporaryMetadata.extension,
       fileCategory: STORED_FILE_CATEGORY.WORKFLOW_ATTACHMENT,
       fileId,
-      fileSize: validatedFile.fileSize,
-      mimeType: validatedFile.mimeType,
-      originalFileName: validatedFile.originalFileName,
+      fileSize: temporaryMetadata.fileSize,
+      mimeType: temporaryMetadata.mimeType,
+      originalFileName: temporaryMetadata.originalFileName,
       physicalFileName,
       storageKey,
     };
-    await storageService.put(storageKey, validatedFile.buffer);
-    storageWritten = true;
   }
 
   let updatedDocument;
@@ -129,11 +115,21 @@ const processApproval = async ({
       actorUserId,
       document,
       reason,
+      transactionHook: temporaryFileId ? async (connection) => {
+        const consumedRows = await uploadService.consumeTemporaryUploadMetadata(connection, temporaryFileId);
+        if (consumedRows !== 1) {
+          throw createHttpError('Temporary upload tidak ditemukan atau sudah digunakan', 409, [
+            { field: 'temporaryFileId', message: 'Temporary upload tidak ditemukan atau sudah digunakan' },
+          ]);
+        }
+        await storageService.finalize(temporaryMetadata.storageKey, workflowAttachment.storageKey);
+        finalized = true;
+      } : null,
       workflowAttachment,
       workflowComment,
     });
   } catch (error) {
-    if (storageWritten && workflowAttachment?.storageKey) {
+    if (finalized && workflowAttachment?.storageKey) {
       await storageService.delete(workflowAttachment.storageKey).catch(() => {});
     }
     throw error;

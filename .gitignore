@@ -39,3 +39,6 @@ Thumbs.db
 
 # Runtime Logs
 logs/
+
+# Codex temporary/test artifacts
+tmp/

@@ -514,3 +514,20 @@ Keputusan Product Owner berikut menjadi baseline resmi Core Business Source of T
 - Current Assignee hanya digunakan untuk monitoring, Dashboard, SLA, Escalation, dan Notification Display.
 - Current Product Scope terbaru menggantikan module inventory lama yang bertentangan.
 
+---
+
+# STORAGE ARCHITECTURE ALIGNMENT DECISION
+
+Keputusan sebelum Manual UAT:
+
+- `projects.id` tetap menjadi identity database, foreign key, permission, membership, dan API relation.
+- `projects.project_code` menjadi physical project directory untuk permanent storage.
+- Permanent revision file disimpan di `projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/revisions/{REVISION}/`.
+- Canonical revision directory memakai `IFR-Submitted`, `IFA-Submitted`, dan `AS-Built`.
+- Revision tidak boleh dicampur dengan Workflow Status.
+- Physical filename memakai `{DOCUMENT_NUMBER}_{REVISION}_{SUBMIT_DATE_YYYYMMDD}_{SHORT_FILE_ID}_{SANITIZED_ORIGINAL_FILE_NAME}`.
+- Download filename tetap memakai `original_file_name`.
+- Workflow attachment disimpan di `attachments/process-comments/` atau `attachments/project-comments/`, bukan di `revisions/`.
+- `stored_files.storage_key` harus berupa relative key yang portable untuk local storage, NAS, dan Object Storage/R2.
+- Development storage sedang bersih saat keputusan ini diterapkan, sehingga tidak diperlukan migration historical file.
+

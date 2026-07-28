@@ -3,7 +3,6 @@ const documentController = require('../controllers/document.controller');
 const authenticate = require('../middlewares/authenticate');
 const { authorizeAnyPermission } = require('../middlewares/authorizePermissions');
 const { DOCUMENT_PERMISSION } = require('../constants/document.constants');
-const uploadMiddleware = require('../middlewares/upload.middleware');
 
 const router = express.Router();
 
@@ -22,19 +21,16 @@ router.post(
 router.post(
   '/:documentId/approve-with-comment',
   authorizeAnyPermission(DOCUMENT_PERMISSION.APPROVAL_B),
-  uploadMiddleware,
   documentController.approveDocumentWithComment
 );
 router.post(
   '/:documentId/reject',
   authorizeAnyPermission(DOCUMENT_PERMISSION.APPROVAL_C),
-  uploadMiddleware,
   documentController.rejectDocument
 );
 router.post(
   '/:documentId/revisions',
   authorizeAnyPermission(DOCUMENT_PERMISSION.EDIT),
-  uploadMiddleware,
   documentController.uploadRevision
 );
 router.get('/:documentId/revisions', authorizeAnyPermission(DOCUMENT_PERMISSION.VIEW), documentController.listDocumentRevisions);
@@ -55,13 +51,17 @@ router.get(
 );
 router.post(
   '/:documentId/workflow-attachments',
-  authorizeAnyPermission('storage.view'),
-  uploadMiddleware,
+  authorizeAnyPermission(
+    'storage.view',
+    DOCUMENT_PERMISSION.EDIT,
+    DOCUMENT_PERMISSION.APPROVAL_B,
+    DOCUMENT_PERMISSION.APPROVAL_C
+  ),
   documentController.uploadWorkflowAttachment
 );
 router.get(
   '/:documentId/workflow-attachments/:attachmentId/download',
-  authorizeAnyPermission('storage.view'),
+  authorizeAnyPermission('storage.view', DOCUMENT_PERMISSION.VIEW, DOCUMENT_PERMISSION.DOWNLOAD),
   documentController.downloadWorkflowAttachment
 );
 

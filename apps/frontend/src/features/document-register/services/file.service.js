@@ -47,6 +47,34 @@ const formatFileSize = (fileSize) => {
   return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+const getHeaderValue = (headers = {}, headerName) => {
+  if (typeof headers.get === "function") {
+    return headers.get(headerName);
+  }
+
+  const normalizedHeaderName = headerName.toLowerCase();
+  return Object.entries(headers).find(
+    ([key]) => key.toLowerCase() === normalizedHeaderName,
+  )?.[1];
+};
+
+const parseContentDispositionFileName = (contentDisposition = "") => {
+  const encodedMatch = String(contentDisposition).match(/filename\*=UTF-8''([^;]+)/i);
+  if (encodedMatch?.[1]) {
+    try {
+      return decodeURIComponent(encodedMatch[1]);
+    } catch {
+      return encodedMatch[1];
+    }
+  }
+
+  const quotedMatch = String(contentDisposition).match(/filename="([^"]+)"/i);
+  if (quotedMatch?.[1]) return quotedMatch[1];
+
+  const plainMatch = String(contentDisposition).match(/filename=([^;]+)/i);
+  return plainMatch?.[1]?.trim() ?? "";
+};
+
 const createFileId = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return `FILE-${crypto.randomUUID()}`;
@@ -252,6 +280,67 @@ const getDocumentPreview = async (documentItem) => {
   }
 };
 
+const createPreviewFromBlob = async ({ blob, documentItem, headers = {} } = {}) => {
+  const metadata = documentItem?.fileMetadata ?? {};
+  const contentType = getHeaderValue(headers, "content-type") ?? blob?.type ?? metadata.mimeType;
+  const headerFileName = parseContentDispositionFileName(
+    getHeaderValue(headers, "content-disposition"),
+  );
+  const originalFileName = headerFileName || metadata.originalFileName || documentItem?.documentNumber || "document";
+  const fileExtension = getFileExtension(originalFileName || metadata.fileName || "");
+  const file = blob instanceof File
+    ? blob
+    : new File([blob], originalFileName, { type: contentType || metadata.mimeType || blob?.type });
+  const documentFile = {
+    file,
+    metadata: {
+      ...metadata,
+      fileExtension: metadata.fileExtension ?? fileExtension,
+      fileName: metadata.fileName ?? originalFileName,
+      fileSize: metadata.fileSize ?? file.size,
+      fileSizeDisplay: metadata.fileSizeDisplay ?? formatFileSize(file.size),
+      mimeType: contentType ?? metadata.mimeType ?? file.type,
+      originalFileName,
+    },
+    previewHtml: null,
+    previewMessages: [],
+    storagePath: null,
+  };
+  const normalizedExtension = documentFile.metadata.fileExtension.toLowerCase();
+
+  if (normalizedExtension !== "docx") {
+    return {
+      ...documentFile,
+      viewerType: ["jpg", "jpeg", "png"].includes(normalizedExtension)
+        ? "image"
+        : normalizedExtension === "pdf"
+          ? "pdf"
+          : "fallback",
+    };
+  }
+
+  try {
+    const mammothModule = await import("mammoth");
+    const mammothConverter = mammothModule.default ?? mammothModule;
+    const result = await mammothConverter.convertToHtml({
+      arrayBuffer: await file.arrayBuffer(),
+    });
+
+    return {
+      ...documentFile,
+      previewHtml: sanitizeDocxHtml(result.value),
+      previewMessages: result.messages ?? [],
+      viewerType: "docx",
+    };
+  } catch (error) {
+    return {
+      ...documentFile,
+      previewError: error instanceof Error ? error.message : "DOCX preview failed.",
+      viewerType: "fallback",
+    };
+  }
+};
+
 const prepareFileReplacement = async ({ documentId, file, revisionId, uploadedBy } = {}) => {
   return uploadDocumentFile({
     documentId,
@@ -352,10 +441,38 @@ const downloadDocumentFile = async (documentItem) => {
   return documentFile.metadata;
 };
 
+const downloadBlobResponse = async ({ blob, documentItem, headers = {} } = {}) => {
+  const metadata = documentItem?.fileMetadata ?? {};
+  const originalFileName =
+    parseContentDispositionFileName(getHeaderValue(headers, "content-disposition")) ||
+    metadata.originalFileName ||
+    documentItem?.documentNumber ||
+    "document";
+  const objectUrl = window.URL.createObjectURL(blob);
+  const downloadLink = document.createElement("a");
+
+  try {
+    downloadLink.href = objectUrl;
+    downloadLink.download = originalFileName;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+  } finally {
+    downloadLink.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 0);
+  }
+
+  return {
+    ...metadata,
+    originalFileName,
+  };
+};
+
 export const FileService = {
+  createPreviewFromBlob,
   createFileMetadata,
   deleteDocumentFiles,
   downloadDocumentFile,
+  downloadBlobResponse,
   finalizeFileReplacement,
   getDocumentFile,
   getDocumentPreview,

@@ -774,6 +774,36 @@ const updateRevisionLabel = async (connection, { revisionId, revisionLabel }) =>
   );
 };
 
+const updateRevisionStoragePath = async (connection, { revisionId, storagePathLegacy }) => {
+  if (!revisionId) return;
+
+  await connection.execute(
+    `
+      UPDATE document_revisions
+      SET storage_path_legacy = ?
+      WHERE id = ?
+    `,
+    [storagePathLegacy, revisionId]
+  );
+};
+
+const updateStoredFileStorageMetadata = async (connection, {
+  fileId,
+  physicalFileName,
+  storageKey,
+}) => {
+  await connection.execute(
+    `
+      UPDATE stored_files
+      SET physical_file_name = ?,
+          storage_key = ?,
+          relative_path = ?
+      WHERE file_id = ?
+    `,
+    [physicalFileName, storageKey, storageKey, fileId]
+  );
+};
+
 const getNextRevisionSequence = async (documentId) => {
   const [rows] = await pool.execute(
     `
@@ -946,5 +976,7 @@ module.exports = {
   updateDocumentMetadata,
   updateDocumentWorkflowState,
   updateRevisionLabel,
+  updateRevisionStoragePath,
+  updateStoredFileStorageMetadata,
   updateDocumentActivePointers,
 };

@@ -1,4 +1,3 @@
-const path = require('node:path');
 const {
   DOCUMENT_DRAWINGS,
   DOCUMENT_LIFECYCLE_STATUS,
@@ -24,29 +23,10 @@ const {
   normalizeText,
   parseListQuery,
 } = require('../utils/administration');
-const { sanitizeFileName } = require('../utils/fileName');
-
-const toStorageSafeSegment = (value) => {
-  const sanitized = sanitizeFileName(value)
-    .replace(/\s+/g, '_')
-    .replace(/[^A-Za-z0-9._-]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '');
-
-  return sanitized || 'file';
-};
-
-const buildPermanentPhysicalFileName = ({ documentNumber, fileId, originalFileName, revisionLabel }) => {
-  const extension = path.extname(originalFileName);
-  const baseName = path.basename(originalFileName, extension);
-  const shortFileId = fileId.split('-')[1]?.slice(0, 8) || fileId.slice(0, 8);
-
-  return toStorageSafeSegment(`${documentNumber}_${revisionLabel}_${shortFileId}_${baseName}${extension}`);
-};
-
-const buildPermanentStorageKey = ({ documentId, physicalFileName, projectId, revisionId }) => {
-  return `projects/${projectId}/documents/${documentId}/revisions/${revisionId}/${physicalFileName}`;
-};
+const {
+  buildCanonicalPhysicalFileName,
+  buildRevisionStorageKey,
+} = require('../utils/storageKeyBuilder');
 
 const parseDocumentRegisterQuery = (query = {}) => {
   const lifecycle = normalizeText(query.lifecycle);
@@ -81,23 +61,9 @@ const parseDocumentRegisterQuery = (query = {}) => {
   };
 };
 
-const assertTemporaryUploadAvailable = async (temporaryFileId) => {
-  const temporaryMetadata = await uploadService.getTemporaryUploadMetadata(temporaryFileId);
-
-  if (!temporaryMetadata) {
-    throw createHttpError(DOCUMENT_MESSAGES.TEMPORARY_NOT_FOUND, 404, [
-      { field: 'temporaryFileId', message: DOCUMENT_MESSAGES.TEMPORARY_NOT_FOUND },
-    ]);
-  }
-
-  if (!(await storageService.exists(temporaryMetadata.storageKey))) {
-    throw createHttpError('Temporary upload file tidak ditemukan di storage', 409, [
-      { field: 'temporaryFileId', message: 'Temporary upload file tidak ditemukan di storage' },
-    ]);
-  }
-
-  return temporaryMetadata;
-};
+const assertTemporaryUploadAvailable = async ({ actorUserId, temporaryFileId }) => (
+  uploadService.assertTemporaryUploadConsumable({ actorUserId, temporaryFileId })
+);
 
 const resolveProjectId = ({ activeProject, payload }) => {
   return payload.projectId || activeProject?.id || null;
@@ -175,30 +141,35 @@ const resolveRequiredCurrentAssignee = async ({ projectId, responsibleRole }) =>
 
 const createDocument = async ({ activeProject, actorOfficialRole, actorUserFullName, actorUserId, payload }) => {
   const projectId = resolveProjectId({ activeProject, payload });
-  await assertActiveProject(projectId);
+  const project = await assertActiveProject(projectId);
   await assertDocumentNumberUnique({ documentNumber: payload.documentNumber, projectId });
   const initialAssignee = await resolveRequiredCurrentAssignee({
     projectId,
     responsibleRole: DOCUMENT_RESPONSIBLE_ROLE.TEAM_PROCESS,
   });
 
-  const temporaryMetadata = await assertTemporaryUploadAvailable(payload.temporaryFileId);
+  const temporaryMetadata = await assertTemporaryUploadAvailable({
+    actorUserId,
+    temporaryFileId: payload.temporaryFileId,
+  });
   const documentType = await documentRepository.findDocumentTypeByDrawing(payload.drawing);
   const documentId = createEntityId(payload.drawing === 'PFD' ? 'DOC-PFD' : 'DOC-PID');
   const revisionId = createEntityId('REV');
   const fileId = createEntityId('FILE');
   const revisionLabel = DOCUMENT_REVISION_LABEL.IFR_SUBMITTED;
-  const physicalFileName = buildPermanentPhysicalFileName({
+  const submittedAt = new Date();
+  const physicalFileName = buildCanonicalPhysicalFileName({
     documentNumber: payload.documentNumber,
     fileId,
     originalFileName: temporaryMetadata.originalFileName,
     revisionLabel,
+    submittedAt,
   });
-  const permanentStorageKey = buildPermanentStorageKey({
-    documentId,
+  const permanentStorageKey = buildRevisionStorageKey({
+    documentNumber: payload.documentNumber,
     physicalFileName,
-    projectId,
-    revisionId,
+    projectCode: project.projectCode,
+    revisionLabel,
   });
 
   let finalized = false;
@@ -289,7 +260,7 @@ const createDocument = async ({ activeProject, actorOfficialRole, actorUserFullN
     throw duplicateError || error;
   }
 
-  const createdDocument = await documentRepository.findDocumentFoundationById(documentId);
+  const createdDocument = await documentRepository.findDocumentRegisterById(documentId);
   await notificationService.createDocumentNotification({
     document: {
       ...createdDocument,

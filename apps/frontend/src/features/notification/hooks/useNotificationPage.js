@@ -221,7 +221,7 @@ export const useNotificationPage = ({ onError } = {}) => {
     eventTypeFilter,
     eventTypeOptions: NOTIFICATION_EVENT_OPTIONS,
     isBulkDeletePending: deleteSelectedMutation.isPending,
-    isError: notificationsQuery.isError,
+    isError: notificationsQuery.isError || summaryQuery.isError,
     isLoading: notificationsQuery.isLoading || summaryQuery.isLoading,
     isMarkSelectedAsReadPending: markSelectedAsReadMutation.isPending,
     isMarkAllAsReadPending: markAllAsReadMutation.isPending,

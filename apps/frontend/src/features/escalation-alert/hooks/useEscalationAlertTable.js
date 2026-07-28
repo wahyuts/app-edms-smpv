@@ -8,8 +8,7 @@ import { EscalationService } from "../services/escalation.service";
 
 const DEFAULT_PAGE_SIZE = 5;
 const DEFAULT_SORT_BY = "escalationLevel";
-const SLA_REFRESH_INTERVAL_MS = 60 * 1000;
-const FULL_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const RUNTIME_REFRESH_INTERVAL_MS = 60 * 1000;
 
 const escalationLevelRank = {
   "Level 1": 1,
@@ -19,9 +18,6 @@ const escalationLevelRank = {
 };
 
 const normalizeSearchValue = (value) => String(value ?? "").trim().toLowerCase();
-
-const recalculateEscalation = (escalationItem) =>
-  EscalationService.createEscalationItem(escalationItem);
 
 const getUniqueOptions = (items, fieldName) =>
   [...new Set(items.map((item) => item[fieldName]))].filter(Boolean).sort();
@@ -204,19 +200,12 @@ export const useEscalationAlertTable = ({ directSearchValue = "" } = {}) => {
   }, [activeProjectId, refreshKey]);
 
   useEffect(() => {
-    const slaTimerIntervalId = window.setInterval(() => {
-      setSourceEscalations((currentEscalations) =>
-        currentEscalations.map(recalculateEscalation).filter(Boolean),
-      );
-    }, SLA_REFRESH_INTERVAL_MS);
-
-    const fullRefreshIntervalId = window.setInterval(() => {
+    const runtimeRefreshIntervalId = window.setInterval(() => {
       setRefreshKey((currentKey) => currentKey + 1);
-    }, FULL_REFRESH_INTERVAL_MS);
+    }, RUNTIME_REFRESH_INTERVAL_MS);
 
     return () => {
-      window.clearInterval(slaTimerIntervalId);
-      window.clearInterval(fullRefreshIntervalId);
+      window.clearInterval(runtimeRefreshIntervalId);
     };
   }, []);
 

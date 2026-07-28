@@ -17,6 +17,10 @@ const hasZipSignature = (buffer) => {
   return buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && [0x03, 0x05, 0x07].includes(buffer[2]);
 };
 
+const hasOleCompoundSignature = (buffer) => {
+  return buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
+};
+
 const hasExpectedSignature = (extension, buffer) => {
   if (extension === '.pdf') {
     return hasPdfSignature(buffer);
@@ -32,6 +36,10 @@ const hasExpectedSignature = (extension, buffer) => {
 
   if (extension === '.docx' || extension === '.xlsx') {
     return hasZipSignature(buffer);
+  }
+
+  if (extension === '.xls') {
+    return hasOleCompoundSignature(buffer);
   }
 
   return false;

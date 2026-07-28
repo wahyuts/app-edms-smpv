@@ -23893,6 +23893,7 @@ Selama penyusunan PRD ini digunakan asumsi berikut:
 - Transmittal disediakan sebagai Placeholder Module tanpa fungsi operasional.
 - Workflow Comment dapat berisi komentar teks dan/atau satu Workflow Attachment sesuai aturan Approval B dan Approval C pada BUSINESS-WORKFLOW.md.
 - Workflow Attachment merupakan file pendukung hasil review dan bukan Document Revision, Active Engineering Document, maupun Upload Revision.
+- File yang dipilih user untuk Create Document, Upload Revision, Workflow Comment Attachment, Approval B attachment, atau Approval C attachment diproses melalui temporary upload terlebih dahulu; permanent storage hanya dibuat setelah aksi Save atau Submit berhasil.
 - Seluruh Navigation, Layout, dan Business Workflow mengikuti Source of Truth yang telah ditetapkan pada dokumen referensi.
 
 ---
@@ -24149,4 +24150,18 @@ Module placeholder resmi:
 - Delete Document operasional deprecated dan diganti Archive/Restore.
 - Role Management dan Permission Management sebagai route terpisah deprecated pada runtime saat ini; administrasi yang aktif adalah User, Department, Project, dan Project Membership Management.
 - Backend REST API, SQL schema, dan NAS/Object Storage merupakan target architecture, bukan runtime yang sudah berjalan.
+
+## Storage Architecture Runtime Rule
+
+Manual UAT baseline menggunakan backend sebagai authority untuk permanent storage path.
+
+- Physical project directory menggunakan `projects.project_code`, bukan `projects.id`.
+- Database relation tetap memakai internal id: `project_id`, `document_id`, `revision_id`, dan `file_id`.
+- Document file disimpan berdasarkan `DOCUMENT_NUMBER`.
+- Revision file disimpan berdasarkan canonical revision label: `IFR-Submitted`, `IFA-Submitted`, `AS-Built`.
+- Revision berbeda dari Workflow Status.
+- Physical filename menggunakan backend submit date dan stable short id dari file identity.
+- Download filename tetap menggunakan original filename yang diunggah user.
+- Workflow attachment dipisahkan dari document revision dan disimpan di folder attachment komentar process/project.
+- Temporary upload tetap menjadi satu-satunya pipeline file sebelum promotion permanen.
 

@@ -73,11 +73,39 @@ const getTemporaryUploadMetadata = async (temporaryFileId) => {
   return temporaryUploadRepository.findAvailableTemporaryUploadByTemporaryFileId(temporaryFileId);
 };
 
+const assertTemporaryUploadConsumable = async ({ actorUserId, temporaryFileId }) => {
+  const temporaryMetadata = await getTemporaryUploadMetadata(temporaryFileId);
+
+  if (!temporaryMetadata) {
+    const error = new Error('Temporary upload tidak ditemukan atau sudah digunakan');
+    error.statusCode = 404;
+    error.errors = [{ field: 'temporaryFileId', message: 'Temporary upload tidak ditemukan atau sudah digunakan' }];
+    throw error;
+  }
+
+  if (temporaryMetadata.createdByUserId !== actorUserId) {
+    const error = new Error('Temporary upload tidak dapat digunakan oleh user ini');
+    error.statusCode = 403;
+    error.errors = [{ field: 'temporaryFileId', message: 'Temporary upload tidak dapat digunakan oleh user ini' }];
+    throw error;
+  }
+
+  if (!(await storageService.exists(temporaryMetadata.storageKey))) {
+    const error = new Error('Temporary upload file tidak ditemukan di storage');
+    error.statusCode = 409;
+    error.errors = [{ field: 'temporaryFileId', message: 'Temporary upload file tidak ditemukan di storage' }];
+    throw error;
+  }
+
+  return temporaryMetadata;
+};
+
 const consumeTemporaryUploadMetadata = async (connection, temporaryFileId) => {
-  return temporaryUploadRepository.markTemporaryUploadConsumed(connection, { temporaryFileId });
+  return temporaryUploadRepository.deleteAvailableTemporaryUpload(connection, { temporaryFileId });
 };
 
 module.exports = {
+  assertTemporaryUploadConsumable,
   consumeTemporaryUploadMetadata,
   getTemporaryUploadMetadata,
   uploadTemporaryFile,

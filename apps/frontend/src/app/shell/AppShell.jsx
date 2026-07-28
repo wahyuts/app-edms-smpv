@@ -17,9 +17,7 @@ const COLLAPSED_FLYOUT_VIEWPORT_MARGIN = 12;
 const COLLAPSED_FLYOUT_WIDTH = 192;
 
 const getInitialSidebarCollapsed = () => {
-  if (typeof window === "undefined") return false;
-
-  return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  return false;
 };
 
 const AppShell = ({ children }) => {

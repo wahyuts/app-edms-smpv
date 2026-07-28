@@ -365,6 +365,42 @@ APPROVED
 
 ---
 
+## DDD-019A — Unified Temporary Upload Pipeline
+
+`temporary_uploads` menjadi registry teknis untuk file yang sudah dipilih user tetapi belum disubmit sebagai business data.
+
+Keputusan:
+
+- Create Document, Upload Revision, Workflow Comment Attachment, Approval B attachment, dan Approval C attachment menggunakan `temporary_file_id` sebagai handoff final submit.
+- Endpoint final tidak menerima raw multipart file.
+- Record temporary upload bersifat single-use dan dihapus dalam transaksi bisnis setelah file dipromosikan ke storage permanen.
+- Validasi wajib memastikan temporary upload belum expired, belum digunakan, dibuat oleh user yang sama, dan physical temporary file masih tersedia.
+- Cancel atau abandoned upload tidak menghasilkan record permanen dan hanya boleh dibersihkan melalui cleanup temporary yang aman.
+
+Status:
+
+APPROVED
+
+---
+
+## DDD-019B — Active Project Effective Permission
+
+Runtime authorization membedakan global RBAC role dan project-scoped Official Role.
+
+Keputusan:
+
+- `users.role_id` tetap digunakan sebagai system RBAC role untuk permission global.
+- `project_memberships.official_role` pada Active Project digunakan untuk menyelesaikan permission project-scoped.
+- Effective permission yang dikirim backend adalah gabungan permission global dari `users.role_id` dan permission project-scoped dari Active Project Official Role.
+- Resolver tidak boleh mengambil Official Role dari `users.position` dan tidak boleh menjadikan Document Owner sebagai Admin.
+- Service layer tetap wajib memvalidasi membership, project scope, responsible role, dan temporary upload ownership.
+
+Status:
+
+APPROVED
+
+---
+
 # 9. Seed Strategy
 
 ## DDD-019 — schema.sql
@@ -517,3 +553,29 @@ APPROVED
 DATABASE ENGINEERING
 
 AUTHORIZED TO GENERATE SCHEMA.SQL
+
+---
+
+# 13. Storage Metadata Identity Decision
+
+Storage metadata tidak mengubah relational identity database.
+
+- Foreign key tetap memakai `project_id`, `document_id`, `revision_id`, dan `file_id`.
+- Physical project directory memakai `projects.project_code`.
+- `stored_files.storage_key` menyimpan canonical relative key.
+- `stored_files.original_file_name` tetap menjadi user-facing filename saat download.
+- `stored_files.physical_file_name` memakai format canonical dengan document number, revision, submit date, short file id, dan sanitized original filename.
+- Workflow attachment disimpan sebagai file category `Workflow Attachment` dan tidak menjadi revision file.
+
+Canonical storage key:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/revisions/{REVISION}/{PHYSICAL_FILE_NAME}
+```
+
+Workflow attachment key:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/process-comments/{ATTACHMENT_FILE_NAME}
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/project-comments/{ATTACHMENT_FILE_NAME}
+```

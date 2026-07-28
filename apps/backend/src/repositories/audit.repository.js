@@ -1,5 +1,37 @@
 const { pool } = require('../config/database');
 
+const sensitiveMetadataKeys = [
+  'apiKey',
+  'authorization',
+  'cookie',
+  'credential',
+  'jwt',
+  'password',
+  'passwordHash',
+  'refreshToken',
+  'resetToken',
+  'secret',
+  'token',
+];
+
+const isSensitiveKey = (key = '') => {
+  const normalizedKey = String(key).toLowerCase();
+  return sensitiveMetadataKeys.some((sensitiveKey) =>
+    normalizedKey.includes(sensitiveKey.toLowerCase())
+  );
+};
+
+const sanitizeMetadata = (value) => {
+  if (Array.isArray(value)) return value.map(sanitizeMetadata);
+  if (!value || typeof value !== 'object') return value;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !isSensitiveKey(key))
+      .map(([key, nestedValue]) => [key, sanitizeMetadata(nestedValue)])
+  );
+};
+
 const mapAuditRow = (row) => row && ({
   id: row.id,
   identityKey: row.identity_key,
@@ -14,7 +46,7 @@ const mapAuditRow = (row) => row && ({
   resourceType: row.resource_type,
   resourceId: row.resource_id,
   reference: row.reference,
-  metadata: row.metadata ? JSON.parse(row.metadata) : {},
+  metadata: row.metadata ? sanitizeMetadata(JSON.parse(row.metadata)) : {},
   occurredAt: row.occurred_at,
   createdAt: row.occurred_at,
   timestamp: row.occurred_at,
@@ -48,7 +80,7 @@ const insertAuditRecord = async (record) => {
       record.resourceType,
       record.resourceId,
       record.reference,
-      JSON.stringify(record.metadata || {}),
+      JSON.stringify(sanitizeMetadata(record.metadata || {})),
     ]
   );
 };

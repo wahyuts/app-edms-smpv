@@ -3,12 +3,9 @@ import {
   SLA_STATUS,
 } from "@/features/document-register/constants/document.constants";
 import { DocumentService } from "@/features/document-register/services/document.service";
+import { mapDocumentRecord } from "@/features/document-register/services/document-api.service";
 import { SlaEngineService } from "@/features/sla-management/services/sla-engine.service";
-import {
-  AUDIT_RESOURCE_TYPE,
-  AUDIT_TRAIL_ACTION,
-  AuditTrailService,
-} from "@/features/audit-trail";
+import { apiClient } from "@/shared/api";
 
 const HOUR_MINUTES = 60;
 const DAY_MINUTES = 24 * HOUR_MINUTES;
@@ -81,30 +78,21 @@ const createEscalationItem = (document, now) => {
 };
 
 const getEscalations = async ({ documents, now } = {}) => {
+  if (!documents) {
+    const response = await apiClient.get("/v1/escalations");
+    return (response.data?.data?.data ?? []).map(mapDocumentRecord).map((item) => ({
+      ...item,
+      currentStatus: item.currentStatus ?? item.status,
+      daysOverdue: Number(item.daysOverdue ?? 0),
+      escalationLevel: item.escalationLevel ?? null,
+      overdueDuration: item.overdueDuration ?? "-",
+    }));
+  }
+
   const sourceDocuments = documents ?? await DocumentService.getDocuments();
   const escalationItems = sourceDocuments
     .map((document) => createEscalationItem(document, now))
     .filter(Boolean);
-
-  await Promise.all(
-    escalationItems.map((document) =>
-      AuditTrailService.recordActivitySafely({
-        action: AUDIT_TRAIL_ACTION.ESCALATION_CREATED,
-        identityKey: [
-          AUDIT_TRAIL_ACTION.ESCALATION_CREATED,
-          document.id,
-          document.slaStartedAt ?? document.lastUpdated ?? document.createdDate,
-        ].join(":"),
-        metadata: {
-          escalationLevel: document.escalationLevel,
-          slaStatus: document.slaStatus,
-        },
-        projectId: document.projectId,
-        reference: document.documentNumber,
-        resourceId: document.id,
-        resourceType: AUDIT_RESOURCE_TYPE.ESCALATION,
-      })),
-  );
 
   return cloneValue(escalationItems);
 };

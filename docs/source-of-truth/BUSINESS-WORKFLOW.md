@@ -985,6 +985,8 @@ Attachment digunakan untuk membantu menjelaskan hasil review, misalnya berupa PD
 
 Workflow Attachment merupakan bagian dari Workflow Comment dan bukan merupakan Document Revision, Active Document, maupun Upload Revision. Oleh karena itu, Attachment tidak mengubah Document Number, Revision History, maupun Workflow dokumen.
 
+Workflow Attachment yang dipilih user wajib masuk ke temporary upload terlebih dahulu. Attachment baru menjadi data permanen setelah Approval B, Approval C, atau submit Workflow Attachment berhasil diproses backend menggunakan `temporaryFileId`.
+
 Seluruh Workflow Comment beserta Attachment dapat dilihat kembali melalui Comment Viewer sebagai referensi bagi Document Owner selama proses revisi dokumen.
 
 ---
@@ -1994,6 +1996,7 @@ Workflow Processing Engine:
 - Tidak mengubah Document Number.
 - Menambahkan Revision History.
 - Menjadikan Attachment terbaru sebagai Active Version.
+- Menggunakan `temporaryFileId` dari temporary upload sebagai input file saat Save/Submit; frontend tidak mengirim raw file langsung ke endpoint Upload Revision final.
 
 Upload Revision dapat dijalankan oleh:
 

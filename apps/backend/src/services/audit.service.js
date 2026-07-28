@@ -78,6 +78,14 @@ const recordActivity = async ({
   });
 };
 
+const parseDateOrNull = (value) => {
+  const normalizedValue = normalizeText(value);
+  if (!normalizedValue) return null;
+
+  const parsedDate = new Date(normalizedValue);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+};
+
 const recordActivitySafely = async (payload) => {
   try {
     await recordActivity(payload);
@@ -114,6 +122,20 @@ const listAuditRecords = async ({ activeProject, query = {}, userId }) => {
     const value = normalizeText(query[fieldName]);
     if (value) records = records.filter((record) => record[fieldName] === value);
   });
+  const actorName = normalizeText(query.actorName).toLowerCase();
+  if (actorName) {
+    records = records.filter((record) =>
+      normalizeText(record.actorName).toLowerCase() === actorName
+    );
+  }
+  const fromDate = parseDateOrNull(query.fromDate);
+  const toDate = parseDateOrNull(query.toDate);
+  if (fromDate) {
+    records = records.filter((record) => new Date(record.createdAt) >= fromDate);
+  }
+  if (toDate) {
+    records = records.filter((record) => new Date(record.createdAt) <= toDate);
+  }
 
   records.sort((first, second) => {
     const firstValue = first[listQuery.sortBy] ?? first.createdAt;

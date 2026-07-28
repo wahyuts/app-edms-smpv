@@ -63,7 +63,7 @@ const ensureDocumentStorageDirectories = async (projectCode, documentCode) => {
   const safeProjectCode = validateProjectCode(projectCode);
   const safeDocumentCode = validateDocumentCode(documentCode);
   const revisionDirectoryPath = `${STORAGE_DIRECTORIES.PROJECTS}/${safeProjectCode}/${STORAGE_DIRECTORIES.DOCUMENTS}/${safeDocumentCode}/${STORAGE_DIRECTORIES.REVISIONS}`;
-  const workflowAttachmentDirectoryPath = `${STORAGE_DIRECTORIES.PROJECTS}/${safeProjectCode}/${STORAGE_DIRECTORIES.DOCUMENTS}/${safeDocumentCode}/${STORAGE_DIRECTORIES.WORKFLOW_ATTACHMENTS}`;
+  const workflowAttachmentDirectoryPath = `${STORAGE_DIRECTORIES.PROJECTS}/${safeProjectCode}/${STORAGE_DIRECTORIES.DOCUMENTS}/${safeDocumentCode}/${STORAGE_DIRECTORIES.ATTACHMENTS}`;
 
   logger.log('[STORAGE] Document storage directories ensured');
 

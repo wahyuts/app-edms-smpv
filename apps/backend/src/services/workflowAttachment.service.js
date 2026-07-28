@@ -1,36 +1,16 @@
-const path = require('node:path');
 const logger = require('../config/logger');
 const { STORED_FILE_CATEGORY } = require('../constants/document.constants');
 const documentRepository = require('../repositories/document.repository');
 const fileAccessRepository = require('../repositories/fileAccess.repository');
 const auditService = require('./audit.service');
 const storageService = require('./storage.service');
+const uploadService = require('./upload.service');
 const { assertProjectAccess } = require('./fileAccess.service');
 const { createEntityId, createHttpError } = require('../utils/administration');
-const { sanitizeFileName } = require('../utils/fileName');
-const { validateUploadedFile } = require('../validators/upload.validator');
-
-const toStorageSafeSegment = (value) => {
-  const sanitized = sanitizeFileName(value)
-    .replace(/\s+/g, '_')
-    .replace(/[^A-Za-z0-9._-]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '');
-
-  return sanitized || 'file';
-};
-
-const buildAttachmentPhysicalFileName = ({ attachmentId, originalFileName }) => {
-  const extension = path.extname(originalFileName);
-  const baseName = path.basename(originalFileName, extension);
-  const shortAttachmentId = attachmentId.split('-')[1]?.slice(0, 8) || attachmentId.slice(0, 8);
-
-  return toStorageSafeSegment(`${shortAttachmentId}_${baseName}${extension}`);
-};
-
-const buildAttachmentStorageKey = ({ attachmentId, documentId, physicalFileName, projectId }) => {
-  return `projects/${projectId}/documents/${documentId}/workflow-attachments/${attachmentId}/${physicalFileName}`;
-};
+const {
+  buildAttachmentPhysicalFileName,
+  buildAttachmentStorageKey,
+} = require('../utils/storageKeyBuilder');
 
 const getAttachmentDownload = async ({ attachmentId, documentId, userId }) => {
   const attachment = await fileAccessRepository.findWorkflowAttachmentById({ attachmentId, documentId });
@@ -56,9 +36,9 @@ const getAttachmentDownload = async ({ attachmentId, documentId, userId }) => {
   };
 };
 
-const uploadWorkflowAttachment = async ({ actorUserId, documentId, file, payload }) => {
-  const validatedFile = validateUploadedFile(file);
+const uploadWorkflowAttachment = async ({ actorUserId, documentId, payload }) => {
   const commentId = String(payload.commentId || '').trim();
+  const temporaryFileId = String(payload.temporaryFileId || '').trim();
 
   if (!commentId) {
     throw createHttpError('Workflow Comment Wajib Diisi', 422, [
@@ -66,6 +46,16 @@ const uploadWorkflowAttachment = async ({ actorUserId, documentId, file, payload
     ]);
   }
 
+  if (!temporaryFileId) {
+    throw createHttpError('Temporary File Wajib Diisi', 422, [
+      { field: 'temporaryFileId', message: 'Temporary File Wajib Diisi' },
+    ]);
+  }
+
+  const temporaryMetadata = await uploadService.assertTemporaryUploadConsumable({
+    actorUserId,
+    temporaryFileId,
+  });
   const documentFile = await fileAccessRepository.findActiveDocumentFile(documentId);
   if (!documentFile?.document) {
     throw createHttpError('Document Tidak Ditemukan', 404);
@@ -85,35 +75,32 @@ const uploadWorkflowAttachment = async ({ actorUserId, documentId, file, payload
   const fileId = createEntityId('FILE');
   const physicalFileName = buildAttachmentPhysicalFileName({
     attachmentId,
-    originalFileName: validatedFile.originalFileName,
+    originalFileName: temporaryMetadata.originalFileName,
   });
   const storageKey = buildAttachmentStorageKey({
-    attachmentId,
-    documentId,
+    documentNumber: documentFile.document.documentNumber,
     physicalFileName,
-    projectId: documentFile.document.projectId,
+    projectCode: documentFile.document.projectCode,
+    workflowStatus: documentFile.document.workflowStatus,
   });
 
-  let storageWritten = false;
+  let finalized = false;
 
   try {
-    await storageService.put(storageKey, validatedFile.buffer);
-    storageWritten = true;
-
     await documentRepository.runInTransaction(async (connection) => {
       await documentRepository.insertStoredFile(connection, {
         fileId,
         projectId: documentFile.document.projectId,
         documentId,
-        originalFileName: validatedFile.originalFileName,
+        originalFileName: temporaryMetadata.originalFileName,
         physicalFileName,
-        extension: validatedFile.extension,
-        mimeType: validatedFile.mimeType,
-        fileSize: validatedFile.fileSize,
+        extension: temporaryMetadata.extension,
+        mimeType: temporaryMetadata.mimeType,
+        fileSize: temporaryMetadata.fileSize,
         storageKey,
         relativePath: storageKey,
         fileCategory: STORED_FILE_CATEGORY.WORKFLOW_ATTACHMENT,
-        checksum: null,
+        checksum: temporaryMetadata.checksum || null,
         uploadedByUserId: actorUserId,
         isActive: true,
       });
@@ -125,9 +112,17 @@ const uploadWorkflowAttachment = async ({ actorUserId, documentId, file, payload
         fileId,
         uploadedByUserId: actorUserId,
       });
+      const consumedRows = await uploadService.consumeTemporaryUploadMetadata(connection, temporaryFileId);
+      if (consumedRows !== 1) {
+        throw createHttpError('Temporary upload tidak ditemukan atau sudah digunakan', 409, [
+          { field: 'temporaryFileId', message: 'Temporary upload tidak ditemukan atau sudah digunakan' },
+        ]);
+      }
+      await storageService.finalize(temporaryMetadata.storageKey, storageKey);
+      finalized = true;
     });
   } catch (error) {
-    if (storageWritten) {
+    if (finalized) {
       await storageService.delete(storageKey).catch((cleanupError) => {
         logger.error('[ATTACHMENT] Compensating cleanup failed');
         logger.error(cleanupError.code || cleanupError.name || 'AttachmentCleanupError');
@@ -151,7 +146,7 @@ const uploadWorkflowAttachment = async ({ actorUserId, documentId, file, payload
     actorUserId,
     identityKey: ['Workflow Attachment', documentFile.document.projectId, documentId, attachmentId].join(':'),
     metadata: {
-      attachmentName: validatedFile.originalFileName,
+      attachmentName: temporaryMetadata.originalFileName,
       commentId,
     },
     projectId: documentFile.document.projectId,

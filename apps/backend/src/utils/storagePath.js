@@ -56,7 +56,7 @@ const getRevisionDirectoryPath = (projectCode, documentCode) => {
 
 const getWorkflowAttachmentDirectoryPath = (projectCode, documentCode) => {
   return ensurePathInsideStorage(
-    path.join(getDocumentPath(projectCode, documentCode), STORAGE_DIRECTORIES.WORKFLOW_ATTACHMENTS)
+    path.join(getDocumentPath(projectCode, documentCode), STORAGE_DIRECTORIES.ATTACHMENTS)
   );
 };
 

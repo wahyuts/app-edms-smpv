@@ -22,6 +22,7 @@ const mapDocumentFileRow = (row) => row && ({
   document: {
     id: row.document_id,
     projectId: row.document_project_id,
+    projectCode: row.project_code,
     documentNumber: row.document_number,
     activeRevisionId: row.active_revision_id,
     activeFileId: row.active_file_id,
@@ -66,6 +67,7 @@ const findActiveDocumentFile = async (documentId) => {
       SELECT
         documents.id AS document_id,
         documents.project_id AS document_project_id,
+        projects.project_code,
         documents.document_number,
         documents.active_revision_id,
         documents.active_file_id,
@@ -80,6 +82,7 @@ const findActiveDocumentFile = async (documentId) => {
         revisions.is_active AS revision_is_active,
         stored_files.*
       FROM engineering_documents documents
+      INNER JOIN projects ON projects.id = documents.project_id
       LEFT JOIN document_revisions revisions ON revisions.id = documents.active_revision_id
       LEFT JOIN stored_files ON stored_files.file_id = documents.active_file_id
       WHERE documents.id = ?
@@ -97,6 +100,7 @@ const findRevisionDocumentFile = async ({ documentId, revisionId }) => {
       SELECT
         documents.id AS document_id,
         documents.project_id AS document_project_id,
+        projects.project_code,
         documents.document_number,
         documents.active_revision_id,
         documents.active_file_id,
@@ -112,6 +116,7 @@ const findRevisionDocumentFile = async ({ documentId, revisionId }) => {
         stored_files.*
       FROM document_revisions revisions
       INNER JOIN engineering_documents documents ON documents.id = revisions.document_id
+      INNER JOIN projects ON projects.id = documents.project_id
       INNER JOIN stored_files ON stored_files.file_id = revisions.file_id
       WHERE revisions.id = ?
         AND revisions.document_id = ?

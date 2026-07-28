@@ -95,8 +95,50 @@ const validateArchivePayload = (body = {}) => ({
   },
 });
 
+const validateTemporaryFilePayload = (body = {}) => {
+  const temporaryFileId = normalizeText(body.temporaryFileId);
+  const errors = [];
+
+  if (!temporaryFileId) {
+    errors.push({ field: 'temporaryFileId', message: 'Temporary File Wajib Diisi' });
+  }
+
+  return {
+    errors,
+    isValid: errors.length === 0,
+    value: {
+      temporaryFileId,
+    },
+  };
+};
+
+const validateWorkflowAttachmentPayload = (body = {}) => {
+  const commentId = normalizeText(body.commentId);
+  const temporaryFileId = normalizeText(body.temporaryFileId);
+  const errors = [];
+
+  if (!commentId) {
+    errors.push({ field: 'commentId', message: 'Workflow Comment Wajib Diisi' });
+  }
+
+  if (!temporaryFileId) {
+    errors.push({ field: 'temporaryFileId', message: 'Temporary File Wajib Diisi' });
+  }
+
+  return {
+    errors,
+    isValid: errors.length === 0,
+    value: {
+      commentId,
+      temporaryFileId,
+    },
+  };
+};
+
 module.exports = {
   validateDocumentCreate,
   validateDocumentUpdate,
+  validateTemporaryFilePayload,
+  validateWorkflowAttachmentPayload,
   validateArchivePayload,
 };

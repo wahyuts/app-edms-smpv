@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
@@ -21,75 +22,11 @@ import {
   DOCUMENT_STATUS,
   SLA_STATUS,
 } from "@/features/document-register/constants/document.constants";
-import { DocumentService } from "@/features/document-register/services/document.service";
-import { EscalationService } from "@/features/escalation-alert/services/escalation.service";
-import { SlaMonitoringService } from "@/features/sla-monitoring/services/sla-monitoring.service";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
+import { DashboardApiService } from "../services/dashboard-api.service";
 
 const dashboardRefreshIntervalMs = 60 * 1000;
 let dashboardRightPanelCollapsed = false;
-
-const defaultSlaSummary = {
-  [SLA_STATUS.ON_TRACK]: 0,
-  [SLA_STATUS.AT_RISK]: 0,
-  [SLA_STATUS.OVERDUE]: 0,
-  [SLA_STATUS.FINAL_AS_BUILT]: 0,
-};
-
-const defaultEscalationSummary = {
-  total: 0,
-  "Level 1": 0,
-  "Level 2": 0,
-  "Level 3": 0,
-  "Level 4": 0,
-};
-
-const countByStatus = (documents, status) =>
-  documents.filter((documentItem) => documentItem.status === status).length;
-
-const createKpiSummary = (documents) => {
-  const processComment = countByStatus(documents, DOCUMENT_STATUS.PROCESS_COMMENT);
-  const processReject = countByStatus(documents, DOCUMENT_STATUS.PROCESS_REJECT);
-  const projectComment = countByStatus(documents, DOCUMENT_STATUS.PROJECT_COMMENT);
-  const projectReject = countByStatus(documents, DOCUMENT_STATUS.PROJECT_REJECT);
-
-  return {
-    totalDocuments: documents.length,
-    processReview: countByStatus(documents, DOCUMENT_STATUS.PROCESS_REVIEW),
-    processComment,
-    processCommentReject: processComment + processReject,
-    processReject,
-    projectReview: countByStatus(documents, DOCUMENT_STATUS.PROJECT_REVIEW),
-    projectComment,
-    projectCommentReject: projectComment + projectReject,
-    projectReject,
-    approved: countByStatus(documents, DOCUMENT_STATUS.APPROVED),
-  };
-};
-
-const createEscalationSummary = (escalations) =>
-  escalations.reduce(
-    (summary, escalationItem) => ({
-      ...summary,
-      total: summary.total + 1,
-      [escalationItem.escalationLevel]:
-        (summary[escalationItem.escalationLevel] ?? 0) + 1,
-    }),
-    { ...defaultEscalationSummary },
-  );
-
-const getDashboardData = async () => {
-  const documents = await DocumentService.getDocuments();
-  const slaDocuments = await SlaMonitoringService.getDocuments({ documents });
-  const escalations = await EscalationService.getEscalations({ documents });
-
-  return {
-    escalationSummary: createEscalationSummary(escalations),
-    isLoading: false,
-    kpiSummary: createKpiSummary(documents),
-    slaSummary: SlaMonitoringService.createSummary(slaDocuments),
-  };
-};
 
 const kpiCards = [
   {
@@ -159,6 +96,9 @@ const kpiCards = [
     key: "approved",
     label: "Approved / Final As-Built",
     statusFilter: DOCUMENT_STATUS.APPROVED,
+    summaryRows: [
+      { key: "finalAsBuilt", label: "Final As-Built" },
+    ],
   },
 ];
 
@@ -213,7 +153,9 @@ const escalationRows = [
   },
 ];
 
-const DashboardKpiCard = ({ card, isActive, onSelect, summary, value }) => {
+const getSummaryValue = (summary, key) => Number(summary?.[key] ?? 0);
+
+const DashboardKpiCard = ({ card, isActive, isError, isLoading, onSelect, summary, value }) => {
   const Icon = card.icon;
   const activeDescription = isActive ? "Active status filter" : "Apply status filter";
 
@@ -247,10 +189,10 @@ const DashboardKpiCard = ({ card, isActive, onSelect, summary, value }) => {
         </h2>
       </div>
       <p className="mt-4 text-center text-4xl font-extrabold text-[#F8FAFC]">
-        {value}
+        {isLoading ? "-" : value}
       </p>
       <p className="mt-2 text-center text-sm text-[#CBD5E1]">
-        {card.description}
+        {isError ? "Data gagal dimuat" : card.description}
       </p>
       {card.summaryRows ? (
         <div className="mt-3 flex items-center justify-center gap-6 text-center text-sm font-semibold text-[#CBD5E1]">
@@ -262,7 +204,7 @@ const DashboardKpiCard = ({ card, isActive, onSelect, summary, value }) => {
                   summaryRow.label === "Reject" ? "text-[#EF4444]" : ""
                 }
               >
-                {summary?.[summaryRow.key] ?? 0}
+                {isLoading ? "-" : getSummaryValue(summary, summaryRow.key)}
               </span>
             </p>
           ))}
@@ -330,55 +272,24 @@ const DashboardPage = () => {
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(
     dashboardRightPanelCollapsed,
   );
-  const [dashboardState, setDashboardState] = useState({
-    escalationSummary: defaultEscalationSummary,
-    isLoading: true,
-    kpiSummary: createKpiSummary([]),
-    slaSummary: defaultSlaSummary,
-  });
+  const queryClient = useQueryClient();
   const tableState = useDocumentRegisterTable({
     defaultPageSize: 10,
     preserveStatusFilterOnProjectChange: true,
   });
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
-
-  const loadDashboardData = useCallback(async () => {
-    setDashboardState(await getDashboardData());
-  }, []);
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadData = async () => {
-      try {
-        if (isActive) {
-          setDashboardState((currentState) => ({
-            ...currentState,
-            isLoading: true,
-          }));
-        }
-        const nextDashboardState = await getDashboardData();
-        if (isActive) {
-          setDashboardState(nextDashboardState);
-        }
-      } catch {
-        if (isActive) {
-          setDashboardState((currentState) => ({
-            ...currentState,
-            isLoading: false,
-          }));
-        }
-      }
-    };
-
-    loadData();
-    const intervalId = window.setInterval(loadData, dashboardRefreshIntervalMs);
-
-    return () => {
-      isActive = false;
-      window.clearInterval(intervalId);
-    };
-  }, [activeProjectId, loadDashboardData]);
+  const summaryQuery = useQuery({
+    enabled: Boolean(activeProjectId),
+    queryFn: DashboardApiService.getSummary,
+    queryKey: ["dashboard", "summary", activeProjectId ?? null],
+    refetchInterval: dashboardRefreshIntervalMs,
+  });
+  const dashboardSummary = summaryQuery.data ?? {};
+  const kpiSummary = dashboardSummary.kpiSummary ?? {};
+  const slaSummary = dashboardSummary.slaSummary ?? {};
+  const escalationSummary = dashboardSummary.escalationSummary ?? {};
+  const isDashboardLoading = summaryQuery.isLoading;
+  const isDashboardError = summaryQuery.isError;
 
   const setRightPanelCollapsed = (isCollapsed) => {
     dashboardRightPanelCollapsed = isCollapsed;
@@ -410,11 +321,13 @@ const DashboardPage = () => {
         {kpiCards.map((card) => (
           <DashboardKpiCard
             card={card}
+            isError={isDashboardError}
             isActive={isKpiCardActive(card.statusFilter)}
+            isLoading={isDashboardLoading}
             key={card.key}
             onSelect={() => tableState.setStatusFilter(card.statusFilter)}
-            summary={dashboardState.kpiSummary}
-            value={dashboardState.isLoading ? "-" : dashboardState.kpiSummary[card.key]}
+            summary={kpiSummary}
+            value={isDashboardError ? "-" : getSummaryValue(kpiSummary, card.key)}
           />
         ))}
       </section>
@@ -422,7 +335,9 @@ const DashboardPage = () => {
       <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0">
           <DashboardDocumentRegisterTable
-            onDataChanged={loadDashboardData}
+            onDataChanged={() => {
+              queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+            }}
             tableState={tableState}
           />
         </div>
@@ -449,7 +364,7 @@ const DashboardPage = () => {
                         {item.label}
                       </span>
                       <span className="text-2xl font-extrabold">
-                        {dashboardState.isLoading ? "-" : dashboardState.slaSummary[item.key] ?? 0}
+                        {isDashboardLoading || isDashboardError ? "-" : getSummaryValue(slaSummary, item.key)}
                       </span>
                     </div>
                   ))}
@@ -474,9 +389,7 @@ const DashboardPage = () => {
                         {item.label}
                       </span>
                       <span className={["text-lg font-extrabold", item.tone].join(" ")}>
-                        {dashboardState.isLoading
-                          ? "-"
-                          : dashboardState.escalationSummary[item.key] ?? 0}
+                        {isDashboardLoading || isDashboardError ? "-" : getSummaryValue(escalationSummary, item.key)}
                       </span>
                     </div>
                   ))}
