@@ -98,17 +98,34 @@ const validateArchivePayload = (body = {}) => ({
 const validateTemporaryFilePayload = (body = {}) => {
   const temporaryFileId = normalizeText(body.temporaryFileId);
   const errors = [];
+  const value = {
+    temporaryFileId,
+  };
 
   if (!temporaryFileId) {
     errors.push({ field: 'temporaryFileId', message: 'Temporary File Wajib Diisi' });
   }
 
+  if (Object.prototype.hasOwnProperty.call(body, 'description')) {
+    value.description = normalizeText(body.description);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'area')) {
+    value.area = normalizeText(body.area);
+    if (!value.area) {
+      errors.push({ field: 'area', message: 'Area Wajib Diisi' });
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'daysUntilValidation')) {
+    value.daysUntilValidation = toNonNegativeInteger(body.daysUntilValidation);
+    if (value.daysUntilValidation === null) {
+      errors.push({ field: 'daysUntilValidation', message: 'Days Until Validation Tidak Valid' });
+    }
+  }
+
   return {
     errors,
     isValid: errors.length === 0,
-    value: {
-      temporaryFileId,
-    },
+    value,
   };
 };
 

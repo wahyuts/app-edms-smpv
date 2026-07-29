@@ -531,3 +531,21 @@ Keputusan sebelum Manual UAT:
 - `stored_files.storage_key` harus berupa relative key yang portable untuk local storage, NAS, dan Object Storage/R2.
 - Development storage sedang bersih saat keputusan ini diterapkan, sehingga tidak diperlukan migration historical file.
 
+---
+
+# DAYS UNTIL VALIDATION SLA PATCH DECISION
+
+Keputusan sebelum Manual UAT lanjutan:
+
+- Label frontend tetap `TIMES FOR REVIEW`.
+- Business term resmi tetap `Days Until Validation`.
+- Backend field/API field tetap `daysUntilValidation`.
+- Display read-only memakai formatter `0 -> Today`, `1 -> 1 Day`, dan `N -> N Days`.
+- `daysUntilValidation = 0` adalah value valid, bukan empty value.
+- Upload Revision boleh membawa metadata optional `description`, `area`, dan `daysUntilValidation` agar revision/update cycle memakai deadline terbaru.
+- SLA evaluator membandingkan komponen hari pada SLA Timer terhadap `daysUntilValidation`.
+- `At Risk` terjadi saat `slaTimer.days` sama dengan `daysUntilValidation`.
+- `Overdue` terjadi otomatis saat `slaTimer.days` lebih besar dari `daysUntilValidation`.
+- Untuk `daysUntilValidation = 0`, seluruh timer `0d ...` berada pada `At Risk`; status berubah menjadi `Overdue` saat timer memasuki hari berikutnya.
+- Escalation Level 1 berlaku saat dokumen sudah `Overdue` dengan selisih hari minimal 1, lalu Level 2/3/4 tetap mengikuti threshold existing.
+

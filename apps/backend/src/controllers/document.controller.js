@@ -280,7 +280,7 @@ const uploadRevision = async (req, res, next) => {
         actorUserFullName: req.user.fullName,
         actorUserId: req.user.id,
         documentId: req.params.documentId,
-        temporaryFileId: validation.value.temporaryFileId,
+        payload: validation.value,
       }),
     });
   } catch (error) {

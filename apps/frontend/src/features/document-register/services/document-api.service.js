@@ -220,13 +220,23 @@ const restoreDocument = async (documentId) => {
   }
 };
 
-const uploadRevision = async (documentId, file) => {
+const uploadRevision = async (documentId, {
+  area,
+  daysUntilValidation,
+  description,
+  file,
+} = {}) => {
   try {
     const temporaryUpload = await uploadTemporaryFile(file);
 
     return unwrapDocument(await apiClient.post(
       `/v1/documents/${documentId}/revisions`,
-      { temporaryFileId: temporaryUpload.temporaryFileId },
+      {
+        area,
+        daysUntilValidation,
+        description,
+        temporaryFileId: temporaryUpload.temporaryFileId,
+      },
     ));
   } catch (error) {
     throwDocumentApiError(error, "Upload Revision gagal.");

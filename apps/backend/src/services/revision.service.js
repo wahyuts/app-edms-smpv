@@ -41,7 +41,8 @@ const assertActorCanUploadRevision = async ({ document, userId }) => {
   return membership;
 };
 
-const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserId, documentId, temporaryFileId }) => {
+const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserId, documentId, payload }) => {
+  const temporaryFileId = payload.temporaryFileId;
   const temporaryMetadata = await uploadService.assertTemporaryUploadConsumable({
     actorUserId,
     temporaryFileId,
@@ -90,10 +91,22 @@ const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserI
     projectCode: document.projectCode,
     revisionLabel,
   });
+  const nextMetadata = {
+    area: payload.area ?? document.area,
+    daysUntilValidation: payload.daysUntilValidation ?? document.daysUntilValidation,
+    description: payload.description ?? document.description,
+    documentTypeId: document.documentTypeId || null,
+    drawing: document.drawing,
+  };
   let finalized = false;
 
   try {
     await documentRepository.runInTransaction(async (connection) => {
+      await documentRepository.updateDocumentMetadata(connection, {
+        ...nextMetadata,
+        documentId: document.id,
+        updatedByUserId: actorUserId,
+      });
       await documentRepository.deactivateDocumentRevisions(connection, document.id);
       await documentRepository.deactivateDocumentRevisionFiles(connection, document.id);
       await documentRepository.insertStoredFile(connection, {

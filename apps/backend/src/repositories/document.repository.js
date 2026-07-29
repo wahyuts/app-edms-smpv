@@ -69,7 +69,11 @@ const evaluateSla = (row) => {
   const hours = Math.floor((totalMinutes % 1440) / 60);
   const minutes = totalMinutes % 60;
   const validationDays = Math.max(0, Number(row.days_until_validation) || 0);
-  const slaStatus = days < validationDays ? 'On Track' : days === validationDays ? 'At Risk' : 'Overdue';
+  const slaStatus = days < validationDays
+    ? 'On Track'
+    : days === validationDays
+      ? 'At Risk'
+      : 'Overdue';
 
   return {
     slaStatus,

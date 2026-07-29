@@ -486,7 +486,12 @@ export const DocumentActionGroup = ({
   const submitEditDocument = async (formValue) => {
     try {
       if (formValue.isUploadRevision) {
-        await DocumentApiService.uploadRevision(documentItem.id, formValue.file);
+        await DocumentApiService.uploadRevision(documentItem.id, {
+          area: formValue.area,
+          daysUntilValidation: formValue.daysUntilValidation,
+          description: formValue.description,
+          file: formValue.file,
+        });
 
         closeModal();
         await invalidateDocumentRuntimeQueries();
