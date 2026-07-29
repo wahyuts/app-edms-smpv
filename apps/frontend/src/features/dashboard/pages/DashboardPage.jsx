@@ -283,6 +283,8 @@ const DashboardPage = () => {
     queryFn: DashboardApiService.getSummary,
     queryKey: ["dashboard", "summary", activeProjectId ?? null],
     refetchInterval: dashboardRefreshIntervalMs,
+    refetchOnMount: "always",
+    staleTime: 0,
   });
   const dashboardSummary = summaryQuery.data ?? {};
   const kpiSummary = dashboardSummary.kpiSummary ?? {};

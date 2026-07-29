@@ -55,6 +55,15 @@ const modalType = {
   VIEW: "view",
 };
 
+const invalidateDocumentRuntimeQueries = async () => {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["documents"] }),
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] }),
+    queryClient.invalidateQueries({ queryKey: ["escalation"] }),
+  ]);
+};
+
 const ActionIconButton = ({ icon: Icon, label, onClick, showIndicator = false }) => {
   return (
     <button
@@ -105,7 +114,10 @@ export const DocumentActionGroup = ({
   const [comments, setComments] = useState([]);
   const [detailDocument, setDetailDocument] = useState(documentItem);
   const [documentFile, setDocumentFile] = useState(null);
-  const [hasUnreadComments, setHasUnreadComments] = useState(false);
+  const [localReadState, setLocalReadState] = useState({
+    documentId: null,
+    unreadCommentCount: 0,
+  });
   const [timeline, setTimeline] = useState([]);
   const [workflowAttachmentFile, setWorkflowAttachmentFile] = useState(null);
   const [workflowAttachmentPreview, setWorkflowAttachmentPreview] = useState(null);
@@ -118,6 +130,7 @@ export const DocumentActionGroup = ({
   const activeMembership = useProjectContextStore((state) => state.activeMembership);
   const projectRoleName = activeMembership?.officialRole;
   const isArchivedDocument = documentItem?.lifecycle === DOCUMENT_LIFECYCLE.ARCHIVED;
+
   const defaultVisibility = getDocumentActionVisibility({
     hasPermission: hasProjectPermission,
     roleName: projectRoleName,
@@ -157,6 +170,11 @@ export const DocumentActionGroup = ({
       }
     : defaultVisibility;
   const workflowVisibility = visibility;
+  const hasUnreadComments = Boolean(documentItem?.hasUnreadComments) &&
+    !(
+      localReadState.documentId === documentItem?.id &&
+      localReadState.unreadCommentCount === Number(documentItem?.unreadCommentCount ?? 0)
+    );
   const canEditDocument = hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.EDIT);
   const canArchiveDocument =
     !isDashboard &&
@@ -248,10 +266,15 @@ export const DocumentActionGroup = ({
       const documentComments =
         await DocumentApiService.getWorkflowComments(documentItem.id);
 
-      setHasUnreadComments(false);
       setComments(documentComments);
       setAttachmentErrors({});
       setActiveModal(modalType.COMMENT);
+      await DocumentApiService.markWorkflowCommentsRead(documentItem.id);
+      setLocalReadState({
+        documentId: documentItem.id,
+        unreadCommentCount: Number(documentItem?.unreadCommentCount ?? 0),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["documents"] });
     } catch (error) {
       showToast({
         message:
@@ -466,7 +489,7 @@ export const DocumentActionGroup = ({
         await DocumentApiService.uploadRevision(documentItem.id, formValue.file);
 
         closeModal();
-        await queryClient.invalidateQueries({ queryKey: ["documents"] });
+        await invalidateDocumentRuntimeQueries();
         onWorkflowComplete();
         showToast({
           message: "Upload Revision berhasil.",
@@ -482,7 +505,7 @@ export const DocumentActionGroup = ({
       });
 
       closeModal();
-      await queryClient.invalidateQueries({ queryKey: ["documents"] });
+      await invalidateDocumentRuntimeQueries();
       onWorkflowComplete();
       showToast({
         message: "Edit Document berhasil.",
@@ -505,7 +528,7 @@ export const DocumentActionGroup = ({
       });
 
       closeModal();
-      await queryClient.invalidateQueries({ queryKey: ["documents"] });
+      await invalidateDocumentRuntimeQueries();
       onWorkflowComplete();
       showToast({
         message: "Document berhasil diarsipkan.",
@@ -524,7 +547,7 @@ export const DocumentActionGroup = ({
       await DocumentApiService.restoreDocument(documentItem.id);
 
       closeModal();
-      await queryClient.invalidateQueries({ queryKey: ["documents"] });
+      await invalidateDocumentRuntimeQueries();
       onWorkflowComplete();
       showToast({
         message: "Document berhasil direstore.",
@@ -559,7 +582,7 @@ export const DocumentActionGroup = ({
       }
 
       closeModal();
-      await queryClient.invalidateQueries({ queryKey: ["documents"] });
+      await invalidateDocumentRuntimeQueries();
       onWorkflowComplete();
       showToast({
         message: `${workflowAction} berhasil diproses.`,

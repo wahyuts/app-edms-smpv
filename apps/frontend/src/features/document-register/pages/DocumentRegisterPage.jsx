@@ -17,6 +17,15 @@ import useDocumentRegisterTable from "../hooks/useDocumentRegisterTable";
 import { DocumentApiService } from "../services/document-api.service";
 import { getDrawingContextFromPathname } from "../utils/drawingContext";
 
+const invalidateDocumentRuntimeQueries = async () => {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["documents"] }),
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] }),
+    queryClient.invalidateQueries({ queryKey: ["escalation"] }),
+  ]);
+};
+
 const pageDescriptions = {
   [DRAWING_CONTEXT.PFD]:
     "Kelola seluruh Engineering Document berdasarkan Drawing PFD.",
@@ -75,7 +84,7 @@ const DocumentRegisterPage = () => {
       });
 
       setIsCreateModalOpen(false);
-      await queryClient.invalidateQueries({ queryKey: ["documents"] });
+      await invalidateDocumentRuntimeQueries();
       showToast({
         message: "Document berhasil dibuat.",
         variant: "success",

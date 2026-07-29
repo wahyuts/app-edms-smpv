@@ -763,6 +763,7 @@ Password Reset Backend Integration wajib mempertahankan generic response, secure
 | /api/v1/documents/{id}/revisions | POST | Upload Revision |
 | /api/v1/documents/{id}/history | GET | Document History |
 | /api/v1/documents/{id}/comments | GET | Comment List |
+| /api/v1/documents/{id}/comments/read | PATCH | Mark Workflow Comments Read |
 | /api/v1/documents/{id}/download | GET | Download Document |
 
 Operational Document Register tidak menyediakan permanent delete melalui UI.
@@ -2192,6 +2193,7 @@ Candidate route dari audit atau dokumen historis yang berbeda dari dokumen ini d
 | `POST /api/v1/documents/{id}/revisions` | `temporaryFileId` | updated document and revision | Comment/Reject status, temporary file rules, active project | `document-register.edit` | Upload Revision | History, audit, notification, SLA cycle update |
 | `GET /api/v1/documents/{id}/history` | document id | history collection | project ownership | `document-register.view` | Read only | None |
 | `GET /api/v1/documents/{id}/comments` | document id | workflow comment collection | project ownership | `document-register.view` | Read only | Comment read receipt may update only through explicit read flow if implemented |
+| `PATCH /api/v1/documents/{id}/comments/read` | document id | `{ documentId, markedReadCount }` | project ownership | `document-register.view` | Mark comment read | Creates missing `comment_read_receipts` for current user only |
 | `GET /api/v1/documents/{id}/download` | document id or active file | file response | project ownership, file metadata valid | `document-register.download` | Read only | Audit download if enabled |
 | `POST /api/v1/documents/{id}/approve` | optional comment/attachment | updated document | Approval A status/role rule | `approval.a` | Approval | History, audit, notification |
 | `POST /api/v1/documents/{id}/approve-with-comment` | mandatory comment, optional attachment `temporaryFileId` | updated document/comment | Approval B status/role/comment rule | `approval.b` | Approval | Comment, optional attachment, history, audit, notification |

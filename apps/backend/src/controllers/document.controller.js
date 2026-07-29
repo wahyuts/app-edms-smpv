@@ -71,6 +71,20 @@ const getWorkflowComments = async (req, res, next) => {
   }
 };
 
+const markWorkflowCommentsRead = async (req, res, next) => {
+  try {
+    return successResponse(res, {
+      message: 'Workflow Comment Berhasil Ditandai Dibaca',
+      data: await documentService.markWorkflowCommentsRead({
+        documentId: req.params.documentId,
+        userId: req.user.id,
+      }),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const listDocumentRevisions = async (req, res, next) => {
   try {
     return successResponse(res, {
@@ -328,6 +342,7 @@ module.exports = {
   getDocumentDetail,
   getDocumentHistory,
   getWorkflowComments,
+  markWorkflowCommentsRead,
   listDocumentRevisions,
   listDocuments,
   rejectDocument: processApproval('reject'),

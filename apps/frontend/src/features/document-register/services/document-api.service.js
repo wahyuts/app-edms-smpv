@@ -104,9 +104,11 @@ export const mapDocumentRecord = (document = {}) => {
     description: document.description ?? "",
     fileHistory: document.fileHistory ?? [],
     fileMetadata: activeFile,
+    hasUnreadComments: Boolean(document.hasUnreadComments),
     lastUpdated: document.lastUpdated ?? document.updatedAt ?? null,
     revision: document.revision ?? document.revisionLabel ?? null,
     status: document.status ?? document.workflowStatus ?? null,
+    unreadCommentCount: Number(document.unreadCommentCount ?? 0),
     workflowStatus: document.workflowStatus ?? document.status ?? null,
   };
 };
@@ -299,6 +301,16 @@ const getWorkflowComments = async (documentId) => {
   }
 };
 
+const markWorkflowCommentsRead = async (documentId) => {
+  try {
+    const response = await apiClient.patch(`/v1/documents/${documentId}/comments/read`);
+
+    return response.data?.data ?? {};
+  } catch (error) {
+    throwDocumentApiError(error, "Workflow Comment gagal ditandai dibaca.");
+  }
+};
+
 const getDocumentRevisions = async (documentId) => {
   try {
     return unwrapList(
@@ -389,6 +401,7 @@ export const DocumentApiService = {
   getDocuments,
   getWorkflowAttachmentPreview,
   getWorkflowComments,
+  markWorkflowCommentsRead,
   rejectDocument,
   restoreDocument,
   submitApprovalWithComment,

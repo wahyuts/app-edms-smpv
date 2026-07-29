@@ -3463,6 +3463,8 @@ Workflow Status yang digunakan dalam EDMS terdiri dari:
 - Process Comment
 - Project Review
 - Project Comment
+- Process Reject
+- Project Reject
 - Approved
 
 Setiap kali Workflow Status berubah dari satu Status aktif ke Status aktif lainnya, SLA Timer di-reset menjadi:
@@ -3491,6 +3493,22 @@ SLA Timer = 0d 0h 0m
 
 ```text
 Project Comment
+↓
+Project Review
+↓
+SLA Timer = 0d 0h 0m
+```
+
+```text
+Process Reject
+↓
+Process Review
+↓
+SLA Timer = 0d 0h 0m
+```
+
+```text
+Project Reject
 ↓
 Project Review
 ↓

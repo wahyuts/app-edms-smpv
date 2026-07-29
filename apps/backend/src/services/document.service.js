@@ -518,6 +518,7 @@ const listDocuments = async ({ activeProject, query, userId }) => {
   const result = await documentRepository.listDocumentRegister({
     ...listQuery,
     projectId,
+    userId,
   });
 
   return {
@@ -531,7 +532,7 @@ const listDocuments = async ({ activeProject, query, userId }) => {
 };
 
 const getDocumentDetail = async ({ documentId, userId }) => {
-  const document = await documentRepository.findDocumentRegisterById(documentId);
+  const document = await documentRepository.findDocumentRegisterById(documentId, { userId });
 
   if (!document) {
     throw createHttpError('Document Tidak Ditemukan', 404);
@@ -564,6 +565,20 @@ const getWorkflowComments = async ({ documentId, userId }) => {
   });
 };
 
+const markWorkflowCommentsRead = async ({ documentId, userId }) => {
+  const document = await getDocumentDetail({ documentId, userId });
+  const markedReadCount = await documentRepository.markWorkflowCommentsReadForUser({
+    documentId: document.id,
+    projectId: document.projectId,
+    userId,
+  });
+
+  return {
+    documentId: document.id,
+    markedReadCount,
+  };
+};
+
 const listDocumentRevisions = async ({ documentId, userId }) => {
   const document = await getDocumentDetail({ documentId, userId });
   const revisions = await documentRepository.listDocumentRevisions({
@@ -586,6 +601,7 @@ module.exports = {
   getWorkflowComments,
   listDocumentRevisions,
   listDocuments,
+  markWorkflowCommentsRead,
   restoreDocument,
   updateDocument,
 };

@@ -101,7 +101,7 @@ const listEscalations = async ({ activeProject, query = {}, userId }) => {
   const level = normalizeText(query.escalationLevel || query.level);
   const status = normalizeText(query.status);
   const search = normalizeText(query.search).toLowerCase();
-  let items = (await documentRepository.listProjectDocumentRegister(projectId))
+  let items = (await documentRepository.listProjectDocumentRegister(projectId, { userId }))
     .map(createEscalationItem)
     .filter(Boolean);
 

@@ -182,6 +182,8 @@ const mapDocumentRegisterRow = (row) => row && ({
   activeFileId: row.active_file_id,
   fileMetadata: mapFileMetadata(row),
   activeFile: mapFileMetadata(row),
+  hasUnreadComments: Number(row.unread_comment_count || 0) > 0,
+  unreadCommentCount: Number(row.unread_comment_count || 0),
   ...evaluateSla(row),
 });
 
@@ -307,7 +309,18 @@ const documentRegisterSelect = `
     stored_files.uploaded_by_user_id,
     stored_files.uploaded_at,
     stored_files.is_active AS file_is_active,
-    uploaded_by.full_name AS uploaded_by_name
+    uploaded_by.full_name AS uploaded_by_name,
+    (
+      SELECT COUNT(*)
+      FROM workflow_comments unread_comments
+      LEFT JOIN comment_read_receipts read_receipts
+        ON read_receipts.comment_id = unread_comments.id
+       AND read_receipts.user_id = ?
+      WHERE unread_comments.project_id = documents.project_id
+        AND unread_comments.document_id = documents.id
+        AND unread_comments.created_by_user_id <> ?
+        AND read_receipts.id IS NULL
+    ) AS unread_comment_count
   FROM engineering_documents documents
   INNER JOIN projects ON projects.id = documents.project_id
   LEFT JOIN document_types ON document_types.id = documents.document_type_id
@@ -457,6 +470,7 @@ const listDocumentRegister = async ({
   search,
   sortBy,
   status,
+  userId = 0,
 }) => {
   const where = buildRegisterWhere({
     area,
@@ -478,7 +492,7 @@ const listDocumentRegister = async ({
       ORDER BY ${sortColumn} ${order}, documents.id ASC
       LIMIT ? OFFSET ?
     `,
-    [...where.params, limit, offset]
+    [userId || 0, userId || 0, ...where.params, limit, offset]
   );
   const [countRows] = await pool.query(
     `
@@ -496,30 +510,54 @@ const listDocumentRegister = async ({
   };
 };
 
-const findDocumentRegisterById = async (documentId) => {
+const findDocumentRegisterById = async (documentId, { userId = 0 } = {}) => {
   const [rows] = await pool.execute(
     `
       ${documentRegisterSelect}
       WHERE documents.id = ?
       LIMIT 1
     `,
-    [documentId]
+    [userId || 0, userId || 0, documentId]
   );
 
   return mapDocumentRegisterRow(rows[0]);
 };
 
-const listProjectDocumentRegister = async (projectId) => {
+const listProjectDocumentRegister = async (projectId, { userId = 0 } = {}) => {
   const [rows] = await pool.execute(
     `
       ${documentRegisterSelect}
       WHERE documents.project_id = ?
       ORDER BY documents.updated_at DESC, documents.id ASC
     `,
-    [projectId]
+    [userId || 0, userId || 0, projectId]
   );
 
   return rows.map(mapDocumentRegisterRow);
+};
+
+const markWorkflowCommentsReadForUser = async ({ documentId, projectId, userId }) => {
+  const [result] = await pool.execute(
+    `
+      INSERT IGNORE INTO comment_read_receipts (
+        id, project_id, document_id, comment_id, user_id, read_at
+      )
+      SELECT
+        CONCAT(?, ':', workflow_comments.id),
+        workflow_comments.project_id,
+        workflow_comments.document_id,
+        workflow_comments.id,
+        ?,
+        UTC_TIMESTAMP(3)
+      FROM workflow_comments
+      WHERE workflow_comments.project_id = ?
+        AND workflow_comments.document_id = ?
+        AND workflow_comments.created_by_user_id <> ?
+    `,
+    [userId, userId, projectId, documentId, userId]
+  );
+
+  return Number(result.affectedRows || 0);
 };
 
 const insertDocument = async (connection, document) => {
@@ -971,6 +1009,7 @@ module.exports = {
   listDocumentRevisions,
   listProjectDocumentRegister,
   listWorkflowComments,
+  markWorkflowCommentsReadForUser,
   runInTransaction,
   updateDocumentLifecycleStatus,
   updateDocumentMetadata,

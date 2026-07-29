@@ -56,7 +56,7 @@ const resolveProjectId = async ({ activeProject, query = {}, userId }) => {
 
 const getDashboardSummary = async ({ activeProject, query = {}, userId }) => {
   const projectId = await resolveProjectId({ activeProject, query, userId });
-  const documents = await documentRepository.listProjectDocumentRegister(projectId);
+  const documents = await documentRepository.listProjectDocumentRegister(projectId, { userId });
   const escalations = documents.map(escalationService.createEscalationItem).filter(Boolean);
 
   return {
@@ -69,7 +69,7 @@ const getDashboardSummary = async ({ activeProject, query = {}, userId }) => {
 
 const getDashboardStatistics = async ({ activeProject, query = {}, userId }) => {
   const projectId = await resolveProjectId({ activeProject, query, userId });
-  const documents = await documentRepository.listProjectDocumentRegister(projectId);
+  const documents = await documentRepository.listProjectDocumentRegister(projectId, { userId });
   const byDrawing = documents.reduce((summary, document) => {
     summary[document.drawing] = (summary[document.drawing] || 0) + 1;
     return summary;

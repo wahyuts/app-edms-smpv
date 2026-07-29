@@ -36,6 +36,7 @@ router.post(
 router.get('/:documentId/revisions', authorizeAnyPermission(DOCUMENT_PERMISSION.VIEW), documentController.listDocumentRevisions);
 router.get('/:documentId/history', authorizeAnyPermission(DOCUMENT_PERMISSION.VIEW), documentController.getDocumentHistory);
 router.get('/:documentId/comments', authorizeAnyPermission(DOCUMENT_PERMISSION.VIEW), documentController.getWorkflowComments);
+router.patch('/:documentId/comments/read', authorizeAnyPermission(DOCUMENT_PERMISSION.VIEW), documentController.markWorkflowCommentsRead);
 router.get('/:documentId', authorizeAnyPermission(DOCUMENT_PERMISSION.VIEW), documentController.getDocumentDetail);
 router.get('/:documentId/view', authorizeAnyPermission(DOCUMENT_PERMISSION.VIEW), documentController.viewDocumentFile);
 router.get('/:documentId/download', authorizeAnyPermission(DOCUMENT_PERMISSION.DOWNLOAD), documentController.downloadDocumentFile);
