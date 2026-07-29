@@ -481,7 +481,7 @@ CREATE TABLE notifications (
   KEY idx_notifications_project_id (project_id),
   KEY idx_notifications_recipient_project_membership_id (recipient_project_membership_id),
   KEY idx_notifications_created_at (created_at),
-  CONSTRAINT chk_notifications_priority CHECK (priority IN ('Low', 'Normal', 'High', 'Critical')),
+  CONSTRAINT chk_notifications_priority CHECK (priority IN ('Low', 'Medium', 'Normal', 'High', 'Critical')),
   CONSTRAINT chk_notifications_official_role CHECK (official_role IS NULL OR official_role IN ('Admin', 'Document Owner', 'Team Process', 'Team Project')),
   CONSTRAINT chk_notifications_recipient_role CHECK (recipient_role IS NULL OR recipient_role IN ('Admin', 'Document Owner', 'Team Process', 'Team Project')),
   CONSTRAINT chk_notifications_is_read CHECK (is_read IN (0, 1)),

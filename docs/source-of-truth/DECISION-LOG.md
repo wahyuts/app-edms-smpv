@@ -549,3 +549,18 @@ Keputusan sebelum Manual UAT lanjutan:
 - Untuk `daysUntilValidation = 0`, seluruh timer `0d ...` berada pada `At Risk`; status berubah menjadi `Overdue` saat timer memasuki hari berikutnya.
 - Escalation Level 1 berlaku saat dokumen sudah `Overdue` dengan selisih hari minimal 1, lalu Level 2/3/4 tetap mengikuti threshold existing.
 
+---
+
+# NOTIFICATION RECIPIENT MATRIX PATCH DECISION
+
+Keputusan sebelum Manual UAT lanjutan:
+
+- `Document Uploaded`, `Revision Uploaded`, dan `Approval A Completed` tetap dikirim kepada current assignee sesuai workflow transition.
+- `Document Approved` dikirim kepada seluruh Admin dan Document Owner aktif pada project terkait.
+- `Approval B Completed` dikirim kepada seluruh Admin dan Document Owner aktif pada project terkait.
+- `Approval C Completed` dikirim kepada seluruh Admin dan Document Owner aktif pada project terkait.
+- Title `Approval C Completed` dibedakan berdasarkan reviewer: `Document Not Approved By Team Process` atau `Document Not Approved By Team Project`.
+- `SLA At Risk` memakai title `SLA Warning`, priority `Medium`, dan tetap dikirim ke seluruh membership aktif role Admin, Document Owner, Team Process, dan Team Project pada project terkait.
+- `SLA Overdue` tetap memakai title `SLA Overdue`, priority `High`, dan tetap dikirim ke seluruh membership aktif role Admin, Document Owner, Team Process, dan Team Project pada project terkait.
+- Constraint priority notification menerima `Medium` untuk menyesuaikan PRD dan Message Dictionary.
+

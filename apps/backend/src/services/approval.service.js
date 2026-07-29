@@ -32,6 +32,16 @@ const approvalConfig = Object.freeze({
   }),
 });
 
+const resolveApprovalNotificationOverride = ({ action, document }) => {
+  if (action !== DOCUMENT_WORKFLOW_ACTION.APPROVAL_C) return null;
+
+  return {
+    title: document.status === 'Project Review'
+      ? 'Document Not Approved By Team Project'
+      : 'Document Not Approved By Team Process',
+  };
+};
+
 const processApproval = async ({
   actorOfficialRole,
   actorUserFullName,
@@ -137,14 +147,33 @@ const processApproval = async ({
   const notificationEventType = updatedDocument.status === 'Approved'
     ? notificationService.NOTIFICATION_EVENT_TYPE.DOCUMENT_APPROVED
     : config.eventType;
+  const notificationIdentityBasis = workflowComment?.id || updatedDocument.activeRevisionId || updatedDocument.updatedAt;
+  const shouldNotifyAdminAndOwner = [
+    notificationService.NOTIFICATION_EVENT_TYPE.APPROVAL_B_COMPLETED,
+    notificationService.NOTIFICATION_EVENT_TYPE.APPROVAL_C_COMPLETED,
+    notificationService.NOTIFICATION_EVENT_TYPE.DOCUMENT_APPROVED,
+  ].includes(notificationEventType);
 
-  await notificationService.createDocumentNotification({
-    document: updatedDocument,
-    eventType: notificationEventType,
-    identityBasis: workflowComment?.id || updatedDocument.activeRevisionId || updatedDocument.updatedAt,
-    recipientOfficialRole: updatedDocument.status === 'Approved' ? 'Document Owner' : updatedDocument.responsibleRole,
-    recipientUserId: updatedDocument.currentAssigneeUserId,
-  });
+  if (shouldNotifyAdminAndOwner) {
+    await notificationService.createDocumentNotificationsForOfficialRoles({
+      dictionaryOverride: resolveApprovalNotificationOverride({
+        action: config.action,
+        document,
+      }),
+      document: updatedDocument,
+      eventType: notificationEventType,
+      identityBasis: notificationIdentityBasis,
+      officialRoles: ['Admin', 'Document Owner'],
+    });
+  } else {
+    await notificationService.createDocumentNotification({
+      document: updatedDocument,
+      eventType: notificationEventType,
+      identityBasis: notificationIdentityBasis,
+      recipientOfficialRole: updatedDocument.responsibleRole,
+      recipientUserId: updatedDocument.currentAssigneeUserId,
+    });
+  }
   await auditService.recordActivitySafely({
     action: config.action,
     actorOfficialRole,

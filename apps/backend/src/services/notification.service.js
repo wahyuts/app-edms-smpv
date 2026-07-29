@@ -21,15 +21,20 @@ const SLA_NOTIFICATION_ROLES = Object.freeze([
   'Team Project',
 ]);
 
+const DOCUMENT_OWNER_ADMIN_NOTIFICATION_ROLES = Object.freeze([
+  'Admin',
+  'Document Owner',
+]);
+
 const messageDictionary = Object.freeze({
   [NOTIFICATION_EVENT_TYPE.DOCUMENT_UPLOADED]: {
     message: 'A new document is waiting for your review.',
-    priority: 'Normal',
+    priority: 'Medium',
     title: 'New Review Task',
   },
   [NOTIFICATION_EVENT_TYPE.APPROVAL_A_COMPLETED]: {
     message: 'A document is waiting for your project review.',
-    priority: 'Normal',
+    priority: 'Medium',
     title: 'New Project Review Task',
   },
   [NOTIFICATION_EVENT_TYPE.APPROVAL_B_COMPLETED]: {
@@ -40,11 +45,11 @@ const messageDictionary = Object.freeze({
   [NOTIFICATION_EVENT_TYPE.APPROVAL_C_COMPLETED]: {
     message: 'Document was not approved.',
     priority: 'High',
-    title: 'Document Not Approved',
+    title: 'Document Not Approved By Team Process',
   },
   [NOTIFICATION_EVENT_TYPE.REVISION_UPLOADED]: {
     message: 'A revised document is ready for review.',
-    priority: 'Normal',
+    priority: 'Medium',
     title: 'Revision Ready for Review',
   },
   [NOTIFICATION_EVENT_TYPE.DOCUMENT_APPROVED]: {
@@ -54,8 +59,8 @@ const messageDictionary = Object.freeze({
   },
   [NOTIFICATION_EVENT_TYPE.SLA_AT_RISK]: {
     message: 'Document is approaching its SLA limit.',
-    priority: 'Normal',
-    title: 'SLA At Risk',
+    priority: 'Medium',
+    title: 'SLA Warning',
   },
   [NOTIFICATION_EVENT_TYPE.SLA_OVERDUE]: {
     message: 'Document has exceeded the SLA limit.',
@@ -159,28 +164,23 @@ const resolveRecipientMembership = async ({ document, recipientOfficialRole, rec
   });
 };
 
-const createDocumentNotification = async ({
+const getNotificationDictionary = (eventType, dictionaryOverride = null) => ({
+  ...(messageDictionary[eventType] || {
+    message: eventType,
+    priority: 'Medium',
+    title: eventType,
+  }),
+  ...(dictionaryOverride || {}),
+});
+
+const createNotificationForMembership = async ({
   document,
+  dictionaryOverride,
   eventType,
   identityBasis,
-  recipientOfficialRole,
-  recipientUserId,
+  recipientMembership,
 }) => {
-  if (!document || !eventType) return null;
-
-  const recipientMembership = await resolveRecipientMembership({
-    document,
-    recipientOfficialRole: recipientOfficialRole || document.responsibleRole,
-    recipientUserId,
-  });
-
-  if (!recipientMembership) return null;
-
-  const dictionary = messageDictionary[eventType] || {
-    message: eventType,
-    priority: 'Normal',
-    title: eventType,
-  };
+  const dictionary = getNotificationDictionary(eventType, dictionaryOverride);
   const identityKey = [
     eventType,
     document.projectId,
@@ -212,6 +212,70 @@ const createDocumentNotification = async ({
   });
 
   return true;
+};
+
+const createDocumentNotification = async ({
+  dictionaryOverride,
+  document,
+  eventType,
+  identityBasis,
+  recipientOfficialRole,
+  recipientUserId,
+}) => {
+  if (!document || !eventType) return null;
+
+  const recipientMembership = await resolveRecipientMembership({
+    document,
+    recipientOfficialRole: recipientOfficialRole || document.responsibleRole,
+    recipientUserId,
+  });
+
+  if (!recipientMembership) return null;
+
+  return createNotificationForMembership({
+    dictionaryOverride,
+    document,
+    eventType,
+    identityBasis,
+    recipientMembership,
+  });
+};
+
+const createDocumentNotificationsForOfficialRoles = async ({
+  dictionaryOverride,
+  document,
+  eventType,
+  identityBasis,
+  officialRoles = DOCUMENT_OWNER_ADMIN_NOTIFICATION_ROLES,
+}) => {
+  if (!document || !eventType) return { attemptedRecipientCount: 0, eventType };
+
+  const memberships = await projectMembershipRepository.listActiveMembershipsByProjectAndOfficialRoles({
+    officialRoles,
+    projectId: document.projectId,
+  });
+  const uniqueMemberships = [...memberships.reduce((uniqueByUserId, membership) => {
+    if (!uniqueByUserId.has(membership.userId)) {
+      uniqueByUserId.set(membership.userId, membership);
+    }
+
+    return uniqueByUserId;
+  }, new Map()).values()];
+
+  await Promise.all(uniqueMemberships.map((recipientMembership) =>
+    createNotificationForMembership({
+      dictionaryOverride,
+      document,
+      eventType,
+      identityBasis,
+      recipientMembership,
+    })
+  ));
+
+  return {
+    attemptedRecipientCount: uniqueMemberships.length,
+    eventType,
+  };
 };
 
 const resolveOfficialSlaRecipients = async (document) => {
@@ -463,6 +527,7 @@ const deleteNotifications = async ({ activeProject, notificationIds = [], query 
 module.exports = {
   NOTIFICATION_EVENT_TYPE,
   createDocumentNotification,
+  createDocumentNotificationsForOfficialRoles,
   createSlaStateNotifications,
   deleteNotifications,
   getCurrentUserNotificationSummary,
