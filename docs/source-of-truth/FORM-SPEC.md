@@ -782,10 +782,40 @@ Contoh Field pada Form Upload Document.
 | Drawing Type | SelectField | Mandatory | drawingType |
 | Area | TextField | Mandatory | area |
 | Revision | TextField | Mandatory | revision |
-| Validation Days | NumberField | Mandatory | validationDays |
-| Attachment | FileUploader | Mandatory | attachment |
+| Times For Review | NumberField | Mandatory | daysUntilValidation |
+| Upload File | FileUploader + Temporary Upload | Mandatory | temporaryFileId |
 
 Field mengikuti API-CONTRACT.md.
+
+Terminologi UI untuk field SLA adalah `TIMES FOR REVIEW`. Terminologi bisnis tetap `Days Until Validation`, sedangkan property API/backend yang digunakan adalah `daysUntilValidation`.
+
+Display rule:
+
+| API Value | Frontend Display |
+|-----------|------------------|
+| 0 | Today |
+| 1 | 1 Day |
+| N | N Days |
+
+Lifecycle file upload pada form Create Document:
+
+File Selection
+
+↓
+
+`POST /api/v1/storage/temporary-uploads`
+
+↓
+
+Frontend menerima `temporaryFileId`
+
+↓
+
+Form Submit mengirim `temporaryFileId`
+
+↓
+
+Backend melakukan permanent file promotion setelah dokumen berhasil dibuat.
 
 ---
 
@@ -1031,7 +1061,7 @@ Contoh.
 | Document Title | Required |
 | Drawing Type | Required |
 | Revision | Required |
-| Validation Days | Required |
+| Times For Review / Days Until Validation | Required |
 
 Field Mandatory tidak boleh dikirim dalam keadaan kosong.
 
@@ -1315,7 +1345,7 @@ Upload Document wajib memenuhi aturan berikut.
 - File berhasil dipilih.
 - Format File sesuai aturan sistem.
 - Revision valid.
-- Validation Days wajib diisi.
+- Times For Review wajib diisi sebagai Days Until Validation.
 
 Detail validasi teknis mengikuti PART 5.
 

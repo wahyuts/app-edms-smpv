@@ -8392,13 +8392,16 @@ Enter area
 ### Days Until Validation
 
 - Number Field.
+- Label UI: `TIMES FOR REVIEW`.
+- API/backend property: `daysUntilValidation`.
 - Placeholder:
 
 ```text
 Enter number of days
 ```
 
-- Hanya menerima angka positif.
+- Menerima angka `>= 0`.
+- Display rule: `0` ditampilkan sebagai `Today`, `1` sebagai `1 Day`, dan nilai lebih besar sebagai `N Days`.
 
 ---
 
@@ -8767,6 +8770,8 @@ Nilai Days Until Validation digunakan sebagai dasar:
 
 - Inisialisasi SLA Timer.
 - Penentuan Target Validation Date.
+
+Pada UI runtime, field ini ditampilkan sebagai `TIMES FOR REVIEW`; API/backend tetap menggunakan property `daysUntilValidation`. Nilai `0` berarti `Today`.
 
 Perubahan nilai ini tidak mempengaruhi field lain selama modal masih terbuka.
 
@@ -18431,7 +18436,8 @@ Admin tidak menerima Notification berikut hanya karena berada pada Project yang 
 Notification Admin menggunakan Message Dictionary existing:
 
 - Approval B menggunakan Title `Revision Required` dan Message `Document requires revision. Review comment and attachment are available.`
-- Approval C menggunakan Title `Document Not Approved` dan Message `Document was not approved.` dengan Workflow Status hasil **Process Reject** atau **Project Reject**.
+- Approval C dari **Process Review** menggunakan Title `Document Not Approved By Team Process` dan Message `Document was not approved.` dengan Workflow Status hasil **Process Reject**.
+- Approval C dari **Project Review** menggunakan Title `Document Not Approved By Team Project` dan Message `Document was not approved.` dengan Workflow Status hasil **Project Reject**.
 - Document Approved menggunakan Title `Document Approved` dan Message `The document has been approved.`
 - SLA At Risk menggunakan Title `SLA Warning` dan Message `Document is approaching its SLA limit.`
 - SLA Overdue menggunakan Title `SLA Overdue` dan Message `Document has exceeded the SLA limit.`
@@ -18689,7 +18695,8 @@ Seluruh modul yang menghasilkan Notification wajib menggunakan Message Dictionar
 | Document Uploaded | **New Review Task** | A new document is waiting for your review. | Medium |
 | Approval A Completed | **New Project Review Task** | A document is waiting for your project review. | Medium |
 | Approval B Completed | **Revision Required** | Document requires revision. Review comment and attachment are available. | High |
-| Approval C Completed | **Document Not Approved** | Document was not approved. | High |
+| Approval C Completed — Process Review | **Document Not Approved By Team Process** | Document was not approved. | High |
+| Approval C Completed — Project Review | **Document Not Approved By Team Project** | Document was not approved. | High |
 | Revision Uploaded | **Revision Ready for Review** | A revised document is ready for review. | Medium |
 | Document Approved | **Document Approved** | The document has been approved. | Low |
 | SLA At Risk | **SLA Warning** | Document is approaching its SLA limit. | Medium |
@@ -24149,7 +24156,7 @@ Module placeholder resmi:
 - Multi Project adalah current implementation, bukan future-only scope.
 - Delete Document operasional deprecated dan diganti Archive/Restore.
 - Role Management dan Permission Management sebagai route terpisah deprecated pada runtime saat ini; administrasi yang aktif adalah User, Department, Project, dan Project Membership Management.
-- Backend REST API, SQL schema, dan NAS/Object Storage merupakan target architecture, bukan runtime yang sudah berjalan.
+- Backend REST API, SQL schema, dan MySQL merupakan current integrated runtime yang sudah berjalan untuk scope backend-integrated saat ini. NAS/Object Storage production tetap menjadi target architecture apabila belum aktif pada environment berjalan.
 
 ## Storage Architecture Runtime Rule
 

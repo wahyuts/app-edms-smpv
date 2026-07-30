@@ -3603,7 +3603,8 @@ Selain Primary Recipient, Admin hanya menerima Personal Notification tambahan ap
 Admin Notification tersebut menggunakan Message Dictionary existing:
 
 - Approval B menggunakan Title `Revision Required` dan Message `Document requires revision. Review comment and attachment are available.`
-- Approval C menggunakan Title `Document Not Approved` dan Message `Document was not approved.`
+- Approval C dari Process Review menggunakan Title `Document Not Approved By Team Process` dan Message `Document was not approved.`
+- Approval C dari Project Review menggunakan Title `Document Not Approved By Team Project` dan Message `Document was not approved.`
 - Document Approved menggunakan Title `Document Approved` dan Message `The document has been approved.`
 - SLA At Risk menggunakan Title `SLA Warning` dan Message `Document is approaching its SLA limit.`
 - SLA Overdue menggunakan Title `SLA Overdue` dan Message `Document has exceeded the SLA limit.`
@@ -5356,7 +5357,8 @@ Bagian ini menetapkan baseline Business Workflow resmi hasil rekonstruksi implem
 
 ## Current Implementation
 
-- Sistem runtime saat ini adalah aplikasi Frontend React dengan Fake API, mock JSON, IndexedDB, localStorage, Zustand, TanStack Query, React Hook Form, dan Zod.
+- Sistem runtime saat ini adalah aplikasi Frontend React yang mengonsumsi Backend REST API berbasis Node.js + Express.js dan MySQL sebagai Runtime Source of Truth.
+- Fake API, mock JSON, IndexedDB, localStorage workflow state, dan local history builder adalah historical development baseline dan bukan runtime authority untuk implementasi backend-integrated saat ini.
 - Product Module aktif adalah Dashboard, Document Register PFD, Document Register P&ID, SLA Monitoring, Escalation Alert, Audit Trail, Notification, User Management, Project Management, Project Membership, Profile, Change Password, serta Authentication Flow.
 - Transmittal Incoming, Transmittal Outgoing, dan Storage NAS sudah ada pada route dan navigation sebagai placeholder, tetapi belum menjadi workflow operasional penuh.
 - Multi Project sudah menjadi implementasi aktif. Active Project Context wajib tersedia untuk module project-scoped.
@@ -5433,5 +5435,5 @@ Aturan resmi:
 
 ## Target Architecture
 
-Database schema, REST API production, HttpOnly Cookie, dan NAS/Object Storage adalah target arsitektur produksi. Hingga backend tersedia, behaviour runtime resmi direpresentasikan oleh Service Layer Frontend, Fake API, IndexedDB, mock JSON, Zustand, TanStack Query, dan localStorage.
+Database schema, Backend REST API, HttpOnly Cookie, dan MySQL adalah current integrated runtime untuk scope backend-integrated saat ini. NAS/Object Storage production tetap menjadi target arsitektur storage produksi apabila belum aktif pada environment berjalan. Historical Fake API, IndexedDB, mock JSON, Zustand, TanStack Query, dan localStorage hanya menjadi konteks fase frontend awal, bukan Runtime Source of Truth.
 
