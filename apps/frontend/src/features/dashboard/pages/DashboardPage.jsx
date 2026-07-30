@@ -26,7 +26,17 @@ import { useProjectContextStore } from "@/shared/stores/project-context.store";
 import { DashboardApiService } from "../services/dashboard-api.service";
 
 const dashboardRefreshIntervalMs = 60 * 1000;
-let dashboardRightPanelCollapsed = false;
+const DASHBOARD_RIGHT_PANEL_COLLAPSED_STORAGE_KEY = "edms.dashboard.rightPanel.collapsed";
+
+const getInitialDashboardRightPanelCollapsed = () => {
+  if (typeof window === "undefined") return false;
+
+  try {
+    return window.localStorage.getItem(DASHBOARD_RIGHT_PANEL_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+};
 
 const kpiCards = [
   {
@@ -270,7 +280,7 @@ const DashboardRightInformationPanel = ({
 
 const DashboardPage = () => {
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(
-    dashboardRightPanelCollapsed,
+    getInitialDashboardRightPanelCollapsed,
   );
   const queryClient = useQueryClient();
   const tableState = useDocumentRegisterTable({
@@ -294,7 +304,14 @@ const DashboardPage = () => {
   const isDashboardError = summaryQuery.isError;
 
   const setRightPanelCollapsed = (isCollapsed) => {
-    dashboardRightPanelCollapsed = isCollapsed;
+    try {
+      window.localStorage.setItem(
+        DASHBOARD_RIGHT_PANEL_COLLAPSED_STORAGE_KEY,
+        String(isCollapsed),
+      );
+    } catch {
+      // UI preference persistence is non-critical; keep the interaction working.
+    }
     setIsRightPanelCollapsed(isCollapsed);
   };
 

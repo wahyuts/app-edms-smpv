@@ -17,7 +17,13 @@ const COLLAPSED_FLYOUT_VIEWPORT_MARGIN = 12;
 const COLLAPSED_FLYOUT_WIDTH = 192;
 
 const getInitialSidebarCollapsed = () => {
-  return false;
+  if (typeof window === "undefined") return false;
+
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
 };
 
 const AppShell = ({ children }) => {
@@ -216,10 +222,14 @@ const AppShell = ({ children }) => {
 
     if (!nextValue) closeCollapsedFlyout();
 
-    window.localStorage.setItem(
-      SIDEBAR_COLLAPSED_STORAGE_KEY,
-      String(nextValue),
-    );
+    try {
+      window.localStorage.setItem(
+        SIDEBAR_COLLAPSED_STORAGE_KEY,
+        String(nextValue),
+      );
+    } catch {
+      // UI preference persistence is non-critical; keep the interaction working.
+    }
     setIsSidebarCollapsed(nextValue);
   };
 

@@ -146,11 +146,119 @@ const toDocumentQuery = (query = {}) => {
   );
 };
 
+const compareNullable = (firstValue, secondValue) => {
+  if (firstValue === secondValue) return 0;
+  if (firstValue === null || firstValue === undefined || firstValue === "") return 1;
+  if (secondValue === null || secondValue === undefined || secondValue === "") return -1;
+
+  return String(firstValue).localeCompare(String(secondValue), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+};
+
+const getSortValue = (documentItem, sortBy) => {
+  if (sortBy === "createdAt" || sortBy === "createdDate") {
+    return documentItem.createdAt ?? documentItem.createdDate ?? "";
+  }
+  if (sortBy === "lastUpdated" || sortBy === "updatedAt") {
+    return documentItem.updatedAt ?? documentItem.lastUpdated ?? "";
+  }
+  if (sortBy === "status") {
+    return documentItem.status ?? documentItem.workflowStatus ?? "";
+  }
+
+  return documentItem[sortBy] ?? "";
+};
+
+const sortDocuments = (documents, query = {}) => {
+  const sortBy = query.sortBy || "updatedAt";
+  const direction = query.direction === "asc" ? "asc" : "desc";
+
+  return [...documents].sort((firstDocument, secondDocument) => {
+    const result = compareNullable(
+      getSortValue(firstDocument, sortBy),
+      getSortValue(secondDocument, sortBy),
+    );
+
+    return direction === "asc" ? result : result * -1;
+  });
+};
+
+const buildClientPagination = ({ documents, page, pageSize }) => {
+  const safePageSize = Math.max(1, Number(pageSize) || 5);
+  const totalItems = documents.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize));
+  const safePage = Math.min(Math.max(1, Number(page) || 1), totalPages);
+  const startIndex = (safePage - 1) * safePageSize;
+
+  return {
+    data: documents.slice(startIndex, startIndex + safePageSize),
+    pagination: {
+      page: safePage,
+      pageSize: safePageSize,
+      totalItems,
+      totalPages,
+    },
+  };
+};
+
+const getDocumentCollection = async (query = {}) => (
+  unwrapCollection(await apiClient.get("/v1/documents", {
+    params: toDocumentQuery(query),
+  }))
+);
+
+const getDocumentsByStatusSet = async (query = {}) => {
+  const statusSet = [...new Set(query.status)].filter(Boolean);
+  const fetchPageSize = 100;
+
+  const firstPageResponses = await Promise.all(
+    statusSet.map((status) => getDocumentCollection({
+      ...query,
+      page: 1,
+      pageSize: fetchPageSize,
+      status,
+    })),
+  );
+
+  const remainingPageRequests = firstPageResponses.flatMap((response, statusIndex) => {
+    const status = statusSet[statusIndex];
+    const totalPages = response.pagination?.totalPages ?? 1;
+
+    return Array.from({ length: Math.max(0, totalPages - 1) }, (_, pageIndex) => (
+      getDocumentCollection({
+        ...query,
+        page: pageIndex + 2,
+        pageSize: fetchPageSize,
+        status,
+      })
+    ));
+  });
+
+  const remainingPageResponses = await Promise.all(remainingPageRequests);
+  const documentsById = new Map();
+
+  [...firstPageResponses, ...remainingPageResponses].forEach((response) => {
+    response.data.forEach((documentItem) => {
+      documentsById.set(documentItem.id, documentItem);
+    });
+  });
+
+  return buildClientPagination({
+    documents: sortDocuments([...documentsById.values()], query),
+    page: query.page,
+    pageSize: query.pageSize,
+  });
+};
+
 const getDocuments = async (query = {}) => {
   try {
-    return unwrapCollection(await apiClient.get("/v1/documents", {
-      params: toDocumentQuery(query),
-    }));
+    if (Array.isArray(query.status)) {
+      return getDocumentsByStatusSet(query);
+    }
+
+    return getDocumentCollection(query);
   } catch (error) {
     throwDocumentApiError(error, "Gagal memuat Document Register.");
   }
