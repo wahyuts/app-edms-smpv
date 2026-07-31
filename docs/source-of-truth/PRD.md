@@ -8392,13 +8392,16 @@ Enter area
 ### Days Until Validation
 
 - Number Field.
+- Label UI: `TIMES FOR REVIEW`.
+- API/backend property: `daysUntilValidation`.
 - Placeholder:
 
 ```text
 Enter number of days
 ```
 
-- Hanya menerima angka positif.
+- Menerima angka `>= 0`.
+- Display rule: `0` ditampilkan sebagai `Today`, `1` sebagai `1 Day`, dan nilai lebih besar sebagai `N Days`.
 
 ---
 
@@ -8767,6 +8770,8 @@ Nilai Days Until Validation digunakan sebagai dasar:
 
 - Inisialisasi SLA Timer.
 - Penentuan Target Validation Date.
+
+Pada UI runtime, field ini ditampilkan sebagai `TIMES FOR REVIEW`; API/backend tetap menggunakan property `daysUntilValidation`. Nilai `0` berarti `Today`.
 
 Perubahan nilai ini tidak mempengaruhi field lain selama modal masih terbuka.
 
@@ -18431,7 +18436,8 @@ Admin tidak menerima Notification berikut hanya karena berada pada Project yang 
 Notification Admin menggunakan Message Dictionary existing:
 
 - Approval B menggunakan Title `Revision Required` dan Message `Document requires revision. Review comment and attachment are available.`
-- Approval C menggunakan Title `Document Not Approved` dan Message `Document was not approved.` dengan Workflow Status hasil **Process Reject** atau **Project Reject**.
+- Approval C dari **Process Review** menggunakan Title `Document Not Approved By Team Process` dan Message `Document was not approved.` dengan Workflow Status hasil **Process Reject**.
+- Approval C dari **Project Review** menggunakan Title `Document Not Approved By Team Project` dan Message `Document was not approved.` dengan Workflow Status hasil **Project Reject**.
 - Document Approved menggunakan Title `Document Approved` dan Message `The document has been approved.`
 - SLA At Risk menggunakan Title `SLA Warning` dan Message `Document is approaching its SLA limit.`
 - SLA Overdue menggunakan Title `SLA Overdue` dan Message `Document has exceeded the SLA limit.`
@@ -18689,7 +18695,8 @@ Seluruh modul yang menghasilkan Notification wajib menggunakan Message Dictionar
 | Document Uploaded | **New Review Task** | A new document is waiting for your review. | Medium |
 | Approval A Completed | **New Project Review Task** | A document is waiting for your project review. | Medium |
 | Approval B Completed | **Revision Required** | Document requires revision. Review comment and attachment are available. | High |
-| Approval C Completed | **Document Not Approved** | Document was not approved. | High |
+| Approval C Completed — Process Review | **Document Not Approved By Team Process** | Document was not approved. | High |
+| Approval C Completed — Project Review | **Document Not Approved By Team Project** | Document was not approved. | High |
 | Revision Uploaded | **Revision Ready for Review** | A revised document is ready for review. | Medium |
 | Document Approved | **Document Approved** | The document has been approved. | Low |
 | SLA At Risk | **SLA Warning** | Document is approaching its SLA limit. | Medium |
@@ -19613,6 +19620,8 @@ Hanya Department dengan Status **Active** yang dapat dipilih ketika membuat User
 
 Department tidak dapat dimasukkan sebagai free text melalui Create User Form.
 
+Sebelum akun dibuat, sistem menampilkan confirmation yang memperlihatkan Username aktual dan menjelaskan bahwa Username tidak dapat diubah setelah akun berhasil dibuat.
+
 Setelah proses Create User berhasil, sistem mengembalikan Admin ke halaman **User Management**.
 
 ---
@@ -19626,12 +19635,14 @@ Form ini terdiri dari informasi berikut:
 | Field | Description |
 |---------|-------------|
 | Name | Nama pengguna. |
-| Username | Username pengguna. |
+| Username | Username pengguna, ditampilkan read-only dan tidak dapat diubah. |
 | Email | Alamat email pengguna. |
 | Department | Department pengguna yang dipilih dari Department Master Data. |
 | Status | Status akun pengguna (Active / Inactive). |
 
 Form **Edit User** tidak menampilkan maupun mengubah Password pengguna.
+
+Username hanya ditentukan pada Create User dan menjadi immutable setelah akun berhasil dibuat. Edit User tidak boleh mengubah Username, termasuk melalui manipulated API payload.
 
 Perubahan Password mengikuti proses Authentication dan User Profile sesuai PART terkait.
 
@@ -19710,6 +19721,8 @@ Admin dapat membuat akun pengguna baru melalui halaman **Create User**.
 
 Sebelum proses Create User disimpan, sistem memvalidasi bahwa Department yang dipilih masih tersedia dan berstatus Active.
 
+Setelah validasi form berhasil, Admin wajib mengonfirmasi Username sebelum request Create User dikirim.
+
 Setelah proses berhasil disimpan:
 
 - Akun pengguna baru ditambahkan ke User Management.
@@ -19723,6 +19736,8 @@ Setelah proses berhasil disimpan:
 ### Edit User Behaviour
 
 Admin dapat memperbarui informasi identitas pengguna melalui halaman **Edit User**.
+
+Field Username tetap terlihat pada Edit User sebagai referensi identitas akun, tetapi tidak editable.
 
 Informasi yang dapat diperbarui meliputi:
 
@@ -23893,6 +23908,7 @@ Selama penyusunan PRD ini digunakan asumsi berikut:
 - Transmittal disediakan sebagai Placeholder Module tanpa fungsi operasional.
 - Workflow Comment dapat berisi komentar teks dan/atau satu Workflow Attachment sesuai aturan Approval B dan Approval C pada BUSINESS-WORKFLOW.md.
 - Workflow Attachment merupakan file pendukung hasil review dan bukan Document Revision, Active Engineering Document, maupun Upload Revision.
+- File yang dipilih user untuk Create Document, Upload Revision, Workflow Comment Attachment, Approval B attachment, atau Approval C attachment diproses melalui temporary upload terlebih dahulu; permanent storage hanya dibuat setelah aksi Save atau Submit berhasil.
 - Seluruh Navigation, Layout, dan Business Workflow mengikuti Source of Truth yang telah ditetapkan pada dokumen referensi.
 
 ---
@@ -24148,5 +24164,19 @@ Module placeholder resmi:
 - Multi Project adalah current implementation, bukan future-only scope.
 - Delete Document operasional deprecated dan diganti Archive/Restore.
 - Role Management dan Permission Management sebagai route terpisah deprecated pada runtime saat ini; administrasi yang aktif adalah User, Department, Project, dan Project Membership Management.
-- Backend REST API, SQL schema, dan NAS/Object Storage merupakan target architecture, bukan runtime yang sudah berjalan.
+- Backend REST API, SQL schema, dan MySQL merupakan current integrated runtime yang sudah berjalan untuk scope backend-integrated saat ini. NAS/Object Storage production tetap menjadi target architecture apabila belum aktif pada environment berjalan.
+
+## Storage Architecture Runtime Rule
+
+Manual UAT baseline menggunakan backend sebagai authority untuk permanent storage path.
+
+- Physical project directory menggunakan `projects.project_code`, bukan `projects.id`.
+- Database relation tetap memakai internal id: `project_id`, `document_id`, `revision_id`, dan `file_id`.
+- Document file disimpan berdasarkan `DOCUMENT_NUMBER`.
+- Revision file disimpan berdasarkan canonical revision label: `IFR-Submitted`, `IFA-Submitted`, `AS-Built`.
+- Revision berbeda dari Workflow Status.
+- Physical filename menggunakan backend submit date dan stable short id dari file identity.
+- Download filename tetap menggunakan original filename yang diunggah user.
+- Workflow attachment dipisahkan dari document revision dan disimpan di folder attachment komentar process/project.
+- Temporary upload tetap menjadi satu-satunya pipeline file sebelum promotion permanen.
 

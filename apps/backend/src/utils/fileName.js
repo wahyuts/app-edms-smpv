@@ -32,6 +32,11 @@ const sanitizeFileName = (fileName) => {
   return safeFileName.slice(0, MAX_FILENAME_LENGTH);
 };
 
+const getFileExtension = (fileName) => {
+  return path.extname(sanitizeFileName(fileName)).toLowerCase();
+};
+
 module.exports = {
+  getFileExtension,
   sanitizeFileName,
 };

@@ -81,6 +81,9 @@ const formatTimelineActor = (timelineItem) => {
   return actorRole ? `${actorName} (${actorRole})` : actorName;
 };
 
+const normalizeFileExtension = (extension = "") =>
+  String(extension).trim().replace(/^\./, "").toLowerCase();
+
 const FileUploadField = ({
   errorMessage,
   filePreview,
@@ -229,13 +232,6 @@ const textareaClassName =
   "mt-2 min-h-24 w-full rounded-md border border-[#123A5A] bg-[#08233B] px-3 py-2 text-sm text-[#F8FAFC] outline-none transition-colors placeholder:text-[#64748B] focus:border-[#0F7BFF]";
 const validationClassName = "mt-2 text-sm font-semibold text-[#FCA5A5]";
 
-const uploadRevisionTargetStatusByCurrentStatus = {
-  [DOCUMENT_STATUS.PROCESS_COMMENT]: DOCUMENT_STATUS.PROCESS_REVIEW,
-  [DOCUMENT_STATUS.PROCESS_REJECT]: DOCUMENT_STATUS.PROCESS_REVIEW,
-  [DOCUMENT_STATUS.PROJECT_COMMENT]: DOCUMENT_STATUS.PROJECT_REVIEW,
-  [DOCUMENT_STATUS.PROJECT_REJECT]: DOCUMENT_STATUS.PROJECT_REVIEW,
-};
-
 const DocumentActionModal = ({
   children,
   footer,
@@ -312,11 +308,11 @@ export const ViewDocumentModal = ({
   const metadata = documentItem.fileMetadata;
   const fileExtension = documentFile?.error
     ? ""
-    : (
+    : normalizeFileExtension(
         documentFile?.metadata?.fileExtension ??
         metadata?.fileExtension ??
         ""
-      ).toLowerCase();
+      );
   const isDocxPreviewAvailable =
     fileExtension === "docx" && Boolean(documentFile?.previewHtml);
   const isSpreadsheetPreviewAvailable =
@@ -488,7 +484,7 @@ export const ViewDocumentModal = ({
                 File is unavailable.
               </p>
               <p className="mt-2 max-w-md">
-                The active file could not be found in browser storage.
+                The active file could not be loaded from the backend.
               </p>
             </div>
           ) : null}
@@ -1095,19 +1091,18 @@ export const CreateDocumentModal = ({
 };
 
 export const EditDocumentModal = ({
+  allowUploadRevision = false,
   documentItem,
   onCancel,
   onSubmit,
   onValidationFailed = () => {},
 }) => {
-  const isUploadRevision = [
+  const isUploadRevision = allowUploadRevision && [
     DOCUMENT_STATUS.PROCESS_COMMENT,
     DOCUMENT_STATUS.PROCESS_REJECT,
     DOCUMENT_STATUS.PROJECT_COMMENT,
     DOCUMENT_STATUS.PROJECT_REJECT,
   ].includes(documentItem.status);
-  const uploadRevisionTargetStatus =
-    uploadRevisionTargetStatusByCurrentStatus[documentItem.status];
   const [formValue, setFormValue] = useState({
     area: documentItem.area,
     daysUntilValidation: documentItem.daysUntilValidation,
@@ -1227,10 +1222,8 @@ export const EditDocumentModal = ({
       <div className="space-y-4">
         {isUploadRevision ? (
           <div className="rounded-lg border border-[#FACC15]/40 bg-[#FACC15]/10 p-4 text-sm text-[#FDE68A]">
-            Upload Revision will replace the Active File and continue{" "}
-            {documentItem.status} to{" "}
-            {uploadRevisionTargetStatus}
-            .
+            Upload Revision will replace the Active File. Backend will determine
+            the next workflow status.
           </div>
         ) : null}
         <div

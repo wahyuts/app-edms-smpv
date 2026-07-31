@@ -10,8 +10,8 @@ import {
 } from "lucide-react";
 
 import { useToast } from "@/shared/components/toast";
+import { queryClient } from "@/shared/api/query-client";
 import { usePermission } from "@/shared/hooks/usePermission";
-import { AuthService } from "@/features/auth/services/auth.service";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 import {
@@ -21,10 +21,7 @@ import {
   DOCUMENT_STATUS,
   OFFICIAL_ROLE,
 } from "../constants/document.constants";
-import { DocumentService } from "../services/document.service";
-import { FileService } from "../services/file.service";
-import { WorkflowAttachmentService } from "../services/workflow-attachment.service";
-import { CommentReadService } from "../services/comment-read.service";
+import { DocumentApiService } from "../services/document-api.service";
 import { getDocumentActionVisibility } from "../utils/documentActionVisibility";
 import {
   ApprovalCommentModal,
@@ -56,6 +53,15 @@ const modalType = {
   EDIT: "edit",
   HISTORY: "history",
   VIEW: "view",
+};
+
+const invalidateDocumentRuntimeQueries = async () => {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["documents"] }),
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] }),
+    queryClient.invalidateQueries({ queryKey: ["escalation"] }),
+  ]);
 };
 
 const ActionIconButton = ({ icon: Icon, label, onClick, showIndicator = false }) => {
@@ -101,13 +107,17 @@ export const DocumentActionGroup = ({
   onWorkflowComplete = () => {},
 }) => {
   const { showToast } = useToast();
-  const { getActiveProjectRole, hasProjectPermission } = usePermission();
+  const { hasProjectPermission } = usePermission();
   const [activeModal, setActiveModal] = useState(null);
   const [attachmentErrors, setAttachmentErrors] = useState({});
   const [attachmentViewerFile, setAttachmentViewerFile] = useState(null);
   const [comments, setComments] = useState([]);
+  const [detailDocument, setDetailDocument] = useState(documentItem);
   const [documentFile, setDocumentFile] = useState(null);
-  const [hasUnreadComments, setHasUnreadComments] = useState(false);
+  const [localReadState, setLocalReadState] = useState({
+    documentId: null,
+    unreadCommentCount: 0,
+  });
   const [timeline, setTimeline] = useState([]);
   const [workflowAttachmentFile, setWorkflowAttachmentFile] = useState(null);
   const [workflowAttachmentPreview, setWorkflowAttachmentPreview] = useState(null);
@@ -117,14 +127,10 @@ export const DocumentActionGroup = ({
   const [selectedWorkflowAttachment, setSelectedWorkflowAttachment] = useState(null);
   const [validationMessage, setValidationMessage] = useState("");
 
-  const activeProjectRole = getActiveProjectRole();
-  const currentUser = AuthService.getCurrentUser();
   const activeMembership = useProjectContextStore((state) => state.activeMembership);
-  const currentUserId = currentUser?.id ?? activeProjectRole?.roleName ?? "anonymous";
-  const currentUserName =
-    currentUser?.fullName ?? currentUser?.name ?? currentUser?.username ?? "Current User";
   const projectRoleName = activeMembership?.officialRole;
   const isArchivedDocument = documentItem?.lifecycle === DOCUMENT_LIFECYCLE.ARCHIVED;
+
   const defaultVisibility = getDocumentActionVisibility({
     hasPermission: hasProjectPermission,
     roleName: projectRoleName,
@@ -161,8 +167,14 @@ export const DocumentActionGroup = ({
           ),
           workflowActions: [],
           showHistory: false,
-        }
+      }
     : defaultVisibility;
+  const workflowVisibility = visibility;
+  const hasUnreadComments = Boolean(documentItem?.hasUnreadComments) &&
+    !(
+      localReadState.documentId === documentItem?.id &&
+      localReadState.unreadCommentCount === Number(documentItem?.unreadCommentCount ?? 0)
+    );
   const canEditDocument = hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.EDIT);
   const canArchiveDocument =
     !isDashboard &&
@@ -175,35 +187,6 @@ export const DocumentActionGroup = ({
     isArchivedDocument &&
     projectRoleName === OFFICIAL_ROLE.ADMIN &&
     hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.ARCHIVE);
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadUnreadCommentState = async () => {
-      const documentComments =
-        await DocumentService.getWorkflowCommentsByDocumentId(documentItem.id);
-
-      if (isActive) {
-        const nextHasUnreadComments =
-          await CommentReadService.hasUnreadComments({
-            comments: documentComments,
-            documentId: documentItem.id,
-            projectId: documentItem.projectId,
-            userId: currentUserId,
-          });
-
-        setHasUnreadComments(nextHasUnreadComments);
-      }
-    };
-
-    loadUnreadCommentState().catch(() => {
-      if (isActive) setHasUnreadComments(true);
-    });
-
-    return () => {
-      isActive = false;
-    };
-  }, [currentUserId, documentItem.id, documentItem.lastUpdated, documentItem.projectId]);
 
   useEffect(() => {
     return () => {
@@ -241,9 +224,11 @@ export const DocumentActionGroup = ({
 
   const openViewDocument = async () => {
     try {
-      const activeDocumentFile = await FileService.getDocumentPreview(documentItem);
+      const documentDetail = await DocumentApiService.getDocumentById(documentItem.id);
+      const activeDocumentFile = await DocumentApiService.getDocumentPreview(documentDetail);
       const objectUrl = window.URL.createObjectURL(activeDocumentFile.file);
 
+      setDetailDocument(documentDetail);
       setDocumentFile({
         ...activeDocumentFile,
         objectUrl,
@@ -262,31 +247,43 @@ export const DocumentActionGroup = ({
     }
   };
 
-  const openCommentViewer = async () => {
-    const documentComments =
-      await DocumentService.getWorkflowCommentsByDocumentId(documentItem.id);
-
+  const openEditDocument = async () => {
     try {
-      await CommentReadService.markCommentsAsRead({
-        comments: documentComments,
-        documentId: documentItem.id,
-        projectId: documentItem.projectId,
-        userId: currentUserId,
+      const documentDetail = await DocumentApiService.getDocumentById(documentItem.id);
+      setDetailDocument(documentDetail);
+      setActiveModal(modalType.EDIT);
+    } catch (error) {
+      showToast({
+        message:
+          error instanceof Error ? error.message : "Detail Document gagal dimuat.",
+        variant: "error",
       });
-      setHasUnreadComments(false);
+    }
+  };
+
+  const openCommentViewer = async () => {
+    try {
+      const documentComments =
+        await DocumentApiService.getWorkflowComments(documentItem.id);
+
+      setComments(documentComments);
+      setAttachmentErrors({});
+      setActiveModal(modalType.COMMENT);
+      await DocumentApiService.markWorkflowCommentsRead(documentItem.id);
+      setLocalReadState({
+        documentId: documentItem.id,
+        unreadCommentCount: Number(documentItem?.unreadCommentCount ?? 0),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["documents"] });
     } catch (error) {
       showToast({
         message:
           error instanceof Error
             ? error.message
-            : "Comment read status could not be saved.",
+            : "Workflow Comment gagal dimuat.",
         variant: "error",
       });
     }
-
-    setComments(documentComments);
-    setAttachmentErrors({});
-    setActiveModal(modalType.COMMENT);
   };
 
   const closeAttachmentViewer = () => {
@@ -330,7 +327,10 @@ export const DocumentActionGroup = ({
 
     try {
       const attachmentPreview =
-        await WorkflowAttachmentService.getAttachmentPreview(attachment);
+        await DocumentApiService.getWorkflowAttachmentPreview({
+          attachment,
+          documentId: documentItem.id,
+        });
       const objectUrl = window.URL.createObjectURL(attachmentPreview.file);
 
       setAttachmentViewerFile({
@@ -365,7 +365,10 @@ export const DocumentActionGroup = ({
     }
 
     try {
-      await WorkflowAttachmentService.downloadAttachment(attachment);
+      await DocumentApiService.downloadWorkflowAttachment({
+        attachment,
+        documentId: documentItem.id,
+      });
       clearAttachmentError(comment.id);
       showToast({
         message: "Workflow Attachment downloaded.",
@@ -408,11 +411,32 @@ export const DocumentActionGroup = ({
   };
 
   const openHistory = async () => {
-    const documentTimeline =
-      await DocumentService.getDocumentTimelineByDocumentId(documentItem.id);
+    try {
+      const [documentHistory, revisionHistory] = await Promise.all([
+        DocumentApiService.getDocumentHistory(documentItem.id),
+        DocumentApiService.getDocumentRevisions(documentItem.id),
+      ]);
+      const revisionTimeline = revisionHistory.map((revisionItem) => ({
+        id: `revision-${revisionItem.id}`,
+        activity: "Revision",
+        createdBy: revisionItem.uploader,
+        createdDate: revisionItem.uploadedAt,
+        revision: revisionItem.revision,
+        status: revisionItem.resultStatus,
+        workflowEvent: revisionItem.isActive
+          ? "Active Revision"
+          : "Previous Revision",
+      }));
 
-    setTimeline(documentTimeline);
-    setActiveModal(modalType.HISTORY);
+      setTimeline([...documentHistory, ...revisionTimeline]);
+      setActiveModal(modalType.HISTORY);
+    } catch (error) {
+      showToast({
+        message:
+          error instanceof Error ? error.message : "History Document gagal dimuat.",
+        variant: "error",
+      });
+    }
   };
 
   const openWorkflowModal = (nextModalType) => {
@@ -444,7 +468,7 @@ export const DocumentActionGroup = ({
 
   const downloadDocument = async () => {
     try {
-      await FileService.downloadDocumentFile(documentItem);
+      await DocumentApiService.downloadDocumentFile(documentItem);
 
       showToast({
         message: "Download Document berhasil.",
@@ -462,15 +486,15 @@ export const DocumentActionGroup = ({
   const submitEditDocument = async (formValue) => {
     try {
       if (formValue.isUploadRevision) {
-        await DocumentService.processUploadRevision(documentItem.id, {
+        await DocumentApiService.uploadRevision(documentItem.id, {
           area: formValue.area,
-          createdBy: currentUserName,
           daysUntilValidation: formValue.daysUntilValidation,
           description: formValue.description,
           file: formValue.file,
         });
 
         closeModal();
+        await invalidateDocumentRuntimeQueries();
         onWorkflowComplete();
         showToast({
           message: "Upload Revision berhasil.",
@@ -479,24 +503,23 @@ export const DocumentActionGroup = ({
         return;
       }
 
-      await DocumentService.updateDocument(documentItem.id, {
+      await DocumentApiService.updateDocument(documentItem.id, {
         area: formValue.area,
         daysUntilValidation: formValue.daysUntilValidation,
         description: formValue.description,
-        updatedBy: activeProjectRole?.roleName ?? "Current User",
-        projectRole: projectRoleName,
       });
 
       closeModal();
+      await invalidateDocumentRuntimeQueries();
       onWorkflowComplete();
       showToast({
-        message: "Edit Document saved.",
+        message: "Edit Document berhasil.",
         variant: "success",
       });
     } catch (error) {
       showToast({
         message:
-          error instanceof Error ? error.message : "Upload Revision failed.",
+          error instanceof Error ? error.message : "Edit Document gagal.",
         variant: "error",
       });
       throw error;
@@ -505,14 +528,15 @@ export const DocumentActionGroup = ({
 
   const submitArchiveDocument = async () => {
     try {
-      await DocumentService.archiveDocument(documentItem.id, {
+      await DocumentApiService.archiveDocument(documentItem.id, {
         reason: archiveReason,
       });
 
       closeModal();
+      await invalidateDocumentRuntimeQueries();
       onWorkflowComplete();
       showToast({
-        message: "Document archived.",
+        message: "Document berhasil diarsipkan.",
         variant: "success",
       });
     } catch (error) {
@@ -525,12 +549,13 @@ export const DocumentActionGroup = ({
 
   const submitRestoreDocument = async () => {
     try {
-      await DocumentService.restoreDocument(documentItem.id);
+      await DocumentApiService.restoreDocument(documentItem.id);
 
       closeModal();
+      await invalidateDocumentRuntimeQueries();
       onWorkflowComplete();
       showToast({
-        message: "Document restored.",
+        message: "Document berhasil direstore.",
         variant: "success",
       });
     } catch (error) {
@@ -547,25 +572,30 @@ export const DocumentActionGroup = ({
     attachmentFile = null,
   ) => {
     try {
-      const result = await DocumentService.processWorkflowAction(
-        documentItem.id,
-        workflowAction,
-        {
+      if (workflowAction === ACTION_CODE.APPROVAL_A) {
+        await DocumentApiService.approveDocument(documentItem.id);
+      } else if (workflowAction === ACTION_CODE.APPROVAL_B) {
+        await DocumentApiService.submitApprovalWithComment(documentItem.id, {
           attachmentFile,
           comment,
-          createdBy: currentUserName,
-        },
-      );
+        });
+      } else if (workflowAction === ACTION_CODE.APPROVAL_C) {
+        await DocumentApiService.rejectDocument(documentItem.id, {
+          attachmentFile,
+          comment,
+        });
+      }
 
       closeModal();
+      await invalidateDocumentRuntimeQueries();
       onWorkflowComplete();
       showToast({
-        message: `${workflowAction} processed: ${result.previousStatus} to ${result.nextStatus}`,
+        message: `${workflowAction} berhasil diproses.`,
         variant: "success",
       });
     } catch (error) {
       const nextMessage =
-        error instanceof Error ? error.message : `${workflowAction} failed.`;
+        error instanceof Error ? error.message : `${workflowAction} gagal diproses.`;
 
       setValidationMessage(nextMessage);
       showToast({
@@ -592,7 +622,7 @@ export const DocumentActionGroup = ({
     <>
       <div className="flex w-max flex-col gap-2">
         <div className="flex flex-wrap gap-2">
-          {visibility.topActions.includes(ACTION_CODE.VIEW) ? (
+          {workflowVisibility.topActions.includes(ACTION_CODE.VIEW) ? (
             <ActionIconButton
               icon={Eye}
               label="View Document"
@@ -603,17 +633,17 @@ export const DocumentActionGroup = ({
             <ActionIconButton
               icon={Pencil}
               label="Edit Document"
-              onClick={() => setActiveModal(modalType.EDIT)}
+              onClick={openEditDocument}
             />
           ) : null}
-          {visibility.topActions.includes(ACTION_CODE.DOWNLOAD) ? (
+          {workflowVisibility.topActions.includes(ACTION_CODE.DOWNLOAD) ? (
             <ActionIconButton
               icon={Download}
               label="Download Document"
               onClick={downloadDocument}
             />
           ) : null}
-          {visibility.topActions.includes(ACTION_CODE.COMMENT) ? (
+          {workflowVisibility.topActions.includes(ACTION_CODE.COMMENT) ? (
             <ActionIconButton
               icon={MessageSquare}
               label="View Comments"
@@ -637,7 +667,7 @@ export const DocumentActionGroup = ({
           ) : null}
         </div>
 
-        {isReadOnlyActionMode ? null : visibility.showHistory ? (
+        {isReadOnlyActionMode ? null : workflowVisibility.showHistory ? (
           <button
             className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[#6D3FD6]/60 bg-[#3B0764] px-3 text-xs font-semibold text-white transition-colors hover:border-[#A78BFA] hover:bg-[#581C87]"
             onClick={openHistory}
@@ -649,7 +679,7 @@ export const DocumentActionGroup = ({
           </button>
         ) : (
           <div className="grid grid-cols-3 gap-2">
-            {visibility.workflowActions.includes(ACTION_CODE.APPROVAL_A) ? (
+            {workflowVisibility.workflowActions.includes(ACTION_CODE.APPROVAL_A) ? (
               <ReviewActionButton
                 label="Approved"
                 onClick={() => openWorkflowModal(modalType.APPROVAL_A)}
@@ -658,7 +688,7 @@ export const DocumentActionGroup = ({
                 A
               </ReviewActionButton>
             ) : null}
-            {visibility.workflowActions.includes(ACTION_CODE.APPROVAL_B) ? (
+            {workflowVisibility.workflowActions.includes(ACTION_CODE.APPROVAL_B) ? (
               <ReviewActionButton
                 label="Approved with Comment"
                 onClick={() => openWorkflowModal(modalType.APPROVAL_B)}
@@ -667,7 +697,7 @@ export const DocumentActionGroup = ({
                 B
               </ReviewActionButton>
             ) : null}
-            {visibility.workflowActions.includes(ACTION_CODE.APPROVAL_C) ? (
+            {workflowVisibility.workflowActions.includes(ACTION_CODE.APPROVAL_C) ? (
               <ReviewActionButton
                 label="Not Approved"
                 onClick={() => openWorkflowModal(modalType.APPROVAL_C)}
@@ -683,7 +713,7 @@ export const DocumentActionGroup = ({
       {activeModal === modalType.VIEW ? (
         <ViewDocumentModal
           documentFile={documentFile}
-          documentItem={documentItem}
+          documentItem={detailDocument}
           onClose={closeModal}
           onDownload={downloadDocument}
         />
@@ -709,7 +739,7 @@ export const DocumentActionGroup = ({
       ) : null}
       {activeModal === modalType.EDIT ? (
         <EditDocumentModal
-          documentItem={documentItem}
+          documentItem={detailDocument}
           onCancel={closeModal}
           onValidationFailed={(message) =>
             showToast({
@@ -718,6 +748,7 @@ export const DocumentActionGroup = ({
             })
           }
           onSubmit={submitEditDocument}
+          allowUploadRevision
         />
       ) : null}
       {activeModal === modalType.ARCHIVE ? (
@@ -762,6 +793,7 @@ export const DocumentActionGroup = ({
             setValidationMessage("");
           }}
           onSubmit={submitApprovalB}
+          isCommentRequired
           submitLabel="Submit"
           title="Approved with Comment"
         />

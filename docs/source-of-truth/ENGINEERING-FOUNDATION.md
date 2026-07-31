@@ -144,3 +144,49 @@ Target produksi tetap:
 - File storage production mengikuti STORAGE-STRATEGY.md setelah backend tersedia.
 
 Selama backend belum tersedia, Service Layer frontend menjadi executable reference untuk behaviour yang harus dipertahankan oleh backend.
+
+---
+
+# STORAGE ARCHITECTURE ALIGNMENT
+
+Backend runtime menjadi authority untuk storage path. Frontend hanya mengirim business payload dan `temporaryFileId`.
+
+Canonical identity:
+
+- Database Project Identity: `projects.id`.
+- Physical Storage Project Directory: `projects.project_code`.
+- Document storage folder: `documents/{DOCUMENT_NUMBER}`.
+- Revision storage folder: `revisions/{REVISION}`.
+
+Canonical permanent revision storage key:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/revisions/{REVISION}/{PHYSICAL_FILE_NAME}
+```
+
+Canonical revision vocabulary:
+
+```text
+IFR-Submitted
+IFA-Submitted
+AS-Built
+```
+
+Revision tidak sama dengan Workflow Status. Storage memakai revision label, bukan status workflow.
+
+Physical filename:
+
+```text
+{DOCUMENT_NUMBER}_{REVISION}_{SUBMIT_DATE_YYYYMMDD}_{SHORT_FILE_ID}_{SANITIZED_ORIGINAL_FILE_NAME}
+```
+
+Download tetap memakai `original_file_name` sebagai user-facing filename. `storage_key` harus relative dan portable untuk Local Storage, NAS, dan Object Storage/R2.
+
+Workflow attachment disimpan di:
+
+```text
+attachments/process-comments/
+attachments/project-comments/
+```
+
+Temporary upload lifecycle tetap: temporary upload -> backend validation -> permanent promotion -> permanent relation -> temporary cleanup.

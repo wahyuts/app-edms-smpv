@@ -1,28 +1,26 @@
+import { apiClient } from "@/shared/api";
+
 import {
   DEFAULT_DEPARTMENT_STATUS,
   DEPARTMENT_STATUSES,
   DEPARTMENT_STATUS_OPTIONS,
 } from "../constants/department.constants";
-import {
-  DepartmentPersistenceRepository,
-  DepartmentRepository,
-} from "../repositories/department.repository";
-import {
-  AUDIT_RESOURCE_TYPE,
-  AUDIT_TRAIL_ACTION,
-  AuditTrailService,
-} from "@/features/audit-trail";
-import {
-  createDepartmentSchema,
-  formatDepartmentValidationIssues,
-  updateDepartmentSchema,
-} from "../schemas/department.schema";
 
-let initializationPromise = null;
+export class DepartmentValidationError extends Error {
+  constructor(message, errors = []) {
+    super(message);
+    this.name = "DepartmentValidationError";
+    this.errors = errors;
+  }
+}
 
 const cloneValue = (value) => JSON.parse(JSON.stringify(value));
 const normalizeText = (value) => String(value ?? "").trim();
-const normalizeKey = (value) => normalizeText(value).toLowerCase();
+const normalizeKey = (value) =>
+  normalizeText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 
 export const normalizeDepartmentRecord = (department = {}) => {
   const name = normalizeText(department.name ?? department.departmentName);
@@ -34,232 +32,134 @@ export const normalizeDepartmentRecord = (department = {}) => {
     ...department,
     departmentName: name,
     name,
-    nameKey: normalizeKey(name),
+    nameKey: department.nameKey ?? normalizeKey(name),
     status,
     updatedAt: department.updatedAt ?? null,
   };
 };
 
-export class DepartmentValidationError extends Error {
-  constructor(message, errors = []) {
-    super(message);
-    this.name = "DepartmentValidationError";
-    this.errors = errors;
-  }
-}
+const getErrorMessage = (error, fallback = "Gagal memuat Department.") =>
+  error?.response?.data?.message ?? error?.message ?? fallback;
 
-const initialize = async () => {
-  if (!initializationPromise) {
-    initializationPromise = import("./department-seed.service").then(
-      ({ DepartmentSeedService }) => DepartmentSeedService.initialize(),
-    ).catch((error) => {
-      initializationPromise = null;
-      throw error;
-    });
-  }
+const getErrorList = (error) => error?.response?.data?.errors ?? error?.errors ?? [];
 
-  return initializationPromise;
+const throwServiceError = (error, fallback) => {
+  throw new DepartmentValidationError(getErrorMessage(error, fallback), getErrorList(error));
 };
 
-const parseSchema = (schema, payload) => {
-  const normalizedPayload = {
-    ...payload,
-    name: payload.name ?? payload.departmentName,
-  };
-  const result = schema.safeParse(normalizedPayload);
-  if (result.success) return result.data;
+const unwrapCollection = (response) => ({
+  data: response.data?.data?.data ?? [],
+  pagination: response.data?.data?.pagination ?? {
+    page: 1,
+    pageSize: response.data?.data?.data?.length ?? 0,
+    totalItems: response.data?.data?.data?.length ?? 0,
+    totalPages: 1,
+  },
+});
 
-  throw new DepartmentValidationError(
-    "Validation failed.",
-    formatDepartmentValidationIssues(result.error.issues),
-  );
-};
-
-const createEntityId = (departments) => {
-  const numericIds = departments
-    .map((department) => Number(department.id))
-    .filter((id) => Number.isFinite(id));
-  return numericIds.length > 0 ? Math.max(...numericIds) + 1 : 1;
-};
-
-const assertDepartmentExists = async (departmentId) => {
-  const department = await DepartmentRepository.getById(departmentId);
-
-  if (!department) {
-    throw new DepartmentValidationError("Department was not found.", [
-      { field: "id", message: "Department was not found." },
-    ]);
-  }
-
-  return normalizeDepartmentRecord(department);
-};
-
-const checkDepartmentNameUniqueness = async (
-  departmentName,
-  currentDepartmentId = null,
-) => {
-  await initialize();
-  return DepartmentRepository.checkNameUniqueness(
-    departmentName,
-    currentDepartmentId,
-  );
-};
-
-const assertUniqueDepartmentName = async (departmentName, currentDepartmentId = null) => {
-  if (!(await checkDepartmentNameUniqueness(departmentName, currentDepartmentId))) {
-    throw new DepartmentValidationError("Validation failed.", [
-      {
-        field: "name",
-        message: "Department Name already exists.",
-      },
-    ]);
+const requestCollection = async (params = {}) => {
+  try {
+    return unwrapCollection(await apiClient.get("/v1/departments", { params }));
+  } catch (error) {
+    throwServiceError(error, "Gagal memuat Department.");
   }
 };
 
 const getAllDepartments = async () => {
-  await initialize();
-  const departments = await DepartmentRepository.getAll();
-  return cloneValue(departments.map(normalizeDepartmentRecord));
+  const { data } = await requestCollection({ page: 1, pageSize: 1000, sortBy: "name", direction: "asc" });
+  return cloneValue(data.map(normalizeDepartmentRecord));
 };
 
-const getActiveDepartments = async () => {
-  const departments = await getAllDepartments();
-  return cloneValue(
-    departments.filter((department) => department.status === DEPARTMENT_STATUSES.ACTIVE),
-  );
+const getActiveDepartments = async () =>
+  cloneValue((await getAllDepartments()).filter((department) => department.status === DEPARTMENT_STATUSES.ACTIVE));
+
+const getDepartmentList = async (query = {}) => {
+  const { data, pagination } = await requestCollection({
+    ...query,
+    pageSize: query.pageSize ?? query.limit ?? 10,
+  });
+  return {
+    data: cloneValue(data.map(normalizeDepartmentRecord)),
+    pagination,
+  };
 };
 
 const getDepartmentDetail = async (departmentId) => {
-  await initialize();
-  const department = await DepartmentRepository.getById(departmentId);
-  return department ? cloneValue(normalizeDepartmentRecord(department)) : null;
+  try {
+    const response = await apiClient.get(`/v1/departments/${departmentId}`);
+    return normalizeDepartmentRecord(response.data?.data);
+  } catch (error) {
+    throwServiceError(error, "Department tidak ditemukan.");
+  }
 };
 
 const createDepartment = async (payload = {}) => {
-  await initialize();
-  const input = parseSchema(createDepartmentSchema, payload);
-  await assertUniqueDepartmentName(input.name);
-
-  const departments = await DepartmentRepository.getAll();
-  const now = new Date().toISOString();
-  const department = normalizeDepartmentRecord({
-    createdAt: now,
-    id: createEntityId(departments),
-    name: input.name,
-    status: DEPARTMENT_STATUSES.ACTIVE,
-    updatedAt: null,
-  });
-
-  await DepartmentRepository.create(department);
-  await AuditTrailService.recordActivitySafely({
-    action: AUDIT_TRAIL_ACTION.CREATE_DEPARTMENT,
-    reference: department.name,
-    resourceId: department.id,
-    resourceType: AUDIT_RESOURCE_TYPE.DEPARTMENT,
-  });
-  return cloneValue(department);
+  try {
+    const response = await apiClient.post("/v1/departments", {
+      name: payload.name ?? payload.departmentName,
+    });
+    return normalizeDepartmentRecord(response.data?.data);
+  } catch (error) {
+    throwServiceError(error, "Gagal membuat Department.");
+  }
 };
 
 const updateDepartment = async (departmentId, payload = {}) => {
-  await initialize();
-  const currentDepartment = await assertDepartmentExists(departmentId);
-  const input = parseSchema(updateDepartmentSchema, payload);
-  await assertUniqueDepartmentName(input.name, departmentId);
-
-  const updatedDepartment = normalizeDepartmentRecord({
-    ...currentDepartment,
-    name: input.name,
-    status: currentDepartment.status,
-    updatedAt: new Date().toISOString(),
-  });
-
-  await DepartmentRepository.update(updatedDepartment);
-  await AuditTrailService.recordActivitySafely({
-    action: AUDIT_TRAIL_ACTION.UPDATE_DEPARTMENT,
-    reference: updatedDepartment.name,
-    resourceId: updatedDepartment.id,
-    resourceType: AUDIT_RESOURCE_TYPE.DEPARTMENT,
-  });
-  return cloneValue(updatedDepartment);
+  try {
+    const response = await apiClient.put(`/v1/departments/${departmentId}`, {
+      name: payload.name ?? payload.departmentName,
+    });
+    return normalizeDepartmentRecord(response.data?.data);
+  } catch (error) {
+    throwServiceError(error, "Gagal mengubah Department.");
+  }
 };
 
-const setDepartmentStatus = async (departmentId, status) => {
-  await initialize();
-  const currentDepartment = await assertDepartmentExists(departmentId);
-  const updatedDepartment = normalizeDepartmentRecord({
-    ...currentDepartment,
-    status,
-    updatedAt: new Date().toISOString(),
-  });
-
-  await DepartmentPersistenceRepository.runMutation((stores) => {
-    stores.departments.put(updatedDepartment);
-  });
-  await AuditTrailService.recordActivitySafely({
-    action: status === DEPARTMENT_STATUSES.ACTIVE
-      ? AUDIT_TRAIL_ACTION.ACTIVATE_DEPARTMENT
-      : AUDIT_TRAIL_ACTION.DEACTIVATE_DEPARTMENT,
-    reference: updatedDepartment.name,
-    resourceId: updatedDepartment.id,
-    resourceType: AUDIT_RESOURCE_TYPE.DEPARTMENT,
-  });
-
-  return cloneValue(updatedDepartment);
+const activateDepartment = async (departmentId) => {
+  try {
+    const response = await apiClient.patch(`/v1/departments/${departmentId}/activate`);
+    return normalizeDepartmentRecord(response.data?.data);
+  } catch (error) {
+    throwServiceError(error, "Gagal mengaktifkan Department.");
+  }
 };
 
-const activateDepartment = (departmentId) =>
-  setDepartmentStatus(departmentId, DEPARTMENT_STATUSES.ACTIVE);
-
-const deactivateDepartment = (departmentId) =>
-  setDepartmentStatus(departmentId, DEPARTMENT_STATUSES.INACTIVE);
+const deactivateDepartment = async (departmentId) => {
+  try {
+    const response = await apiClient.patch(`/v1/departments/${departmentId}/deactivate`);
+    return normalizeDepartmentRecord(response.data?.data);
+  } catch (error) {
+    throwServiceError(error, "Gagal menonaktifkan Department.");
+  }
+};
 
 const deleteDepartment = async () => {
-  throw new DepartmentValidationError(
-    "Delete Department is not supported by PRD PART 9.11. Use Inactive status to preserve user references.",
-    [
-      {
-        field: "status",
-        message: "Department Master Data must use Active / Inactive lifecycle and must not be deleted.",
-      },
-    ],
-  );
+  throw new DepartmentValidationError("Department tidak dapat dihapus.", [
+    { field: "status", message: "Gunakan status Inactive." },
+  ]);
 };
 
 const searchDepartments = (departments, search = "") => {
   const keyword = normalizeKey(search);
   if (!keyword) return cloneValue(departments);
-
-  return cloneValue(departments.filter((department) =>
-    normalizeKey(department.name).includes(keyword),
-  ));
+  return cloneValue(departments.filter((department) => normalizeKey(department.name).includes(keyword)));
 };
 
-const filterDepartments = (departments, filters = {}) => {
-  const statusFilter = filters.status;
-
-  return cloneValue(departments.filter((department) =>
-    !statusFilter || department.status === statusFilter,
-  ));
-};
+const filterDepartments = (departments, filters = {}) =>
+  cloneValue(departments.filter((department) => !filters.status || department.status === filters.status));
 
 const getSortableValue = (department, sortBy) => {
   if (sortBy === "createdAt" || sortBy === "updatedAt") {
     return new Date(department[sortBy] ?? 0).getTime();
   }
-
-  return normalizeKey(department.name);
+  return normalizeKey(department[sortBy] ?? department.name);
 };
 
-const sortDepartments = (
-  departments,
-  { direction = "asc", sortBy = "name" } = {},
-) => {
+const sortDepartments = (departments, { direction = "asc", sortBy = "name" } = {}) => {
   const multiplier = direction === "desc" ? -1 : 1;
-
   return cloneValue([...departments].sort((firstDepartment, secondDepartment) => {
     const firstValue = getSortableValue(firstDepartment, sortBy);
     const secondValue = getSortableValue(secondDepartment, sortBy);
-
     if (firstValue === secondValue) return 0;
     return firstValue > secondValue ? multiplier : -multiplier;
   }));
@@ -269,52 +169,40 @@ const paginateDepartments = (departments, { page = 1, pageSize = 10 } = {}) => {
   const normalizedPageSize = Math.max(1, Number(pageSize) || 10);
   const totalItems = departments.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / normalizedPageSize));
-  const normalizedPage = Math.min(
-    Math.max(1, Number(page) || 1),
-    totalPages,
-  );
+  const normalizedPage = Math.min(Math.max(1, Number(page) || 1), totalPages);
   const startIndex = (normalizedPage - 1) * normalizedPageSize;
 
   return {
     data: cloneValue(departments.slice(startIndex, startIndex + normalizedPageSize)),
-    pagination: {
-      page: normalizedPage,
-      pageSize: normalizedPageSize,
-      totalItems,
-      totalPages,
-    },
+    pagination: { page: normalizedPage, pageSize: normalizedPageSize, totalItems, totalPages },
   };
 };
 
-const queryDepartments = (departments, query = {}) => {
-  const filteredDepartments = filterDepartments(
-    searchDepartments(departments, query.search),
-    { status: query.status },
+const queryDepartments = (departments, query = {}) =>
+  paginateDepartments(
+    sortDepartments(filterDepartments(searchDepartments(departments, query.search), { status: query.status }), {
+      direction: query.direction ?? query.order,
+      sortBy: query.sortBy ?? query.sort,
+    }),
+    { page: query.page, pageSize: query.pageSize },
   );
-  const sortedDepartments = sortDepartments(filteredDepartments, {
-    direction: query.direction ?? query.order,
-    sortBy: query.sortBy ?? query.sort,
-  });
-
-  return paginateDepartments(sortedDepartments, {
-    page: query.page,
-    pageSize: query.pageSize,
-  });
-};
-
-const getDepartmentList = async (query = {}) =>
-  queryDepartments(await getAllDepartments(), query);
 
 const getDepartmentByName = async (departmentName) => {
-  await initialize();
-  const department = await DepartmentRepository.getByName(departmentName);
-  return department ? cloneValue(normalizeDepartmentRecord(department)) : null;
+  const nameKey = normalizeKey(departmentName);
+  return (await getAllDepartments()).find((department) => department.nameKey === nameKey) ?? null;
 };
 
-const isActiveDepartmentName = async (departmentName) => {
-  const department = await getDepartmentByName(departmentName);
-  return department?.status === DEPARTMENT_STATUSES.ACTIVE;
+const isActiveDepartmentName = async (departmentName) =>
+  (await getDepartmentByName(departmentName))?.status === DEPARTMENT_STATUSES.ACTIVE;
+
+const checkDepartmentNameUniqueness = async (departmentName, currentDepartmentId = null) => {
+  const nameKey = normalizeKey(departmentName);
+  return !(await getAllDepartments()).some(
+    (department) => String(department.id) !== String(currentDepartmentId) && department.nameKey === nameKey,
+  );
 };
+
+const initialize = async () => true;
 
 export const DepartmentService = {
   activateDepartment,

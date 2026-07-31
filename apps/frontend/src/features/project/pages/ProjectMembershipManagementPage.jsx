@@ -402,10 +402,12 @@ const ProjectMembershipManagementPage = () => {
   } = useQuery({
     queryFn: ProjectService.getEnrichedProjectMemberships,
     queryKey: ["project-membership-management", "memberships"],
+    refetchOnMount: "always",
   });
   const { data: allProjects = [] } = useQuery({
     queryFn: ProjectService.getProjects,
     queryKey: ["project-membership-management", "projects"],
+    refetchOnMount: "always",
   });
   const { data: allUsers = [] } = useQuery({
     queryFn: UserService.getUsers,

@@ -2745,6 +2745,24 @@ Rules:
 - Storage Key unique.
 - Original File Name tetap digunakan untuk download/display.
 - Physical File Name tidak ditampilkan kepada pengguna.
+- Physical project directory menggunakan `projects.project_code`, bukan internal `projects.id`.
+- Document directory menggunakan `DOCUMENT_NUMBER`.
+- Revision directory menggunakan canonical revision label: `IFR-Submitted`, `IFA-Submitted`, `AS-Built`.
+- `storage_key` berupa normalized relative key, bukan absolute machine path.
+
+Canonical revision file path:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/revisions/{REVISION}/{PHYSICAL_FILE_NAME}
+```
+
+Physical filename:
+
+```text
+{DOCUMENT_NUMBER}_{REVISION}_{SUBMIT_DATE_YYYYMMDD}_{SHORT_FILE_ID}_{SANITIZED_ORIGINAL_FILE_NAME}
+```
+
+`SUBMIT_DATE_YYYYMMDD` berasal dari backend submit timestamp. `SHORT_FILE_ID` berasal dari `stored_files.file_id`.
 
 ## Rollback Rule
 
@@ -2790,3 +2808,16 @@ Storage Service coordinates storage operations, but Business Service owns busine
 Repository only persists metadata.
 
 Frontend never accesses physical storage path directly.
+
+## Workflow Attachment Storage
+
+Workflow attachment bukan document revision dan tidak disimpan di `revisions/`.
+
+Canonical paths:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/process-comments/{ATTACHMENT_FILE_NAME}
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/project-comments/{ATTACHMENT_FILE_NAME}
+```
+
+Attachment download tetap memakai original filename dari metadata.

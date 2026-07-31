@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 
-import { AuthService } from "@/features/auth/services/auth.service";
+import { queryClient } from "@/shared/api/query-client";
 import { useToast } from "@/shared/components/toast";
 import { usePermission } from "@/shared/hooks/usePermission";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
@@ -14,8 +14,17 @@ import {
   DRAWING_CONTEXT,
 } from "../constants/document.constants";
 import useDocumentRegisterTable from "../hooks/useDocumentRegisterTable";
-import { DocumentService } from "../services/document.service";
+import { DocumentApiService } from "../services/document-api.service";
 import { getDrawingContextFromPathname } from "../utils/drawingContext";
+
+const invalidateDocumentRuntimeQueries = async () => {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["documents"] }),
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] }),
+    queryClient.invalidateQueries({ queryKey: ["escalation"] }),
+  ]);
+};
 
 const pageDescriptions = {
   [DRAWING_CONTEXT.PFD]:
@@ -62,18 +71,22 @@ const DocumentRegisterPage = () => {
   };
 
   const handleCreateDocument = async (formValue) => {
-    const currentUser = AuthService.getCurrentUser();
-
     try {
-      await DocumentService.createDocument({
-        ...formValue,
-        createdBy: currentUser?.fullName ?? "Current User",
+      const temporaryUpload = await DocumentApiService.uploadTemporaryFile(formValue.file);
+
+      await DocumentApiService.createDocument({
+        area: formValue.area,
+        daysUntilValidation: formValue.daysUntilValidation,
+        description: formValue.description,
+        documentNumber: formValue.documentNumber,
+        drawing: formValue.drawing,
+        temporaryFileId: temporaryUpload.temporaryFileId,
       });
 
       setIsCreateModalOpen(false);
-      tableState.refreshDocuments();
+      await invalidateDocumentRuntimeQueries();
       showToast({
-        message: "Upload file berhasil. Document created successfully.",
+        message: "Document berhasil dibuat.",
         variant: "success",
       });
     } catch (error) {

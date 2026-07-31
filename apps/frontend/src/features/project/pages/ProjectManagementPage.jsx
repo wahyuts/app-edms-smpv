@@ -68,6 +68,26 @@ const statusStyles = {
 const editableProjectStatusOptions = PROJECT_STATUS_OPTIONS.filter(
   (status) => status !== PROJECT_STATUS.CLOSED,
 );
+const projectManagementProjectsQueryKey = ["project-management", "projects"];
+const projectMembershipManagementProjectsQueryKey = [
+  "project-membership-management",
+  "projects",
+];
+const projectMembershipManagementMembershipsQueryKey = [
+  "project-membership-management",
+  "memberships",
+];
+
+const invalidateProjectAdministrationQueries = () =>
+  Promise.all([
+    queryClient.invalidateQueries({ queryKey: projectManagementProjectsQueryKey }),
+    queryClient.invalidateQueries({
+      queryKey: projectMembershipManagementProjectsQueryKey,
+    }),
+    queryClient.invalidateQueries({
+      queryKey: projectMembershipManagementMembershipsQueryKey,
+    }),
+  ]);
 
 const getPaginationItems = (totalPages, currentPage) => {
   if (totalPages <= 7) {
@@ -652,7 +672,7 @@ const ProjectManagementPage = () => {
     refetch: refetchProjects,
   } = useQuery({
     queryFn: ProjectService.getProjects,
-    queryKey: ["project-management", "projects"],
+    queryKey: projectManagementProjectsQueryKey,
   });
   const errorMessage = loadError ? getErrorMessage(loadError) : "";
   const sortOption = sortOptions.find((option) => option.value === sortValue) ?? sortOptions[0];
@@ -818,6 +838,7 @@ const ProjectManagementPage = () => {
         variant: "success",
       });
       closeCloseWizard();
+      await invalidateProjectAdministrationQueries();
       await refetchProjects();
       navigate(nextContext.accessibleProjects.length > 0 ? "/select-project" : "/dashboard");
     } catch (error) {
@@ -865,6 +886,7 @@ const ProjectManagementPage = () => {
       }
 
       closeForm();
+      await invalidateProjectAdministrationQueries();
       await refetchProjects();
       await refreshProjectState();
     } catch (error) {
@@ -899,6 +921,7 @@ const ProjectManagementPage = () => {
       }
 
       setStatusTarget(null);
+      await invalidateProjectAdministrationQueries();
       await refetchProjects();
       await refreshProjectState();
     } catch (error) {

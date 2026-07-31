@@ -1694,6 +1694,7 @@ Aturan layer:
 - Middlewares menangani authentication, authorization, project context, error handling, request id, dan upload pre-processing.
 - Jobs menangani proses terjadwal untuk SLA, escalation, dan notification dispatch.
 - Storage menangani temporary upload, virus scan handoff, checksum, permanent storage, download, preview, dan rollback file.
+- Storage path permanent dibentuk oleh backend dari `projects.project_code`, `document_number`, canonical revision label, backend submit timestamp, dan `stored_files.file_id`; frontend tidak menentukan physical path.
 
 ## Backend Folder Blueprint
 
@@ -1748,6 +1749,23 @@ Domain module dipisahkan berdasarkan resource bisnis, bukan berdasarkan halaman 
 | Project Membership | project-memberships.routes.js | ProjectMembershipController | ProjectMembershipService | ProjectMembershipRepository, UserRepository, ProjectRepository | project-membership.validator.js | authenticate, authorize | - | - |
 | Profile | profiles.routes.js | ProfileController | ProfileService, AuthService | UserRepository, CredentialRepository, RefreshSessionRepository | profile.validator.js | authenticate | - | - |
 | Storage | storage.routes.js | StorageController | StorageService | StoredFileRepository | storage.validator.js | authenticate, authorize, projectContext | storageCleanupJob | StorageProvider |
+
+## Backend Storage Path Blueprint
+
+Permanent document revision file:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/revisions/{REVISION}/{DOCUMENT_NUMBER}_{REVISION}_{SUBMIT_DATE_YYYYMMDD}_{SHORT_FILE_ID}_{SANITIZED_ORIGINAL_FILE_NAME}
+```
+
+Workflow attachment:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/process-comments/{ATTACHMENT_ID}_{SANITIZED_ORIGINAL_FILE_NAME}
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/project-comments/{ATTACHMENT_ID}_{SANITIZED_ORIGINAL_FILE_NAME}
+```
+
+Database relationship tetap memakai `project_id`, `document_id`, `revision_id`, dan `file_id`. `stored_files.storage_key` menyimpan relative storage key canonical, bukan absolute path. Download response menggunakan `original_file_name`.
 
 ## Backend Transaction Boundary
 

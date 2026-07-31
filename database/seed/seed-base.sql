@@ -164,7 +164,7 @@ INSERT INTO user_credentials (
   password_changed_at
 ) VALUES (
   1,
-  '$2b$12$OeBCwxqS45mdfl.xSKFp5OnndOrX6aagXAc7yDXXW.Tetr/aLt10G',
+  '$2b$12$DQg0WZNfEvSp/B3CFjYk8umodjGXfsxWjXTYI7Antlrkyxq1zh2qy',
   1,
   '2026-01-01 00:00:00.000',
   '2026-01-01 00:00:00.000',

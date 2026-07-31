@@ -19,7 +19,11 @@ const COLLAPSED_FLYOUT_WIDTH = 192;
 const getInitialSidebarCollapsed = () => {
   if (typeof window === "undefined") return false;
 
-  return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
 };
 
 const AppShell = ({ children }) => {
@@ -71,12 +75,13 @@ const AppShell = ({ children }) => {
     }
 
     const activeProject = AuthService.getActiveProject();
-    const officialRole = AuthService.getOfficialRole();
+    const accessibleProjects = AuthService.getAccessibleProjects();
+    const activeMembership = AuthService.getActiveMembership();
 
     setProjectContextLoading(true);
     setProjectContext({
-      accessibleProjects: activeProject ? [activeProject] : [],
-      activeMembership: officialRole ? { officialRole } : null,
+      accessibleProjects,
+      activeMembership,
       activeProject,
     });
   }, [
@@ -217,10 +222,14 @@ const AppShell = ({ children }) => {
 
     if (!nextValue) closeCollapsedFlyout();
 
-    window.localStorage.setItem(
-      SIDEBAR_COLLAPSED_STORAGE_KEY,
-      String(nextValue),
-    );
+    try {
+      window.localStorage.setItem(
+        SIDEBAR_COLLAPSED_STORAGE_KEY,
+        String(nextValue),
+      );
+    } catch {
+      // UI preference persistence is non-critical; keep the interaction working.
+    }
     setIsSidebarCollapsed(nextValue);
   };
 

@@ -4,20 +4,20 @@ import {
   DOCUMENT_STATUS,
   SLA_STATUS,
 } from "@/features/document-register/constants/document.constants";
-import { resolveCurrentAssigneeRoleDisplay } from "@/features/sla-management/utils/sla-timer-display";
+import { useSlaRuntimeClock } from "@/features/sla-management/hooks/useSlaRuntimeClock";
+import {
+  resolveCurrentAssigneeRoleDisplay,
+  resolveLiveSlaTimer,
+} from "@/features/sla-management/utils/sla-timer-display";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 import { SlaMonitoringService } from "../services/sla-monitoring.service";
 
 const DEFAULT_PAGE_SIZE = 5;
 const DEFAULT_SORT_BY = "slaTimer";
-const SLA_REFRESH_INTERVAL_MS = 60 * 1000;
-const FULL_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const RUNTIME_REFRESH_INTERVAL_MS = 60 * 1000;
 
 const normalizeSearchValue = (value) => String(value ?? "").trim().toLowerCase();
-
-const recalculateDocumentSla = (documentItem) =>
-  SlaMonitoringService.evaluateDocument(documentItem);
 
 const slaStatusOptions = [
   SLA_STATUS.ON_TRACK,
@@ -121,6 +121,7 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
   const hasLoadedOnceRef = useRef(false);
   const activeProjectIdRef = useRef(null);
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
+  const currentTimestamp = useSlaRuntimeClock();
 
   useEffect(() => {
     const resetTimeoutId = window.setTimeout(() => {
@@ -159,12 +160,21 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
         setIsLoading(true);
       }
 
-      const documents = await SlaMonitoringService.getDocuments();
+      try {
+        const documents = await SlaMonitoringService.getDocuments();
 
-      if (isActive) {
-        setSourceDocuments(documents);
-        hasLoadedOnceRef.current = true;
-        setIsLoading(false);
+        if (isActive) {
+          setSourceDocuments(documents);
+        }
+      } catch {
+        if (isActive) {
+          setSourceDocuments([]);
+        }
+      } finally {
+        if (isActive) {
+          hasLoadedOnceRef.current = true;
+          setIsLoading(false);
+        }
       }
     };
 
@@ -176,36 +186,33 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
   }, [activeProjectId, refreshKey]);
 
   useEffect(() => {
-    const slaTimerIntervalId = window.setInterval(() => {
-      setSourceDocuments((currentDocuments) =>
-        currentDocuments.map(recalculateDocumentSla),
-      );
-    }, SLA_REFRESH_INTERVAL_MS);
-
-    const fullRefreshIntervalId = window.setInterval(() => {
+    const runtimeRefreshIntervalId = window.setInterval(() => {
       setRefreshKey((currentKey) => currentKey + 1);
-    }, FULL_REFRESH_INTERVAL_MS);
+    }, RUNTIME_REFRESH_INTERVAL_MS);
 
     return () => {
-      window.clearInterval(slaTimerIntervalId);
-      window.clearInterval(fullRefreshIntervalId);
+      window.clearInterval(runtimeRefreshIntervalId);
     };
   }, []);
 
+  const runtimeDocuments = useMemo(
+    () => sourceDocuments.map((documentItem) => resolveLiveSlaTimer(documentItem, currentTimestamp)),
+    [currentTimestamp, sourceDocuments],
+  );
   const summary = useMemo(
-    () => SlaMonitoringService.createSummary(sourceDocuments),
-    [sourceDocuments],
+    () => SlaMonitoringService.createSummary(runtimeDocuments),
+    [runtimeDocuments],
   );
   const documents = useMemo(
     () =>
       filterDocuments({
-        documents: sourceDocuments,
+        documents: runtimeDocuments,
         searchValue,
         slaStatusFilter,
         sortBy,
         statusFilter,
       }),
-    [searchValue, slaStatusFilter, sortBy, sourceDocuments, statusFilter],
+    [runtimeDocuments, searchValue, slaStatusFilter, sortBy, statusFilter],
   );
   const totalPages = Math.max(1, Math.ceil(documents.length / pageSize));
   const normalizedPageNumber = Math.min(pageNumber, totalPages);

@@ -1,31 +1,43 @@
-import { Link, useNavigate } from "react-router-dom";
-import { useCallback, useEffect } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
+import { getReturnToPath } from "@/app/routes/redirect.utils";
 import { AuthService } from "@/features/auth/services/auth.service";
 import PasswordInput from "@/shared/components/form/PasswordInput";
 import { useToast } from "@/shared/components/toast";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 const LoginPage = () => {
+  const location = useLocation();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const {
+    clearProjectContext,
     setProjectContext,
     setProjectContextLoading,
   } = useProjectContextStore();
 
   const navigateAfterAuthentication = useCallback(() => {
+    const accessibleProjects = AuthService.getAccessibleProjects();
+    const activeMembership = AuthService.getActiveMembership();
     const activeProject = AuthService.getActiveProject();
-    const officialRole = AuthService.getOfficialRole();
+    const fallbackDestination = AuthService.getPostAuthenticationDestination();
+    const destination = getReturnToPath(location, fallbackDestination);
 
     setProjectContextLoading(true);
     setProjectContext({
-      accessibleProjects: activeProject ? [activeProject] : [],
-      activeMembership: officialRole ? { officialRole } : null,
+      accessibleProjects,
+      activeMembership,
       activeProject,
     });
-    navigate("/dashboard", { replace: true });
+    navigate(destination, {
+      replace: true,
+      state: { from: destination },
+    });
   }, [
+    location,
     navigate,
     setProjectContext,
     setProjectContextLoading,
@@ -35,26 +47,42 @@ const LoginPage = () => {
     const currentUser = AuthService.getCurrentUser();
     if (currentUser) {
       navigateAfterAuthentication();
+    } else {
+      clearProjectContext();
     }
-  }, [navigateAfterAuthentication]);
+  }, [clearProjectContext, navigateAfterAuthentication]);
 
   const handleLogin = async (event) => {
     event.preventDefault();
+    if (isSubmitting) return;
 
     const formData = new FormData(event.currentTarget);
-    const response = await AuthService.login({
-      username: String(formData.get("username") ?? ""),
-      password: String(formData.get("password") ?? ""),
-    });
+    setIsSubmitting(true);
 
-    showToast({
-      message: response.message,
-      title: response.success ? "Login Berhasil" : "Login Gagal",
-      variant: response.success ? "success" : "error",
-    });
+    try {
+      const response = await AuthService.login({
+        username: String(formData.get("username") ?? ""),
+        password: String(formData.get("password") ?? ""),
+      });
 
-    if (response.success) {
-      navigateAfterAuthentication();
+      showToast({
+        message: response.message,
+        title: response.success ? "Login Berhasil" : "Login Gagal",
+        variant: response.success ? "success" : "error",
+      });
+
+      if (response.success) {
+        navigateAfterAuthentication();
+      } else {
+        setIsSubmitting(false);
+      }
+    } catch {
+      showToast({
+        message: "Login gagal diproses.",
+        title: "Login Gagal",
+        variant: "error",
+      });
+      setIsSubmitting(false);
     }
   };
 
@@ -110,9 +138,17 @@ const LoginPage = () => {
 
         <button
           className="h-11 rounded-md bg-[#0F7BFF] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30"
+          disabled={isSubmitting}
           type="submit"
         >
-          Login
+          {isSubmitting ? (
+            <span className="inline-flex items-center justify-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Login...
+            </span>
+          ) : (
+            "Login"
+          )}
         </button>
 
       </form>

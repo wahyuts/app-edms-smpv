@@ -514,3 +514,65 @@ Keputusan Product Owner berikut menjadi baseline resmi Core Business Source of T
 - Current Assignee hanya digunakan untuk monitoring, Dashboard, SLA, Escalation, dan Notification Display.
 - Current Product Scope terbaru menggantikan module inventory lama yang bertentangan.
 
+---
+
+# STORAGE ARCHITECTURE ALIGNMENT DECISION
+
+Keputusan sebelum Manual UAT:
+
+- `projects.id` tetap menjadi identity database, foreign key, permission, membership, dan API relation.
+- `projects.project_code` menjadi physical project directory untuk permanent storage.
+- Permanent revision file disimpan di `projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/revisions/{REVISION}/`.
+- Canonical revision directory memakai `IFR-Submitted`, `IFA-Submitted`, dan `AS-Built`.
+- Revision tidak boleh dicampur dengan Workflow Status.
+- Physical filename memakai `{DOCUMENT_NUMBER}_{REVISION}_{SUBMIT_DATE_YYYYMMDD}_{SHORT_FILE_ID}_{SANITIZED_ORIGINAL_FILE_NAME}`.
+- Download filename tetap memakai `original_file_name`.
+- Workflow attachment disimpan di `attachments/process-comments/` atau `attachments/project-comments/`, bukan di `revisions/`.
+- `stored_files.storage_key` harus berupa relative key yang portable untuk local storage, NAS, dan Object Storage/R2.
+- Development storage sedang bersih saat keputusan ini diterapkan, sehingga tidak diperlukan migration historical file.
+
+---
+
+# DAYS UNTIL VALIDATION SLA PATCH DECISION
+
+Keputusan sebelum Manual UAT lanjutan:
+
+- Label frontend tetap `TIMES FOR REVIEW`.
+- Business term resmi tetap `Days Until Validation`.
+- Backend field/API field tetap `daysUntilValidation`.
+- Display read-only memakai formatter `0 -> Today`, `1 -> 1 Day`, dan `N -> N Days`.
+- `daysUntilValidation = 0` adalah value valid, bukan empty value.
+- Upload Revision boleh membawa metadata optional `description`, `area`, dan `daysUntilValidation` agar revision/update cycle memakai deadline terbaru.
+- SLA evaluator membandingkan komponen hari pada SLA Timer terhadap `daysUntilValidation`.
+- `At Risk` terjadi saat `slaTimer.days` sama dengan `daysUntilValidation`.
+- `Overdue` terjadi otomatis saat `slaTimer.days` lebih besar dari `daysUntilValidation`.
+- Untuk `daysUntilValidation = 0`, seluruh timer `0d ...` berada pada `At Risk`; status berubah menjadi `Overdue` saat timer memasuki hari berikutnya.
+- Escalation Level 1 berlaku saat dokumen sudah `Overdue` dengan selisih hari minimal 1, lalu Level 2/3/4 tetap mengikuti threshold existing.
+
+---
+
+# NOTIFICATION RECIPIENT MATRIX PATCH DECISION
+
+Keputusan sebelum Manual UAT lanjutan:
+
+- `Document Uploaded`, `Revision Uploaded`, dan `Approval A Completed` tetap dikirim kepada current assignee sesuai workflow transition.
+- `Document Approved` dikirim kepada seluruh Admin dan Document Owner aktif pada project terkait.
+- `Approval B Completed` dikirim kepada seluruh Admin dan Document Owner aktif pada project terkait.
+- `Approval C Completed` dikirim kepada seluruh Admin dan Document Owner aktif pada project terkait.
+- Title `Approval C Completed` dibedakan berdasarkan reviewer: `Document Not Approved By Team Process` atau `Document Not Approved By Team Project`.
+- `SLA At Risk` memakai title `SLA Warning`, priority `Medium`, dan tetap dikirim ke seluruh membership aktif role Admin, Document Owner, Team Process, dan Team Project pada project terkait.
+- `SLA Overdue` tetap memakai title `SLA Overdue`, priority `High`, dan tetap dikirim ke seluruh membership aktif role Admin, Document Owner, Team Process, dan Team Project pada project terkait.
+- Constraint priority notification menerima `Medium` untuk menyesuaikan PRD dan Message Dictionary.
+
+---
+
+# USERNAME IMMUTABILITY DECISION
+
+Keputusan saat Manual UAT Authentication dan Administration:
+
+- Username hanya ditentukan saat Create User.
+- Setelah akun berhasil dibuat, Username menjadi immutable.
+- Edit User tetap menampilkan Username sebagai referensi identitas akun, tetapi tidak dapat mengubah Username.
+- Backend User Update tidak menerima perubahan Username melalui normal UI maupun manipulated API payload.
+- Create User wajib menampilkan confirmation setelah form valid dan sebelum request create dikirim, dengan Username aktual yang akan dibuat.
+

@@ -116,3 +116,51 @@ export const formatSlaTimerDisplay = ({
 
   return `${normalizedDays}d ${normalizedHours}h ${normalizedMinutes}m`;
 };
+
+const parseTimestamp = (value) => {
+  if (!value) return null;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const resolveSlaStartedAt = (document = {}) =>
+  document.slaStartedAt ?? document.slaTimer?.startedAt ?? null;
+
+const resolveSlaStoppedAt = (document = {}) =>
+  document.slaStoppedAt ?? document.slaTimer?.stoppedAt ?? null;
+
+export const resolveLiveSlaTimer = (document = {}, currentTimestamp = Date.now()) => {
+  const startedAt = parseTimestamp(resolveSlaStartedAt(document));
+
+  if (!startedAt || !document.slaTimer) {
+    return document;
+  }
+
+  const stoppedAt = parseTimestamp(resolveSlaStoppedAt(document));
+  const isFinal =
+    document.status === "Approved" ||
+    document.workflowStatus === "Approved" ||
+    document.slaStatus === SLA_STATUS.FINAL_AS_BUILT;
+  const calculationEnd = stoppedAt ?? (isFinal ? startedAt : new Date(currentTimestamp));
+  const totalMinutes = Math.max(
+    0,
+    Math.floor((calculationEnd.getTime() - startedAt.getTime()) / 60000),
+  );
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+
+  return {
+    ...document,
+    slaTimer: {
+      ...document.slaTimer,
+      calculatedAt: calculationEnd.toISOString(),
+      days,
+      display: isFinal ? (document.slaTimer.display ?? "Done") : formatSlaTimerDisplay({ days, hours, minutes }),
+      hours,
+      minutes,
+      totalMinutes,
+    },
+  };
+};

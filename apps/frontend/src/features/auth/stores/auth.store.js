@@ -42,12 +42,14 @@ const storedAuthContext = readJsonStorage(AUTH_CONTEXT_STORAGE_KEY, {});
 const storedCurrentUser = readJsonStorage(CURRENT_USER_STORAGE_KEY, null);
 
 export const initialAuthState = {
+  accessibleProjects: storedAuthContext.accessibleProjects ?? [],
+  activeMembership: storedAuthContext.activeMembership ?? null,
   activeProject: storedAuthContext.activeProject ?? null,
   authenticated: Boolean(storedCurrentUser),
   error: null,
   loading: false,
-  officialRole: storedAuthContext.officialRole ?? null,
   permissions: storedAuthContext.permissions ?? [],
+  projectSelectionRequired: Boolean(storedAuthContext.projectSelectionRequired),
   role: storedAuthContext.role ?? null,
   user: storedCurrentUser,
 };
@@ -60,29 +62,35 @@ export const useAuthStore = create((set) => ({
     notifyCurrentUserChanged(null);
     set({
       activeProject: null,
+      accessibleProjects: [],
+      activeMembership: null,
       authenticated: false,
       error: null,
       loading: false,
-      officialRole: null,
       permissions: [],
+      projectSelectionRequired: false,
       role: null,
       user: null,
     });
   },
   setAuthContext: ({
+    accessibleProjects = [],
+    activeMembership = null,
     activeProject = null,
-    officialRole = null,
     permissions = [],
+    projectSelectionRequired = false,
     role = null,
     user = null,
   } = {}) => {
     const nextState = {
       activeProject,
+      accessibleProjects: Array.isArray(accessibleProjects) ? accessibleProjects : [],
+      activeMembership,
       authenticated: Boolean(user),
       error: null,
       loading: false,
-      officialRole,
       permissions: Array.isArray(permissions) ? permissions : [],
+      projectSelectionRequired: Boolean(projectSelectionRequired),
       role,
       user,
     };
@@ -91,7 +99,9 @@ export const useAuthStore = create((set) => ({
       writeJsonStorage(CURRENT_USER_STORAGE_KEY, user);
       writeJsonStorage(AUTH_CONTEXT_STORAGE_KEY, {
         activeProject,
-        officialRole,
+        accessibleProjects: nextState.accessibleProjects,
+        activeMembership,
+        projectSelectionRequired: nextState.projectSelectionRequired,
         permissions: nextState.permissions,
         role,
       });
