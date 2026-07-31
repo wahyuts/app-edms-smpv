@@ -1,4 +1,5 @@
 const { pool } = require('../config/database');
+const { normalizeJsonMetadata } = require('../utils/jsonMetadata');
 
 const mapNotificationRow = (row) => row && ({
   id: row.id,
@@ -20,7 +21,7 @@ const mapNotificationRow = (row) => row && ({
   readStatus: Number(row.is_read) === 1 ? 'Read' : 'Unread',
   readAt: row.read_at,
   createdAt: row.created_at,
-  metadata: row.metadata ? JSON.parse(row.metadata) : {},
+  metadata: normalizeJsonMetadata(row.metadata),
 });
 
 const createNotification = async (notification) => {
