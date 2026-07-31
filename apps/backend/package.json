@@ -6,7 +6,9 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "storage:cleanup-temp": "node scripts/cleanup-expired-temporary-uploads.js",
+    "storage:smoke": "node scripts/storage-smoke.js"
   },
   "keywords": [],
   "author": "",

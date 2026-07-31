@@ -59,6 +59,75 @@ const checkStorageHealth = async () => {
   }
 };
 
+const streamToBuffer = async (stream) => {
+  const chunks = [];
+
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks);
+};
+
+const runStorageSmokeValidation = async ({ namespace = '__storage-healthcheck__' } = {}) => {
+  const startedAt = new Date();
+  const token = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const temporaryKey = `${STORAGE_DIRECTORIES.TEMPORARY}/${namespace}/${token}.tmp`;
+  const permanentKey = `${namespace}/${token}.tmp`;
+  const content = Buffer.from(`edms-storage-smoke:${token}`);
+  const result = {
+    cleanup: false,
+    delete: false,
+    driver: activeDriver.name,
+    exists: false,
+    finalize: false,
+    get: false,
+    getStream: false,
+    putTemporary: false,
+    startedAt: startedAt.toISOString(),
+  };
+
+  try {
+    await activeDriver.putTemporary(temporaryKey, content);
+    result.putTemporary = true;
+
+    result.exists = await activeDriver.exists(temporaryKey);
+    if (!result.exists) {
+      throw new Error('[STORAGE] smoke temporary object was not found after put');
+    }
+
+    const readBuffer = await activeDriver.get(temporaryKey);
+    result.get = Buffer.compare(readBuffer, content) === 0;
+    if (!result.get) {
+      throw new Error('[STORAGE] smoke get content mismatch');
+    }
+
+    await activeDriver.finalize(temporaryKey, permanentKey);
+    result.finalize = await activeDriver.exists(permanentKey);
+    if (!result.finalize) {
+      throw new Error('[STORAGE] smoke permanent object was not found after finalize');
+    }
+
+    const streamBuffer = await streamToBuffer(await activeDriver.getStream(permanentKey));
+    result.getStream = Buffer.compare(streamBuffer, content) === 0;
+    if (!result.getStream) {
+      throw new Error('[STORAGE] smoke stream content mismatch');
+    }
+
+    result.delete = await activeDriver.delete(permanentKey);
+    result.completedAt = new Date().toISOString();
+    result.status = 'PASS';
+
+    return result;
+  } catch (error) {
+    throw normalizeStorageError(error, 'run storage smoke validation');
+  } finally {
+    await activeDriver.deleteTemporary(temporaryKey).catch(() => {});
+    await activeDriver.delete(permanentKey).catch(() => {});
+    result.cleanup = true;
+  }
+};
+
 const ensureDocumentStorageDirectories = async (projectCode, documentCode) => {
   const safeProjectCode = validateProjectCode(projectCode);
   const safeDocumentCode = validateDocumentCode(documentCode);
@@ -127,6 +196,7 @@ module.exports = {
   initializeStorage,
   testStorageAccess,
   checkStorageHealth,
+  runStorageSmokeValidation,
   ensureDocumentStorageDirectories,
   putTemporary,
   finalize,

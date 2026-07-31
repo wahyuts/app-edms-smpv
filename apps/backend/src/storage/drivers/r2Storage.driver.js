@@ -51,8 +51,25 @@ class R2StorageDriver {
   }
 
   async finalize(temporaryStorageKey, permanentStorageKey) {
+    if (!(await this.exists(temporaryStorageKey))) {
+      throw new StorageError('[STORAGE] temporary source object does not exist', 'STORAGE_SOURCE_NOT_FOUND');
+    }
+
     await this.copy(temporaryStorageKey, permanentStorageKey);
-    await this.deleteTemporary(temporaryStorageKey);
+
+    if (!(await this.exists(permanentStorageKey))) {
+      throw new StorageError('[STORAGE] permanent object verification failed after copy', 'STORAGE_FINALIZE_VERIFY_FAILED');
+    }
+
+    try {
+      await this.deleteTemporary(temporaryStorageKey);
+    } catch (error) {
+      throw new StorageError(
+        '[STORAGE] temporary object cleanup failed after successful R2 finalize copy',
+        'STORAGE_TEMPORARY_CLEANUP_FAILED',
+        error
+      );
+    }
 
     return { storageKey: permanentStorageKey };
   }

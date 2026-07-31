@@ -88,9 +88,42 @@ const deleteAvailableTemporaryUpload = async (connection, { temporaryFileId }) =
   return result.affectedRows;
 };
 
+const listExpiredUnconsumedTemporaryUploads = async ({ limit = 100 } = {}) => {
+  const safeLimit = Math.min(500, Math.max(1, Number.parseInt(limit, 10) || 100));
+  const [rows] = await pool.execute(
+    `
+      SELECT *
+      FROM temporary_uploads
+      WHERE consumed_at IS NULL
+        AND expires_at <= UTC_TIMESTAMP(3)
+      ORDER BY expires_at ASC
+      LIMIT ?
+    `,
+    [safeLimit]
+  );
+
+  return rows.map(mapTemporaryUploadRow);
+};
+
+const deleteExpiredTemporaryUploadById = async (id) => {
+  const [result] = await pool.execute(
+    `
+      DELETE FROM temporary_uploads
+      WHERE id = ?
+        AND consumed_at IS NULL
+        AND expires_at <= UTC_TIMESTAMP(3)
+    `,
+    [id]
+  );
+
+  return result.affectedRows;
+};
+
 module.exports = {
   createTemporaryUpload,
   deleteAvailableTemporaryUpload,
+  deleteExpiredTemporaryUploadById,
   findAvailableTemporaryUploadByTemporaryFileId,
   findTemporaryUploadByTemporaryFileId,
+  listExpiredUnconsumedTemporaryUploads,
 };
