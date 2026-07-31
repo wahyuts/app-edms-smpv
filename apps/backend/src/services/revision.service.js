@@ -186,11 +186,11 @@ const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserI
   }
 
   const updatedDocument = await documentRepository.findDocumentRegisterById(document.id);
-  await notificationService.createDocumentNotification({
+  await notificationService.createDocumentNotificationsForOfficialRoles({
     document: updatedDocument,
     eventType: notificationService.NOTIFICATION_EVENT_TYPE.REVISION_UPLOADED,
     identityBasis: revisionId,
-    recipientUserId: updatedDocument.currentAssigneeUserId,
+    officialRoles: [updatedDocument.responsibleRole],
   });
   await auditService.recordActivitySafely({
     action: 'Upload Revision',

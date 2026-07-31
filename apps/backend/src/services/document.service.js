@@ -261,7 +261,7 @@ const createDocument = async ({ activeProject, actorOfficialRole, actorUserFullN
   }
 
   const createdDocument = await documentRepository.findDocumentRegisterById(documentId);
-  await notificationService.createDocumentNotification({
+  await notificationService.createDocumentNotificationsForOfficialRoles({
     document: {
       ...createdDocument,
       currentAssigneeUserId: initialAssignee.userId,
@@ -269,7 +269,7 @@ const createDocument = async ({ activeProject, actorOfficialRole, actorUserFullN
       status: DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW,
     },
     eventType: notificationService.NOTIFICATION_EVENT_TYPE.DOCUMENT_UPLOADED,
-    recipientUserId: initialAssignee.userId,
+    officialRoles: [DOCUMENT_RESPONSIBLE_ROLE.TEAM_PROCESS],
   });
   await auditService.recordActivitySafely({
     action: 'Upload Document',

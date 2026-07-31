@@ -166,12 +166,11 @@ const processApproval = async ({
       officialRoles: ['Admin', 'Document Owner'],
     });
   } else {
-    await notificationService.createDocumentNotification({
+    await notificationService.createDocumentNotificationsForOfficialRoles({
       document: updatedDocument,
       eventType: notificationEventType,
       identityBasis: notificationIdentityBasis,
-      recipientOfficialRole: updatedDocument.responsibleRole,
-      recipientUserId: updatedDocument.currentAssigneeUserId,
+      officialRoles: [updatedDocument.responsibleRole],
     });
   }
   await auditService.recordActivitySafely({
