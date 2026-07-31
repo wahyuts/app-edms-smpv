@@ -1,4 +1,5 @@
 const { pool } = require('../config/database');
+const { normalizeJsonMetadata } = require('../utils/jsonMetadata');
 
 const sensitiveMetadataKeys = [
   'apiKey',
@@ -46,7 +47,7 @@ const mapAuditRow = (row) => row && ({
   resourceType: row.resource_type,
   resourceId: row.resource_id,
   reference: row.reference,
-  metadata: row.metadata ? sanitizeMetadata(JSON.parse(row.metadata)) : {},
+  metadata: sanitizeMetadata(normalizeJsonMetadata(row.metadata)),
   occurredAt: row.occurred_at,
   createdAt: row.occurred_at,
   timestamp: row.occurred_at,
