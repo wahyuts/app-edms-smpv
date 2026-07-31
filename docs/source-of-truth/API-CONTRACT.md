@@ -2379,8 +2379,8 @@ Relevant error responses:
 - `500` apabila terjadi internal error.
 
 | `GET /api/v1/users` | pagination/filter/search | user collection | admin permission | `user-management.view` | Read only | None |
-| `POST /api/v1/users` | user payload | created user | user form, department active, unique username/email | `user-management.view` | Create user and credential | Audit |
-| `PATCH /api/v1/users/{id}` | user payload | updated user | user exists, department active | `user-management.view` | Update user | Audit, cache invalidation consumer side |
+| `POST /api/v1/users` | user payload including immutable `username` | created user | user form, department active, unique username/email | `user-management.view` | Create user and credential | Audit |
+| `PUT /api/v1/users/{id}` | editable user payload excluding username mutation | updated user | user exists, department active, username immutable | `user-management.view` | Update allowed user fields only | Audit, cache invalidation consumer side |
 | `PATCH /api/v1/users/{id}/activate` | user id | updated user | user exists | `user-management.view` | User status | Audit |
 | `PATCH /api/v1/users/{id}/deactivate` | user id | updated user | user exists | `user-management.view` | User status, session revocation if required | Audit |
 | `GET /api/v1/departments` | pagination/filter/search | department collection | admin permission | `user-management.view` | Read only | None |

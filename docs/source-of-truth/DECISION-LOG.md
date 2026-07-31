@@ -564,3 +564,15 @@ Keputusan sebelum Manual UAT lanjutan:
 - `SLA Overdue` tetap memakai title `SLA Overdue`, priority `High`, dan tetap dikirim ke seluruh membership aktif role Admin, Document Owner, Team Process, dan Team Project pada project terkait.
 - Constraint priority notification menerima `Medium` untuk menyesuaikan PRD dan Message Dictionary.
 
+---
+
+# USERNAME IMMUTABILITY DECISION
+
+Keputusan saat Manual UAT Authentication dan Administration:
+
+- Username hanya ditentukan saat Create User.
+- Setelah akun berhasil dibuat, Username menjadi immutable.
+- Edit User tetap menampilkan Username sebagai referensi identitas akun, tetapi tidak dapat mengubah Username.
+- Backend User Update tidak menerima perubahan Username melalui normal UI maupun manipulated API payload.
+- Create User wajib menampilkan confirmation setelah form valid dan sebelum request create dikirim, dengan Username aktual yang akan dibuat.
+

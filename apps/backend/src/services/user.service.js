@@ -35,8 +35,8 @@ const assertUserExists = async (userId) => {
 
 const assertUniqueUserFields = async ({ currentUserId = null, email, username }) => {
   const [existingUsername, existingEmail] = await Promise.all([
-    userRepository.findUserByUsername(username),
-    userRepository.findUserByEmail(email),
+    username ? userRepository.findUserByUsername(username) : Promise.resolve(null),
+    email ? userRepository.findUserByEmail(email) : Promise.resolve(null),
   ]);
   const errors = [];
 
@@ -138,13 +138,18 @@ const createUser = async (payload) => {
 };
 
 const updateUser = async ({ actorUserId, payload, userId }) => {
-  await assertUserExists(userId);
+  const existingUser = await assertUserExists(userId);
   if (String(actorUserId) === String(userId) && payload.status === ENTITY_STATUS.INACTIVE) {
     throw createHttpError('User Sendiri Tidak Dapat Dinonaktifkan', 403);
   }
+  if (payload.username && normalizeKey(payload.username) !== normalizeKey(existingUser.username)) {
+    throw createHttpError('Username Tidak Dapat Diubah', 422, [
+      { field: 'username', message: 'Username Tidak Dapat Diubah Setelah User Dibuat' },
+    ]);
+  }
   const [department] = await Promise.all([
     resolveDepartment(payload),
-    assertUniqueUserFields({ ...payload, currentUserId: userId }),
+    assertUniqueUserFields({ currentUserId: userId, email: payload.email }),
   ]);
 
   try {
@@ -157,7 +162,6 @@ const updateUser = async ({ actorUserId, payload, userId }) => {
         fullName: payload.fullName,
         position: payload.position,
         status: payload.status,
-        username: payload.username,
       },
     });
   } catch (error) {

@@ -20,6 +20,12 @@ export const userIdentitySchema = z.object({
   username: requiredText("Username"),
 });
 
+export const updateUserIdentitySchema = z.object({
+  department: requiredText("Department"),
+  email: emailSchema,
+  name: requiredText("Name"),
+});
+
 export const createUserSchema = userIdentitySchema.extend({
   confirmPassword: requiredConfirmPassword,
   initialPassword: requiredText("Initial Password"),
@@ -31,7 +37,7 @@ export const createUserSchema = userIdentitySchema.extend({
   },
 );
 
-export const updateUserSchema = userIdentitySchema.extend({
+export const updateUserSchema = updateUserIdentitySchema.extend({
   status: z.enum(USER_STATUS_OPTIONS, {
     error: "Status must be Active or Inactive.",
   }),

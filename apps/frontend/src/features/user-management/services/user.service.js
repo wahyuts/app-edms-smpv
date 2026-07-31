@@ -140,7 +140,6 @@ const updateUser = async (userId, payload = {}) => {
       name: payload.name ?? payload.fullName,
       position: payload.position ?? null,
       status: payload.status,
-      username: payload.username,
     });
     return normalizeUserRecord(response.data?.data);
   } catch (error) {

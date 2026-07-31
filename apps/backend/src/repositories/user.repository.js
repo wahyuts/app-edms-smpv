@@ -232,8 +232,7 @@ const updateUser = async ({ userId, user }) => {
     await connection.execute(
       `
         UPDATE users
-        SET username = ?,
-            full_name = ?,
+        SET full_name = ?,
             email = ?,
             department_id = ?,
             department_name_snapshot = ?,
@@ -242,7 +241,6 @@ const updateUser = async ({ userId, user }) => {
         WHERE id = ?
       `,
       [
-        user.username,
         user.fullName,
         user.email,
         user.departmentId,

@@ -85,7 +85,9 @@ const validateUserCreate = (body) => {
 const validateUserUpdate = (body) => {
   const normalizedBody = normalizeBodyAlias(body);
   const errors = [];
-  const username = addRequiredText(errors, normalizedBody, 'username', 'Username');
+  const username = Object.prototype.hasOwnProperty.call(normalizedBody, 'username')
+    ? normalizeText(normalizedBody?.username)
+    : null;
   const fullName = addRequiredText(errors, normalizedBody, 'name', 'Nama');
   const email = addRequiredText(errors, normalizedBody, 'email', 'Email');
   const departmentId = toIntegerOrNull(normalizedBody?.departmentId);

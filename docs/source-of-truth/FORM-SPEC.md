@@ -2204,6 +2204,7 @@ Form operasional resmi:
 - User Create/Update/Activate/Deactivate.
 - Department Create/Update/Activate/Deactivate.
 - Profile dan Change Password.
+- Create User wajib menampilkan confirmation setelah validasi form PASS untuk menegaskan bahwa Username tidak dapat diubah setelah akun dibuat.
 
 ## Validation Baseline
 
@@ -2215,5 +2216,6 @@ Form operasional resmi:
 - File utama menerima `pdf`, `docx`, `xls`, `xlsx`, `jpg`, `jpeg`, dan `png` maksimum 100 MB.
 - Workflow attachment menerima `pdf`, `jpg`, `jpeg`, dan `png` maksimum 100 MB.
 - User email dan username wajib unik.
+- Username hanya ditentukan pada Create User dan menjadi immutable setelah akun berhasil dibuat.
 - Department name key wajib unik.
 - Close Project membutuhkan validasi Active Project, Role Admin, project code confirmation, checkbox confirmation, dan tidak ada workflow aktif.

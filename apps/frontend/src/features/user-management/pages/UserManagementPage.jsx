@@ -181,11 +181,13 @@ const FieldError = ({ message }) =>
   message ? <p className="text-xs font-medium text-[#FCA5A5]">{message}</p> : null;
 
 const TextField = ({
+  disabled = false,
   error,
   label,
   name,
   onChange,
   placeholder,
+  readOnly = false,
   type = "text",
   value,
 }) => (
@@ -193,9 +195,11 @@ const TextField = ({
     <span>{label}</span>
     <input
       className={controlClassName}
+      disabled={disabled}
       name={name}
       onChange={onChange}
       placeholder={placeholder}
+      readOnly={readOnly}
       type={type}
       value={value}
     />
@@ -296,6 +300,7 @@ const UserFormModal = ({
               name="username"
               onChange={onChange}
               placeholder="Enter username"
+              readOnly={!isCreate}
               value={form.username}
             />
             <TextField
@@ -409,6 +414,50 @@ const UserFormModal = ({
     </div>
   );
 };
+
+const CreateUserConfirmationModal = ({
+  form,
+  onCancel,
+  onConfirm,
+  submitting,
+}) => (
+  <div className="fixed inset-0 z-[9100] flex items-center justify-center bg-[#020B16]/80 px-4 py-6">
+    <div className="w-full max-w-md rounded-lg border border-[#123A5A] bg-[#061B2F] p-5 shadow-2xl">
+      <h2 className="text-xl font-bold">Konfirmasi Username</h2>
+      <div className="mt-3 space-y-3 text-sm text-[#CBD5E1]">
+        <p>Username yang dipilih tidak dapat diubah setelah akun dibuat.</p>
+        <div className="rounded-md border border-[#123A5A] bg-[#08233B] px-3 py-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">
+            Username
+          </p>
+          <p className="mt-1 font-mono text-base font-bold text-[#F8FAFC]">
+            {form.username}
+          </p>
+        </div>
+        <p>Pastikan username sudah benar sebelum melanjutkan.</p>
+        <p>Apakah Anda yakin ingin membuat user ini?</p>
+      </div>
+      <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <button
+          className={actionButtonClassName}
+          disabled={submitting}
+          onClick={onCancel}
+          type="button"
+        >
+          Batal
+        </button>
+        <button
+          className={primaryButtonClassName}
+          disabled={submitting}
+          onClick={onConfirm}
+          type="button"
+        >
+          {submitting ? "Saving..." : "Buat User"}
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
 const StatusConfirmationModal = ({
   onCancel,
@@ -547,6 +596,7 @@ const UserManagementPage = () => {
   const [formErrors, setFormErrors] = useState({});
   const [formMode, setFormMode] = useState(null);
   const [formState, setFormState] = useState(initialCreateForm);
+  const [createConfirmationForm, setCreateConfirmationForm] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchValue, setSearchValue] = useState("");
@@ -677,6 +727,8 @@ const UserManagementPage = () => {
   };
 
   const closeForm = () => {
+    if (isSubmitting) return;
+    setCreateConfirmationForm(null);
     setFormMode(null);
     setFormErrors({});
     setFormState(initialCreateForm);
@@ -686,6 +738,7 @@ const UserManagementPage = () => {
   const openCreateForm = () => {
     setFormMode("create");
     setFormErrors({});
+    setCreateConfirmationForm(null);
     setSelectedUser(null);
     setFormState(initialCreateForm);
   };
@@ -693,6 +746,7 @@ const UserManagementPage = () => {
   const openEditForm = (user) => {
     setFormMode("edit");
     setFormErrors({});
+    setCreateConfirmationForm(null);
     setSelectedUser(user);
     setFormState(getEditForm(user));
   };
@@ -704,6 +758,7 @@ const UserManagementPage = () => {
       ...currentForm,
       [name]: value,
     }));
+    setCreateConfirmationForm(null);
     setFormErrors((currentErrors) => ({
       ...currentErrors,
       [name]: null,
@@ -736,16 +791,15 @@ const UserManagementPage = () => {
         ]);
       }
 
+      if (formMode === "create") {
+        setCreateConfirmationForm(validatedForm);
+        return;
+      }
+
       setIsSubmitting(true);
       requestStarted = true;
 
-      if (formMode === "create") {
-        await UserService.createUser(validatedForm);
-        showToast({
-          message: "User created successfully.",
-          variant: "success",
-        });
-      } else if (formMode === "edit" && selectedUser) {
+      if (formMode === "edit" && selectedUser) {
         await UserService.updateUser(selectedUser.id, validatedForm);
         showToast({
           message: "User updated successfully.",
@@ -768,6 +822,38 @@ const UserManagementPage = () => {
       if (requestStarted) {
         setIsSubmitting(false);
       }
+    }
+  };
+
+  const handleCreateUserConfirm = async () => {
+    if (!createConfirmationForm || isSubmitting) return;
+
+    setIsSubmitting(true);
+
+    try {
+      await UserService.createUser(createConfirmationForm);
+      showToast({
+        message: "User created successfully.",
+        variant: "success",
+      });
+      setCreateConfirmationForm(null);
+      setFormMode(null);
+      setFormErrors({});
+      setFormState(initialCreateForm);
+      setSelectedUser(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: PROJECT_MEMBERSHIP_QUERY_KEY }),
+      ]);
+    } catch (error) {
+      setFormErrors(getErrorMap(error));
+      setCreateConfirmationForm(null);
+      showToast({
+        message: getErrorMessage(error),
+        variant: "error",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1186,6 +1272,15 @@ const UserManagementPage = () => {
           onSubmit={handleFormSubmit}
           statuses={statuses}
           submitLabel={formMode === "create" ? "Create User" : "Update User"}
+          submitting={isSubmitting}
+        />
+      ) : null}
+
+      {createConfirmationForm ? (
+        <CreateUserConfirmationModal
+          form={createConfirmationForm}
+          onCancel={() => setCreateConfirmationForm(null)}
+          onConfirm={handleCreateUserConfirm}
           submitting={isSubmitting}
         />
       ) : null}

@@ -19620,6 +19620,8 @@ Hanya Department dengan Status **Active** yang dapat dipilih ketika membuat User
 
 Department tidak dapat dimasukkan sebagai free text melalui Create User Form.
 
+Sebelum akun dibuat, sistem menampilkan confirmation yang memperlihatkan Username aktual dan menjelaskan bahwa Username tidak dapat diubah setelah akun berhasil dibuat.
+
 Setelah proses Create User berhasil, sistem mengembalikan Admin ke halaman **User Management**.
 
 ---
@@ -19633,12 +19635,14 @@ Form ini terdiri dari informasi berikut:
 | Field | Description |
 |---------|-------------|
 | Name | Nama pengguna. |
-| Username | Username pengguna. |
+| Username | Username pengguna, ditampilkan read-only dan tidak dapat diubah. |
 | Email | Alamat email pengguna. |
 | Department | Department pengguna yang dipilih dari Department Master Data. |
 | Status | Status akun pengguna (Active / Inactive). |
 
 Form **Edit User** tidak menampilkan maupun mengubah Password pengguna.
+
+Username hanya ditentukan pada Create User dan menjadi immutable setelah akun berhasil dibuat. Edit User tidak boleh mengubah Username, termasuk melalui manipulated API payload.
 
 Perubahan Password mengikuti proses Authentication dan User Profile sesuai PART terkait.
 
@@ -19717,6 +19721,8 @@ Admin dapat membuat akun pengguna baru melalui halaman **Create User**.
 
 Sebelum proses Create User disimpan, sistem memvalidasi bahwa Department yang dipilih masih tersedia dan berstatus Active.
 
+Setelah validasi form berhasil, Admin wajib mengonfirmasi Username sebelum request Create User dikirim.
+
 Setelah proses berhasil disimpan:
 
 - Akun pengguna baru ditambahkan ke User Management.
@@ -19730,6 +19736,8 @@ Setelah proses berhasil disimpan:
 ### Edit User Behaviour
 
 Admin dapat memperbarui informasi identitas pengguna melalui halaman **Edit User**.
+
+Field Username tetap terlihat pada Edit User sebagai referensi identitas akun, tetapi tidak editable.
 
 Informasi yang dapat diperbarui meliputi:
 
