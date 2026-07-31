@@ -25,7 +25,7 @@ const mapNotificationRow = (row) => row && ({
 });
 
 const createNotification = async (notification) => {
-  await pool.execute(
+  const [result] = await pool.execute(
     `
       INSERT IGNORE INTO notifications (
         id, identity_key, project_id, recipient_user_id, recipient_project_membership_id,
@@ -53,6 +53,8 @@ const createNotification = async (notification) => {
       JSON.stringify(notification.metadata || {}),
     ]
   );
+
+  return result.affectedRows;
 };
 
 const findNotificationById = async (notificationId) => {

@@ -1,11 +1,21 @@
 const { pool } = require('../config/database');
+const { ENTITY_STATUS, OFFICIAL_ROLES, PROJECT_STATUS } = require('../constants/administration.constants');
+
+const normalizeLookupText = (value) => String(value || '').trim().toLowerCase();
+const officialRoleByLookup = new Map(OFFICIAL_ROLES.map((role) => [normalizeLookupText(role), role]));
+
+const normalizeOfficialRoleValue = (value) => officialRoleByLookup.get(normalizeLookupText(value)) || value;
+const normalizeStatusValue = (value, statusValues) => {
+  const normalizedValue = normalizeLookupText(value);
+  return statusValues.find((status) => normalizeLookupText(status) === normalizedValue) || value;
+};
 
 const mapMembershipRow = (row) => row && ({
   id: row.id,
   projectId: row.project_id,
   userId: row.user_id,
-  officialRole: row.official_role,
-  status: row.status,
+  officialRole: normalizeOfficialRoleValue(row.official_role),
+  status: normalizeStatusValue(row.status, Object.values(ENTITY_STATUS)),
   assignedBy: row.assigned_by_name,
   assignedByUserId: row.assigned_by_user_id,
   assignedDate: row.assigned_at,
@@ -15,10 +25,10 @@ const mapMembershipRow = (row) => row && ({
   updatedByUserId: row.updated_by_user_id,
   projectCode: row.project_code,
   projectName: row.project_name,
-  projectStatus: row.project_status,
+  projectStatus: normalizeStatusValue(row.project_status, Object.values(PROJECT_STATUS)),
   username: row.username,
   userName: row.full_name,
-  userStatus: row.user_status,
+  userStatus: normalizeStatusValue(row.user_status, Object.values(ENTITY_STATUS)),
 });
 
 const sortColumns = Object.freeze({
@@ -149,9 +159,9 @@ const findActiveMembershipByProjectAndUser = async ({ projectId, userId }) => {
       ${baseSelect}
       WHERE project_memberships.project_id = ?
         AND project_memberships.user_id = ?
-        AND project_memberships.status = 'Active'
-        AND users.status = 'Active'
-        AND projects.status = 'Active'
+        AND LOWER(TRIM(project_memberships.status)) = 'active'
+        AND LOWER(TRIM(users.status)) = 'active'
+        AND LOWER(TRIM(projects.status)) = 'active'
       LIMIT 1
     `,
     [projectId, userId]
@@ -160,34 +170,36 @@ const findActiveMembershipByProjectAndUser = async ({ projectId, userId }) => {
 };
 
 const findActiveMembershipByProjectAndOfficialRole = async ({ officialRole, projectId }) => {
+  const normalizedOfficialRole = normalizeLookupText(officialRole);
   const [rows] = await pool.execute(
     `
       ${baseSelect}
       WHERE project_memberships.project_id = ?
-        AND project_memberships.official_role = ?
-        AND project_memberships.status = 'Active'
-        AND users.status = 'Active'
-        AND projects.status = 'Active'
+        AND LOWER(TRIM(project_memberships.official_role)) = ?
+        AND LOWER(TRIM(project_memberships.status)) = 'active'
+        AND LOWER(TRIM(users.status)) = 'active'
+        AND LOWER(TRIM(projects.status)) = 'active'
       ORDER BY users.full_name ASC, users.id ASC
       LIMIT 1
     `,
-    [projectId, officialRole]
+    [projectId, normalizedOfficialRole]
   );
   return mapMembershipRow(rows[0]);
 };
 
 const listActiveMembershipsByProjectAndOfficialRoles = async ({ officialRoles = [], projectId }) => {
-  const roles = [...new Set(officialRoles.filter(Boolean))];
+  const sourceRoles = Array.isArray(officialRoles) ? officialRoles : [];
+  const roles = [...new Set(sourceRoles.map(normalizeLookupText).filter(Boolean))];
   if (roles.length === 0) return [];
   const placeholders = roles.map(() => '?').join(', ');
   const [rows] = await pool.execute(
     `
       ${baseSelect}
       WHERE project_memberships.project_id = ?
-        AND project_memberships.official_role IN (${placeholders})
-        AND project_memberships.status = 'Active'
-        AND users.status = 'Active'
-        AND projects.status = 'Active'
+        AND LOWER(TRIM(project_memberships.official_role)) IN (${placeholders})
+        AND LOWER(TRIM(project_memberships.status)) = 'active'
+        AND LOWER(TRIM(users.status)) = 'active'
+        AND LOWER(TRIM(projects.status)) = 'active'
       ORDER BY users.full_name ASC, users.id ASC
     `,
     [projectId, ...roles]
@@ -220,9 +232,9 @@ const listAccessibleProjectsByUserId = async (userId) => {
       INNER JOIN projects ON projects.id = project_memberships.project_id
       INNER JOIN users ON users.id = project_memberships.user_id
       WHERE project_memberships.user_id = ?
-        AND project_memberships.status = 'Active'
-        AND projects.status = 'Active'
-        AND users.status = 'Active'
+        AND LOWER(TRIM(project_memberships.status)) = 'active'
+        AND LOWER(TRIM(projects.status)) = 'active'
+        AND LOWER(TRIM(users.status)) = 'active'
       ORDER BY projects.project_name ASC
     `,
     [userId]
@@ -233,8 +245,8 @@ const listAccessibleProjectsByUserId = async (userId) => {
       id: row.membership_id,
       projectId: row.id,
       userId,
-      officialRole: row.official_role,
-      status: row.membership_status,
+      officialRole: normalizeOfficialRoleValue(row.official_role),
+      status: normalizeStatusValue(row.membership_status, Object.values(ENTITY_STATUS)),
       assignedAt: row.assigned_at,
       updatedAt: row.membership_updated_at,
     },
@@ -244,7 +256,7 @@ const listAccessibleProjectsByUserId = async (userId) => {
       projectName: row.project_name,
       name: row.project_name,
       description: row.description || '',
-      status: row.status,
+      status: normalizeStatusValue(row.status, Object.values(PROJECT_STATUS)),
       createdByUserId: row.created_by_user_id,
       createdAt: row.created_at,
       createdDate: row.created_at,

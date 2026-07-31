@@ -1,5 +1,6 @@
 const notificationRepository = require('../repositories/notification.repository');
 const projectMembershipRepository = require('../repositories/projectMembership.repository');
+const logger = require('../config/logger');
 const auditService = require('./audit.service');
 const { buildPagination, createEntityId, createHttpError, normalizeText, parseListQuery } = require('../utils/administration');
 
@@ -75,6 +76,24 @@ const createActionTarget = (document, eventType) => {
 
   const drawingSegment = document?.drawing === 'P&ID' ? 'pid' : 'pfd';
   return `/document-register/${drawingSegment}`;
+};
+
+const logRecipientResolution = ({
+  createdCount = 0,
+  document,
+  eventType,
+  recipientCount = 0,
+  targetRoles = [],
+}) => {
+  logger.log(
+    '[NOTIFICATION]',
+    `event=${eventType}`,
+    `projectId=${document?.projectId || '-'}`,
+    `documentId=${document?.id || '-'}`,
+    `targetRoles=${targetRoles.join('|') || '-'}`,
+    `resolvedRecipients=${recipientCount}`,
+    `created=${createdCount}`
+  );
 };
 
 const normalizeSlaCycleTimestamp = (value) => {
@@ -189,7 +208,7 @@ const createNotificationForMembership = async ({
     identityBasis || document.activeRevisionId || document.updatedAt || document.lastUpdated,
   ].join(':');
 
-  await notificationRepository.createNotification({
+  const affectedRows = await notificationRepository.createNotification({
     id: createEntityId('NTF'),
     identityKey,
     projectId: document.projectId,
@@ -211,7 +230,11 @@ const createNotificationForMembership = async ({
     },
   });
 
-  return true;
+  return {
+    created: affectedRows === 1,
+    recipientProjectMembershipId: recipientMembership.id,
+    recipientUserId: recipientMembership.userId,
+  };
 };
 
 const createDocumentNotification = async ({
@@ -262,7 +285,7 @@ const createDocumentNotificationsForOfficialRoles = async ({
     return uniqueByUserId;
   }, new Map()).values()];
 
-  await Promise.all(uniqueMemberships.map((recipientMembership) =>
+  const results = await Promise.all(uniqueMemberships.map((recipientMembership) =>
     createNotificationForMembership({
       dictionaryOverride,
       document,
@@ -271,9 +294,18 @@ const createDocumentNotificationsForOfficialRoles = async ({
       recipientMembership,
     })
   ));
+  const createdCount = results.filter((result) => result?.created).length;
+  logRecipientResolution({
+    createdCount,
+    document,
+    eventType,
+    recipientCount: uniqueMemberships.length,
+    targetRoles: officialRoles,
+  });
 
   return {
     attemptedRecipientCount: uniqueMemberships.length,
+    createdCount,
     eventType,
   };
 };
@@ -314,19 +346,19 @@ const createSlaStateNotifications = async ({
   const recipients = await resolveOfficialSlaRecipients(document);
   const dictionary = messageDictionary[eventType];
 
-  await Promise.all(recipients.map(async (recipient) => {
+  const results = await Promise.all(recipients.map(async (recipient) => {
     if (await hasExistingSlaNotificationForCycle({
       cycleId,
       document,
       eventType,
       recipient,
     })) {
-      return;
+      return { created: false, skipped: 'duplicate' };
     }
 
     const normalizedCycleId = normalizeSlaCycleId(cycleId || document.slaStartedAt || document.updatedAt || document.lastUpdated);
 
-    await notificationRepository.createNotification({
+    const affectedRows = await notificationRepository.createNotification({
       id: createEntityId('NTF'),
       identityKey: [
         eventType,
@@ -356,10 +388,21 @@ const createSlaStateNotifications = async ({
         workflowStatus: document.status,
       },
     });
+
+    return { created: affectedRows === 1 };
   }));
+  const createdCount = results.filter((result) => result?.created).length;
+  logRecipientResolution({
+    createdCount,
+    document,
+    eventType,
+    recipientCount: recipients.length,
+    targetRoles: SLA_NOTIFICATION_ROLES,
+  });
 
   return {
     attemptedRecipientCount: recipients.length,
+    createdCount,
     eventType,
   };
 };
