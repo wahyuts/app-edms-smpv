@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 
-const SLA_RUNTIME_CLOCK_INTERVAL_MS = 1000;
+import { useEstimatedServerTimeClock } from "@/shared/hooks/useEstimatedServerTimeClock";
+
 const SLA_DIAG_CLOCK_HEARTBEAT_INTERVAL_MS = 60 * 1000;
 const isSlaDiagnosticsEnabled =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_SLA_DIAGNOSTICS === "true";
@@ -16,52 +17,93 @@ const logSlaClockDiagnostic = (payload) => {
 };
 
 export const useSlaRuntimeClock = () => {
-  const [currentTimestamp, setCurrentTimestamp] = useState(() => Date.now());
+  const {
+    estimatedServerNow,
+    isSynchronized,
+    roundTripTimeMs,
+    source,
+    status,
+  } = useEstimatedServerTimeClock();
+  const clockDiagnosticRef = useRef({
+    estimatedServerNow,
+    isSynchronized,
+    roundTripTimeMs,
+    source,
+    status,
+  });
+
+  useEffect(() => {
+    clockDiagnosticRef.current = {
+      estimatedServerNow,
+      isSynchronized,
+      roundTripTimeMs,
+      source,
+      status,
+    };
+  }, [
+    estimatedServerNow,
+    isSynchronized,
+    roundTripTimeMs,
+    source,
+    status,
+  ]);
 
   useEffect(() => {
     const instanceId = `sla-clock-${++slaRuntimeClockInstanceSequence}`;
-    let tickCount = 0;
-    let lastLoggedAt = Date.now();
+    const mountedAt = performance.now();
+    const initialDiagnostic = clockDiagnosticRef.current;
 
     logSlaClockDiagnostic({
-      currentTimestamp: lastLoggedAt,
+      currentTimestamp: initialDiagnostic.estimatedServerNow,
       event: "mount",
       instanceId,
-      iso: new Date(lastLoggedAt).toISOString(),
-      tickCount,
+      isSynchronized: initialDiagnostic.isSynchronized,
+      iso: initialDiagnostic.estimatedServerNow
+        ? new Date(initialDiagnostic.estimatedServerNow).toISOString()
+        : null,
+      roundTripTimeMs: initialDiagnostic.roundTripTimeMs,
+      source: initialDiagnostic.source,
+      status: initialDiagnostic.status,
     });
 
     const intervalId = window.setInterval(() => {
-      const nextTimestamp = Date.now();
-      tickCount += 1;
-      setCurrentTimestamp(nextTimestamp);
+      const currentDiagnostic = clockDiagnosticRef.current;
 
-      if (nextTimestamp - lastLoggedAt >= SLA_DIAG_CLOCK_HEARTBEAT_INTERVAL_MS) {
-        lastLoggedAt = nextTimestamp;
-        logSlaClockDiagnostic({
-          currentTimestamp: nextTimestamp,
-          elapsedSeconds: tickCount,
-          event: "heartbeat",
-          instanceId,
-          iso: new Date(nextTimestamp).toISOString(),
-          tickCount,
-        });
-      }
-    }, SLA_RUNTIME_CLOCK_INTERVAL_MS);
+      logSlaClockDiagnostic({
+        currentTimestamp: currentDiagnostic.estimatedServerNow,
+        elapsedSeconds: Math.floor((performance.now() - mountedAt) / 1000),
+        event: "heartbeat",
+        instanceId,
+        isSynchronized: currentDiagnostic.isSynchronized,
+        iso: currentDiagnostic.estimatedServerNow
+          ? new Date(currentDiagnostic.estimatedServerNow).toISOString()
+          : null,
+        roundTripTimeMs: currentDiagnostic.roundTripTimeMs,
+        source: currentDiagnostic.source,
+        status: currentDiagnostic.status,
+      });
+    }, SLA_DIAG_CLOCK_HEARTBEAT_INTERVAL_MS);
 
     return () => {
+      const currentDiagnostic = clockDiagnosticRef.current;
+
       logSlaClockDiagnostic({
-        currentTimestamp: Date.now(),
+        currentTimestamp: currentDiagnostic.estimatedServerNow,
         event: "unmount",
         instanceId,
-        iso: new Date().toISOString(),
-        tickCount,
+        isSynchronized: currentDiagnostic.isSynchronized,
+        iso: currentDiagnostic.estimatedServerNow
+          ? new Date(currentDiagnostic.estimatedServerNow).toISOString()
+          : null,
+        roundTripTimeMs: currentDiagnostic.roundTripTimeMs,
+        source: currentDiagnostic.source,
+        status: currentDiagnostic.status,
       });
       window.clearInterval(intervalId);
     };
   }, []);
 
-  return currentTimestamp;
+  return estimatedServerNow;
 };
 
 export default useSlaRuntimeClock;

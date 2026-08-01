@@ -25,6 +25,7 @@ const projectContextRoutes = require('./routes/projectContext.routes');
 const profileRoutes = require('./routes/profile.routes');
 const slaRoutes = require('./routes/sla.routes');
 const storageRoutes = require('./routes/storage.routes');
+const systemRoutes = require('./routes/system.routes');
 
 const app = express();
 
@@ -52,6 +53,7 @@ app.use('/api/v1/project-context', projectContextRoutes);
 app.use('/api/v1/profile', profileRoutes);
 app.use('/api/v1/sla', slaRoutes);
 app.use('/api/v1/storage', storageRoutes);
+app.use('/api/v1/system', systemRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
