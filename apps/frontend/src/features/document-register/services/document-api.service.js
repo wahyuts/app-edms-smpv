@@ -94,8 +94,35 @@ const normalizeRevisionRecord = (revision = {}) => ({
   uploader: revision.uploader ?? revision.uploadedBy ?? null,
 });
 
+const normalizeTimestamp = (value) => {
+  if (!value) return null;
+
+  const timestamp = new Date(value);
+
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
+};
+
+const normalizeSlaTimer = (slaTimer = null, {
+  slaStartedAt,
+  slaStoppedAt,
+} = {}) => {
+  if (!slaTimer) return slaTimer;
+
+  return {
+    ...slaTimer,
+    startedAt: slaStartedAt ?? normalizeTimestamp(slaTimer.startedAt),
+    stoppedAt: slaStoppedAt ?? normalizeTimestamp(slaTimer.stoppedAt),
+  };
+};
+
 export const mapDocumentRecord = (document = {}) => {
   const activeFile = normalizeFileMetadata(document.activeFile ?? document.fileMetadata);
+  const slaStartedAt = normalizeTimestamp(
+    document.slaStartedAt ?? document.sla_started_at ?? document.slaTimer?.startedAt,
+  );
+  const slaStoppedAt = normalizeTimestamp(
+    document.slaStoppedAt ?? document.sla_stopped_at ?? document.slaTimer?.stoppedAt,
+  );
 
   return {
     ...document,
@@ -107,6 +134,12 @@ export const mapDocumentRecord = (document = {}) => {
     hasUnreadComments: Boolean(document.hasUnreadComments),
     lastUpdated: document.lastUpdated ?? document.updatedAt ?? null,
     revision: document.revision ?? document.revisionLabel ?? null,
+    slaStartedAt,
+    slaStoppedAt,
+    slaTimer: normalizeSlaTimer(document.slaTimer, {
+      slaStartedAt,
+      slaStoppedAt,
+    }),
     status: document.status ?? document.workflowStatus ?? null,
     unreadCommentCount: Number(document.unreadCommentCount ?? 0),
     workflowStatus: document.workflowStatus ?? document.status ?? null,
