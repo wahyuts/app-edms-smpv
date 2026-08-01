@@ -16,8 +16,8 @@ const normalizeDisplayValue = (value) => String(value ?? "").trim();
 
 const shouldTraceDocument = (document = {}) => {
   if (!isSlaDiagnosticsEnabled) return false;
-  if (slaDiagnosticDocumentId) return document.id === slaDiagnosticDocumentId;
   if (slaDiagnosticDocumentNumber) return document.documentNumber === slaDiagnosticDocumentNumber;
+  if (slaDiagnosticDocumentId) return document.id === slaDiagnosticDocumentId;
 
   return true;
 };

@@ -20,8 +20,8 @@ const SLA_DIAG_QUERY_MAX_DOCUMENTS = 5;
 
 const shouldTraceDocument = (document = {}) => {
   if (!isSlaDiagnosticsEnabled) return false;
-  if (slaDiagnosticDocumentId) return document.id === slaDiagnosticDocumentId;
   if (slaDiagnosticDocumentNumber) return document.documentNumber === slaDiagnosticDocumentNumber;
+  if (slaDiagnosticDocumentId) return document.id === slaDiagnosticDocumentId;
 
   return true;
 };
