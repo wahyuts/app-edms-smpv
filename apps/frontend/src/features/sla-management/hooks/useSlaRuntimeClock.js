@@ -7,10 +7,12 @@ const isSlaDiagnosticsEnabled =
 
 let slaRuntimeClockInstanceSequence = 0;
 
+const createDiagnosticSnapshot = (payload) => JSON.parse(JSON.stringify(payload));
+
 const logSlaClockDiagnostic = (payload) => {
   if (!isSlaDiagnosticsEnabled) return;
 
-  console.info("[SLA_DIAG_CLOCK]", payload);
+  console.info("[SLA_DIAG_CLOCK]", createDiagnosticSnapshot(payload));
 };
 
 export const useSlaRuntimeClock = () => {
