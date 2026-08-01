@@ -12,6 +12,8 @@ const slaRuntimeDiagnostics = new Map();
 
 let slaRuntimeCallCounter = 0;
 
+const createDiagnosticSnapshot = (payload) => JSON.parse(JSON.stringify(payload));
+
 const normalizeDisplayValue = (value) => String(value ?? "").trim();
 
 const shouldTraceDocument = (document = {}) => {
@@ -25,7 +27,7 @@ const shouldTraceDocument = (document = {}) => {
 const logSlaDiagnostic = (prefix, payload) => {
   if (!isSlaDiagnosticsEnabled) return;
 
-  console.info(prefix, payload);
+  console.info(prefix, createDiagnosticSnapshot(payload));
 };
 
 const officialRoleLabels = new Map(

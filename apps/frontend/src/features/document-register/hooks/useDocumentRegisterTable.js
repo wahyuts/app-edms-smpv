@@ -18,6 +18,8 @@ const slaDiagnosticDocumentId = String(import.meta.env.VITE_SLA_DIAGNOSTIC_DOCUM
 const slaDiagnosticDocumentNumber = String(import.meta.env.VITE_SLA_DIAGNOSTIC_DOCUMENT_NUMBER ?? "").trim();
 const SLA_DIAG_QUERY_MAX_DOCUMENTS = 5;
 
+const createDiagnosticSnapshot = (payload) => JSON.parse(JSON.stringify(payload));
+
 const shouldTraceDocument = (document = {}) => {
   if (!isSlaDiagnosticsEnabled) return false;
   if (slaDiagnosticDocumentNumber) return document.documentNumber === slaDiagnosticDocumentNumber;
@@ -44,7 +46,7 @@ const toSlaQuerySignature = (document = {}) => [
 const logSlaQueryDiagnostic = (payload) => {
   if (!isSlaDiagnosticsEnabled) return;
 
-  console.info("[SLA_DIAG_QUERY]", payload);
+  console.info("[SLA_DIAG_QUERY]", createDiagnosticSnapshot(payload));
 };
 
 const getUniqueOptions = (documents, fieldName) => {
@@ -174,6 +176,9 @@ export const useDocumentRegisterTable = ({
         activeProjectId,
         activeRevisionId: documentItem.activeRevisionId,
         dataUpdatedAt: documentsQuery.dataUpdatedAt,
+        dataUpdatedAtISO: documentsQuery.dataUpdatedAt
+          ? new Date(documentsQuery.dataUpdatedAt).toISOString()
+          : null,
         dataUpdatedAtIso: documentsQuery.dataUpdatedAt
           ? new Date(documentsQuery.dataUpdatedAt).toISOString()
           : null,
