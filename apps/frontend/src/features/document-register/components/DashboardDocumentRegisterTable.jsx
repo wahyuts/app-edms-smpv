@@ -4,8 +4,10 @@ import DocumentRegisterTable from "./DocumentRegisterTable";
 
 const DashboardDocumentRegisterTable = ({ onDataChanged, tableState }) => {
   const refreshDocuments = useCallback(() => {
-    tableState.refreshDocuments();
-    onDataChanged?.();
+    return Promise.all([
+      tableState.refreshDocuments(),
+      Promise.resolve(onDataChanged?.()),
+    ]);
   }, [onDataChanged, tableState]);
 
   return (

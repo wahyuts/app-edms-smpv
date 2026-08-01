@@ -23,6 +23,7 @@ import {
 } from "../constants/document.constants";
 import { DocumentApiService } from "../services/document-api.service";
 import { getDocumentActionVisibility } from "../utils/documentActionVisibility";
+import { synchronizeDocumentRuntimeQueries } from "../utils/documentRuntimeQuerySync";
 import {
   ApprovalCommentModal,
   ApprovalConfirmationModal,
@@ -53,15 +54,6 @@ const modalType = {
   EDIT: "edit",
   HISTORY: "history",
   VIEW: "view",
-};
-
-const invalidateDocumentRuntimeQueries = async () => {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["documents"] }),
-    queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-    queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] }),
-    queryClient.invalidateQueries({ queryKey: ["escalation"] }),
-  ]);
 };
 
 const ActionIconButton = ({ icon: Icon, label, onClick, showIndicator = false }) => {
@@ -494,8 +486,9 @@ export const DocumentActionGroup = ({
         });
 
         closeModal();
-        await invalidateDocumentRuntimeQueries();
-        onWorkflowComplete();
+        await synchronizeDocumentRuntimeQueries({
+          refreshCurrentSurface: onWorkflowComplete,
+        });
         showToast({
           message: "Upload Revision berhasil.",
           variant: "success",
@@ -510,8 +503,9 @@ export const DocumentActionGroup = ({
       });
 
       closeModal();
-      await invalidateDocumentRuntimeQueries();
-      onWorkflowComplete();
+      await synchronizeDocumentRuntimeQueries({
+        refreshCurrentSurface: onWorkflowComplete,
+      });
       showToast({
         message: "Edit Document berhasil.",
         variant: "success",
@@ -533,8 +527,9 @@ export const DocumentActionGroup = ({
       });
 
       closeModal();
-      await invalidateDocumentRuntimeQueries();
-      onWorkflowComplete();
+      await synchronizeDocumentRuntimeQueries({
+        refreshCurrentSurface: onWorkflowComplete,
+      });
       showToast({
         message: "Document berhasil diarsipkan.",
         variant: "success",
@@ -552,8 +547,9 @@ export const DocumentActionGroup = ({
       await DocumentApiService.restoreDocument(documentItem.id);
 
       closeModal();
-      await invalidateDocumentRuntimeQueries();
-      onWorkflowComplete();
+      await synchronizeDocumentRuntimeQueries({
+        refreshCurrentSurface: onWorkflowComplete,
+      });
       showToast({
         message: "Document berhasil direstore.",
         variant: "success",
@@ -587,8 +583,9 @@ export const DocumentActionGroup = ({
       }
 
       closeModal();
-      await invalidateDocumentRuntimeQueries();
-      onWorkflowComplete();
+      await synchronizeDocumentRuntimeQueries({
+        refreshCurrentSurface: onWorkflowComplete,
+      });
       showToast({
         message: `${workflowAction} berhasil diproses.`,
         variant: "success",

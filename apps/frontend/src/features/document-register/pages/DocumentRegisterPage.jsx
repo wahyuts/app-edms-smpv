@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 
-import { queryClient } from "@/shared/api/query-client";
 import { useToast } from "@/shared/components/toast";
 import { usePermission } from "@/shared/hooks/usePermission";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
@@ -15,16 +14,8 @@ import {
 } from "../constants/document.constants";
 import useDocumentRegisterTable from "../hooks/useDocumentRegisterTable";
 import { DocumentApiService } from "../services/document-api.service";
+import { synchronizeDocumentRuntimeQueries } from "../utils/documentRuntimeQuerySync";
 import { getDrawingContextFromPathname } from "../utils/drawingContext";
-
-const invalidateDocumentRuntimeQueries = async () => {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["documents"] }),
-    queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-    queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] }),
-    queryClient.invalidateQueries({ queryKey: ["escalation"] }),
-  ]);
-};
 
 const pageDescriptions = {
   [DRAWING_CONTEXT.PFD]:
@@ -84,7 +75,9 @@ const DocumentRegisterPage = () => {
       });
 
       setIsCreateModalOpen(false);
-      await invalidateDocumentRuntimeQueries();
+      await synchronizeDocumentRuntimeQueries({
+        refreshCurrentSurface: tableState.refreshDocuments,
+      });
       showToast({
         message: "Document berhasil dibuat.",
         variant: "success",
