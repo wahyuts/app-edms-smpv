@@ -155,13 +155,15 @@ const resolveSlaStartedAt = (document = {}) =>
 const resolveSlaStoppedAt = (document = {}) =>
   document.slaStoppedAt ?? document.slaTimer?.stoppedAt ?? null;
 
-export const resolveLiveSlaTimer = (document = {}, currentTimestamp = Date.now()) => {
+export const resolveLiveSlaTimer = (document = {}, currentTimestamp = null) => {
   const callCounter = ++slaRuntimeCallCounter;
   const startedAt = parseTimestamp(resolveSlaStartedAt(document));
   const hasSlaTimer = Boolean(document.slaTimer);
   const shouldTrace = shouldTraceDocument(document);
+  const normalizedCurrentTimestamp = Number(currentTimestamp);
+  const hasCurrentTimestamp = Number.isFinite(normalizedCurrentTimestamp);
 
-  if (!startedAt || !document.slaTimer) {
+  if (!startedAt || !document.slaTimer || !hasCurrentTimestamp) {
     if (shouldTrace) {
       const reason = [
         !document.slaStartedAt && !document.slaTimer?.startedAt ? "missing_started_at" : null,
@@ -169,13 +171,15 @@ export const resolveLiveSlaTimer = (document = {}, currentTimestamp = Date.now()
           ? (!startedAt ? "invalid_started_at" : null)
           : null,
         !document.slaTimer ? "missing_sla_timer" : null,
+        !hasCurrentTimestamp ? "missing_server_time" : null,
       ].filter(Boolean);
       const diagnosticKey = document.id ?? document.documentNumber ?? `unknown-${callCounter}`;
-      const now = Number(currentTimestamp);
+      const now = hasCurrentTimestamp ? normalizedCurrentTimestamp : 0;
       const previousGuardDiagnostic = slaGuardDiagnostics.get(diagnosticKey);
       const guardSignature = [
         resolveSlaStartedAt(document),
         hasSlaTimer,
+        hasCurrentTimestamp,
         reason.join("|"),
       ].join("|");
 
@@ -194,7 +198,7 @@ export const resolveLiveSlaTimer = (document = {}, currentTimestamp = Date.now()
           documentId: document.id,
           documentNumber: document.documentNumber,
           hasSlaTimer,
-          iso: new Date(currentTimestamp).toISOString(),
+          iso: hasCurrentTimestamp ? new Date(normalizedCurrentTimestamp).toISOString() : null,
           parsedStartedAt: startedAt?.toISOString?.() ?? null,
           reason,
           slaStartedAt: resolveSlaStartedAt(document),
@@ -211,7 +215,7 @@ export const resolveLiveSlaTimer = (document = {}, currentTimestamp = Date.now()
     document.status === "Approved" ||
     document.workflowStatus === "Approved" ||
     document.slaStatus === SLA_STATUS.FINAL_AS_BUILT;
-  const calculationEnd = stoppedAt ?? (isFinal ? startedAt : new Date(currentTimestamp));
+  const calculationEnd = stoppedAt ?? (isFinal ? startedAt : new Date(normalizedCurrentTimestamp));
   const totalMinutes = Math.max(
     0,
     Math.floor((calculationEnd.getTime() - startedAt.getTime()) / 60000),
@@ -233,7 +237,7 @@ export const resolveLiveSlaTimer = (document = {}, currentTimestamp = Date.now()
     totalMinutes,
     document.activeRevisionId,
   ].join("|");
-  const now = Number(currentTimestamp);
+  const now = normalizedCurrentTimestamp;
   const isStuckCandidate = resultDisplay === "0d 0h 0m";
   const shouldLogRuntime =
     shouldTrace &&
@@ -255,12 +259,12 @@ export const resolveLiveSlaTimer = (document = {}, currentTimestamp = Date.now()
     logSlaDiagnostic("[SLA_DIAG_RUNTIME]", {
       callCounter,
       computedElapsedMinutes: totalMinutes,
-      currentTimestamp,
+      currentTimestamp: normalizedCurrentTimestamp,
       daysUntilValidation: document.daysUntilValidation,
       documentId: document.id,
       documentNumber: document.documentNumber,
       hasSlaTimer,
-      iso: new Date(currentTimestamp).toISOString(),
+      iso: new Date(normalizedCurrentTimestamp).toISOString(),
       parsedStartedAt: startedAt.toISOString(),
       resultDisplay,
       slaStartedAt: resolveSlaStartedAt(document),
