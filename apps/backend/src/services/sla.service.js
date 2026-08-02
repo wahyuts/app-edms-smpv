@@ -1,8 +1,8 @@
 const documentRepository = require('../repositories/document.repository');
 const projectMembershipRepository = require('../repositories/projectMembership.repository');
 const slaRepository = require('../repositories/sla.repository');
-const notificationService = require('./notification.service');
 const { createEntityId, createHttpError, normalizeText } = require('../utils/administration');
+const { createSlaCycleId } = require('../utils/slaCycle');
 
 const SLA_STATUS = Object.freeze({
   AT_RISK: 'At Risk',
@@ -10,26 +10,6 @@ const SLA_STATUS = Object.freeze({
   ON_TRACK: 'On Track',
   OVERDUE: 'Overdue',
 });
-
-const toSlaCycleTimestamp = (value) => {
-  if (!value) return null;
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString();
-  }
-
-  const parsedDate = new Date(value);
-  if (!Number.isNaN(parsedDate.getTime())) {
-    return parsedDate.toISOString();
-  }
-
-  return String(value);
-};
-
-const createSlaCycleId = (document) => [
-  document.projectId,
-  document.id,
-  toSlaCycleTimestamp(document.slaStartedAt || document.lastUpdated || document.createdDate),
-].filter(Boolean).join(':');
 
 const resolveProjectId = async ({ activeProject, queryProjectId, userId }) => {
   const projectId = queryProjectId || activeProject?.id || null;
@@ -85,22 +65,6 @@ const persistEvaluations = async (documents) => {
   }));
 };
 
-const createSlaNotifications = async (documents) => {
-  await Promise.all(documents.map(async (document) => {
-    if (document.status === 'Approved' || document.slaStatus !== SLA_STATUS.AT_RISK) return;
-
-    await notificationService.createSlaStateNotifications({
-      cycleId: createSlaCycleId(document),
-      document,
-      eventType: notificationService.NOTIFICATION_EVENT_TYPE.SLA_AT_RISK,
-      metadata: {
-        daysUntilValidation: document.daysUntilValidation,
-        slaTimer: document.slaTimer,
-      },
-    });
-  }));
-};
-
 const listSlaDocuments = async ({ activeProject, query = {}, userId }) => {
   const projectId = await resolveProjectId({
     activeProject,
@@ -113,9 +77,6 @@ const listSlaDocuments = async ({ activeProject, query = {}, userId }) => {
     ? documents.filter((document) => document.slaStatus === statusFilter)
     : documents;
 
-  await persistEvaluations(documents);
-  await createSlaNotifications(documents);
-
   return {
     data: filteredDocuments,
     summary: createSummary(documents),
@@ -125,7 +86,6 @@ const listSlaDocuments = async ({ activeProject, query = {}, userId }) => {
 module.exports = {
   SLA_STATUS,
   createSlaCycleId,
-  createSlaNotifications,
   createSummary,
   listSlaDocuments,
   persistEvaluations,

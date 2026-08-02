@@ -5,6 +5,7 @@ const {
 const documentRepository = require('../repositories/document.repository');
 const auditService = require('./audit.service');
 const notificationService = require('./notification.service');
+const slaNotificationProducer = require('./slaNotificationProducer.service');
 const storageService = require('./storage.service');
 const uploadService = require('./upload.service');
 const workflowEngine = require('./workflowEngine.service');
@@ -173,6 +174,10 @@ const processApproval = async ({
       officialRoles: [updatedDocument.responsibleRole],
     });
   }
+  await slaNotificationProducer.evaluateDocumentForSlaNotifications({
+    document: updatedDocument,
+    triggerSource: 'approval_transition',
+  });
   await auditService.recordActivitySafely({
     action: config.action,
     actorOfficialRole,
