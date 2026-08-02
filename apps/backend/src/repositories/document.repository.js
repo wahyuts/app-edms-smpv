@@ -540,6 +540,24 @@ const listProjectDocumentRegister = async (projectId, { userId = 0 } = {}) => {
   return rows.map(mapDocumentRegisterRow);
 };
 
+const listSlaNotificationCandidateDocuments = async ({ limit = 200 } = {}) => {
+  const normalizedLimit = Math.min(1000, Math.max(1, Number.parseInt(limit, 10) || 200));
+  const [rows] = await pool.execute(
+    `
+      ${documentRegisterSelect}
+      WHERE documents.lifecycle_status = 'Active'
+        AND documents.workflow_status <> 'Approved'
+        AND documents.sla_started_at IS NOT NULL
+        AND LOWER(TRIM(projects.status)) = 'active'
+      ORDER BY documents.sla_started_at ASC, documents.id ASC
+      LIMIT ?
+    `,
+    [0, 0, normalizedLimit]
+  );
+
+  return rows.map(mapDocumentRegisterRow);
+};
+
 const markWorkflowCommentsReadForUser = async ({ documentId, projectId, userId }) => {
   const [result] = await pool.execute(
     `
@@ -1011,6 +1029,7 @@ module.exports = {
   listDocumentHistory,
   listDocumentRegister,
   listDocumentRevisions,
+  listSlaNotificationCandidateDocuments,
   listProjectDocumentRegister,
   listWorkflowComments,
   markWorkflowCommentsReadForUser,

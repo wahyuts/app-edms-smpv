@@ -139,6 +139,21 @@ const getUploadTemporaryTtlHours = () => {
 
 const uploadTemporaryTtlHours = getUploadTemporaryTtlHours();
 
+const getPositiveIntegerEnv = (key, defaultValue) => {
+  const value = process.env[key];
+
+  if (value === undefined || value.trim() === '') {
+    return defaultValue;
+  }
+
+  const parsedValue = Number(value);
+  if (!Number.isInteger(parsedValue) || parsedValue <= 0) {
+    throw new Error(`[ENV] ${key} must be a positive integer`);
+  }
+
+  return parsedValue;
+};
+
 const validateSecurityEnv = () => {
   validateRequiredEnv(requiredSecurityEnv, 'security');
 
@@ -276,6 +291,12 @@ const env = {
   upload: {
     maxFileSizeBytes: uploadMaxFileSizeBytes,
     temporaryTtlHours: uploadTemporaryTtlHours,
+  },
+  slaNotificationScheduler: {
+    batchSize: getPositiveIntegerEnv('SLA_NOTIFICATION_BATCH_SIZE', 200),
+    enabled: getBooleanEnv('SLA_NOTIFICATION_SCHEDULER_ENABLED', false),
+    intervalMs: getPositiveIntegerEnv('SLA_NOTIFICATION_SCHEDULER_INTERVAL_MS', 15 * 60 * 1000),
+    jobToken: process.env.SLA_NOTIFICATION_JOB_TOKEN || '',
   },
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS),
   cookie: {

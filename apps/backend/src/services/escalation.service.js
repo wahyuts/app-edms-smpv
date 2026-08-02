@@ -1,6 +1,4 @@
 const documentRepository = require('../repositories/document.repository');
-const auditService = require('./audit.service');
-const notificationService = require('./notification.service');
 const { normalizeText } = require('../utils/administration');
 const slaService = require('./sla.service');
 
@@ -65,33 +63,6 @@ const createSummary = (items) => items.reduce((summary, item) => {
   total: 0,
 });
 
-const createEscalationNotification = async (item) => {
-  const cycleId = slaService.createSlaCycleId(item);
-
-  await notificationService.createSlaStateNotifications({
-    cycleId,
-    document: item,
-    eventType: notificationService.NOTIFICATION_EVENT_TYPE.SLA_OVERDUE,
-    metadata: {
-      daysOverdue: item.daysOverdue,
-      escalationLevel: item.escalationLevel,
-    },
-  });
-  await auditService.recordActivitySafely({
-    action: 'Escalation Created',
-    identityKey: ['Escalation Created', item.projectId, item.id, cycleId].join(':'),
-    metadata: {
-      daysOverdue: item.daysOverdue,
-      escalationLevel: item.escalationLevel,
-      slaStatus: item.slaStatus,
-    },
-    projectId: item.projectId,
-    reference: item.documentNumber,
-    resourceId: item.id,
-    resourceType: 'Escalation',
-  });
-};
-
 const listEscalations = async ({ activeProject, query = {}, userId }) => {
   const projectId = await slaService.resolveProjectId({
     activeProject,
@@ -104,8 +75,6 @@ const listEscalations = async ({ activeProject, query = {}, userId }) => {
   let items = (await documentRepository.listProjectDocumentRegister(projectId, { userId }))
     .map(createEscalationItem)
     .filter(Boolean);
-
-  await Promise.all(items.map(createEscalationNotification));
 
   if (level) {
     items = items.filter((item) => item.escalationLevel === level);

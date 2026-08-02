@@ -8,6 +8,7 @@ const documentRepository = require('../repositories/document.repository');
 const projectMembershipRepository = require('../repositories/projectMembership.repository');
 const auditService = require('./audit.service');
 const notificationService = require('./notification.service');
+const slaNotificationProducer = require('./slaNotificationProducer.service');
 const storageService = require('./storage.service');
 const uploadService = require('./upload.service');
 const workflowEngine = require('./workflowEngine.service');
@@ -191,6 +192,10 @@ const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserI
     eventType: notificationService.NOTIFICATION_EVENT_TYPE.REVISION_UPLOADED,
     identityBasis: revisionId,
     officialRoles: [updatedDocument.responsibleRole],
+  });
+  await slaNotificationProducer.evaluateDocumentForSlaNotifications({
+    document: updatedDocument,
+    triggerSource: 'revision_upload',
   });
   await auditService.recordActivitySafely({
     action: 'Upload Revision',

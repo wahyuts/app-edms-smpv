@@ -14,6 +14,7 @@ const projectMembershipRepository = require('../repositories/projectMembership.r
 const storageService = require('./storage.service');
 const uploadService = require('./upload.service');
 const notificationService = require('./notification.service');
+const slaNotificationProducer = require('./slaNotificationProducer.service');
 const auditService = require('./audit.service');
 const {
   buildPagination,
@@ -271,6 +272,10 @@ const createDocument = async ({ activeProject, actorOfficialRole, actorUserFullN
     eventType: notificationService.NOTIFICATION_EVENT_TYPE.DOCUMENT_UPLOADED,
     officialRoles: [DOCUMENT_RESPONSIBLE_ROLE.TEAM_PROCESS],
   });
+  await slaNotificationProducer.evaluateDocumentForSlaNotifications({
+    document: createdDocument,
+    triggerSource: 'document_create',
+  });
   await auditService.recordActivitySafely({
     action: 'Upload Document',
     actorOfficialRole,
@@ -355,6 +360,12 @@ const updateDocument = async ({
   });
 
   const updatedDocument = await documentRepository.findDocumentRegisterById(document.id);
+  if (payload.daysUntilValidation !== undefined) {
+    await slaNotificationProducer.evaluateDocumentForSlaNotifications({
+      document: updatedDocument,
+      triggerSource: 'days_until_validation_update',
+    });
+  }
   await auditService.recordActivitySafely({
     action: 'Edit Document',
     actorOfficialRole,
