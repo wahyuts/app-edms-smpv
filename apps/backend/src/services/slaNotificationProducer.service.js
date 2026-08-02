@@ -2,6 +2,7 @@ const documentRepository = require('../repositories/document.repository');
 const slaRepository = require('../repositories/sla.repository');
 const auditService = require('./audit.service');
 const notificationService = require('./notification.service');
+const notificationSuppressionPolicy = require('./notificationSuppressionPolicy.service');
 const timeService = require('./time.service');
 const logger = require('../config/logger');
 const { createEntityId } = require('../utils/administration');
@@ -123,17 +124,25 @@ const logProducerResult = ({
   );
 };
 
-const createNotificationForSlaStatus = async ({ document, eventType }) => {
+const createNotificationForSlaStatus = async ({ decision, document, eventType }) => {
   const result = await notificationService.createSlaStateNotifications({
     cycleId: createSlaCycleId(document),
     document,
     eventType,
+    identityBasis: decision?.identityBasis,
     metadata: eventType === notificationService.NOTIFICATION_EVENT_TYPE.SLA_OVERDUE
-      ? createEscalationMetadata(document)
+      ? {
+          ...createEscalationMetadata(document),
+          previousSlaStatus: decision?.previousSlaStatus || null,
+          suppressionPolicy: 'meaningful_sla_state_transition',
+        }
       : {
           daysUntilValidation: document.daysUntilValidation,
+          previousSlaStatus: decision?.previousSlaStatus || null,
           slaTimer: document.slaTimer,
+          suppressionPolicy: 'meaningful_sla_state_transition',
         },
+    skipCycleDuplicateCheck: true,
   });
 
   return {
@@ -187,42 +196,58 @@ const evaluateDocumentForSlaNotifications = async ({
   }
 
   const cycleId = createSlaCycleId(evaluatedDocument);
-  const existing = await slaRepository.findSlaEvaluationByCycle({
-    cycleId,
+  const latestEvaluation = await slaRepository.findLatestSlaEvaluationByDocument({
     documentId: evaluatedDocument.id,
   });
-  const previousSlaStatus = existing?.current_state || null;
-
-  await persistEvaluation({
-    currentState: evaluatedDocument.slaStatus,
+  const currentCycleEvaluation = latestEvaluation?.cycle_id === cycleId
+    ? latestEvaluation
+    : await slaRepository.findSlaEvaluationByCycle({
+        cycleId,
+        documentId: evaluatedDocument.id,
+      });
+  const previousSlaStatus = latestEvaluation?.current_state || null;
+  const decision = notificationSuppressionPolicy.evaluateSlaNotificationDecision({
     cycleId,
     document: evaluatedDocument,
-    existing,
+    previousEvaluation: latestEvaluation,
+    previousSlaStatus,
   });
 
-  if (evaluatedDocument.slaStatus === SLA_STATUS.ON_TRACK) {
+  if (!decision.shouldGenerate) {
+    await persistEvaluation({
+      currentState: evaluatedDocument.slaStatus,
+      cycleId,
+      document: evaluatedDocument,
+      existing: currentCycleEvaluation,
+    });
     logProducerResult({
       document: evaluatedDocument,
       previousSlaStatus,
-      result: 'on_track',
+      result: decision.reason || 'suppressed',
       triggerSource,
     });
     return {
       createdCount: 0,
       previousSlaStatus,
-      result: 'on_track',
+      result: decision.reason || 'suppressed',
       slaStatus: evaluatedDocument.slaStatus,
     };
   }
 
-  const eventType = evaluatedDocument.slaStatus === SLA_STATUS.AT_RISK
-    ? notificationService.NOTIFICATION_EVENT_TYPE.SLA_AT_RISK
-    : notificationService.NOTIFICATION_EVENT_TYPE.SLA_OVERDUE;
+  const eventType = decision.eventType;
   const notificationResult = await createNotificationForSlaStatus({
+    decision,
     document: evaluatedDocument,
     eventType,
   });
   const duplicateCount = Math.max(0, notificationResult.attemptedRecipientCount - notificationResult.createdCount);
+
+  await persistEvaluation({
+    currentState: evaluatedDocument.slaStatus,
+    cycleId,
+    document: evaluatedDocument,
+    existing: currentCycleEvaluation,
+  });
 
   if (eventType === notificationService.NOTIFICATION_EVENT_TYPE.SLA_OVERDUE) {
     const escalationMetadata = createEscalationMetadata(evaluatedDocument);

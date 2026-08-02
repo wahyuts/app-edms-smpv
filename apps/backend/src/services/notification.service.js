@@ -330,7 +330,9 @@ const createSlaStateNotifications = async ({
   cycleId,
   document,
   eventType,
+  identityBasis = null,
   metadata = {},
+  skipCycleDuplicateCheck = false,
 }) => {
   if (
     !document ||
@@ -345,9 +347,10 @@ const createSlaStateNotifications = async ({
 
   const recipients = await resolveOfficialSlaRecipients(document);
   const dictionary = messageDictionary[eventType];
+  const normalizedCycleId = normalizeSlaCycleId(cycleId || document.slaStartedAt || document.updatedAt || document.lastUpdated);
 
   const results = await Promise.all(recipients.map(async (recipient) => {
-    if (await hasExistingSlaNotificationForCycle({
+    if (!skipCycleDuplicateCheck && await hasExistingSlaNotificationForCycle({
       cycleId,
       document,
       eventType,
@@ -356,8 +359,6 @@ const createSlaStateNotifications = async ({
       return { created: false, skipped: 'duplicate' };
     }
 
-    const normalizedCycleId = normalizeSlaCycleId(cycleId || document.slaStartedAt || document.updatedAt || document.lastUpdated);
-
     const affectedRows = await notificationRepository.createNotification({
       id: createEntityId('NTF'),
       identityKey: [
@@ -365,7 +366,7 @@ const createSlaStateNotifications = async ({
         document.projectId,
         document.id,
         recipient.userId,
-        normalizedCycleId,
+        identityBasis || normalizedCycleId,
       ].join(':'),
       projectId: document.projectId,
       recipientUserId: recipient.userId,
@@ -383,6 +384,7 @@ const createSlaStateNotifications = async ({
       metadata: {
         ...metadata,
         cycleId: normalizedCycleId,
+        notificationIdentityBasis: identityBasis || normalizedCycleId,
         revision: document.revision,
         slaStatus: document.slaStatus,
         workflowStatus: document.status,

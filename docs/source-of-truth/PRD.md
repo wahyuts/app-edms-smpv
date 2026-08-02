@@ -18588,11 +18588,72 @@ Notification hanya berfungsi sebagai media komunikasi kepada pengguna.
 
 Notification tidak menentukan Business Workflow, tidak mengubah Engineering Document, dan tidak menggantikan fungsi Audit Trail.
 
+Notification juga tidak menentukan apakah suatu Business Event harus terjadi. Seluruh Business Event tetap berasal dari Business Workflow sebagai Source of Truth.
+
+Notification Domain hanya bertanggung jawab mengevaluasi hasil Business Event untuk menentukan apakah Notification perlu dibuat, disuppress, atau dibuat kembali (Re-Notification) sesuai kebijakan Notification Generation yang berlaku.
+
 Seluruh Business Event yang menghasilkan Notification mengacu pada:
 
 - BUSINESS-WORKFLOW.md
 
-Standarisasi Title, Message, dan Priority didefinisikan pada **PART 8.6 — Message Dictionary** sebagai **Single Source of Truth**.
+Standarisasi Title, Message, Priority, serta aturan pembentukan Notification didefinisikan pada **PART 8** sebagai **Single Source of Truth**.
+
+Standarisasi Title, Message, dan Priority secara spesifik didefinisikan pada **PART 8.6 — Message Dictionary**.
+
+---
+
+## Notification Generation Rules
+
+Notification hanya boleh dibuat apabila terjadi **Business Event** yang memenuhi seluruh kondisi berikut:
+
+- Business Event menghasilkan **Need Action**.
+- Business Event memiliki **Current Assignee** yang valid.
+- Business Event berasal dari Active Project.
+- Business Event belum menghasilkan Notification aktif dengan tujuan dan konteks yang sama.
+
+Notification tidak dibuat berdasarkan perubahan data biasa, melainkan berdasarkan perubahan Business Workflow yang memerlukan tindakan dari pengguna.
+
+---
+
+### Notification Generation Principles
+
+Proses pembentukan Notification mengikuti prinsip berikut:
+
+- Satu Business Event dapat menghasilkan satu atau lebih Personal Notification apabila memiliki lebih dari satu penerima.
+- Satu Notification hanya memiliki satu penerima.
+- Notification tidak dibuat ulang apabila Business Event yang sama tidak menghasilkan Need Action baru.
+- Read Status tidak mempengaruhi pembentukan Notification baru.
+- Notification Counter hanya bertambah ketika Notification baru berhasil dibuat.
+
+---
+
+### Notification Suppression Rules
+
+Sistem tidak boleh membuat Notification baru apabila:
+
+- Business Event yang terjadi tidak menghasilkan Need Action.
+- Current Assignee tidak berubah.
+- Business Event hanya memperbarui informasi tanpa menghasilkan pekerjaan baru.
+- Notification dengan tujuan yang sama masih aktif untuk penerima yang sama.
+- Notification hanya berubah status Read atau Unread.
+
+Suppression hanya mencegah pembentukan Notification baru dan tidak menghapus Notification yang telah ada.
+
+---
+
+### Re-Notification Rules
+
+Notification baru dapat dibuat kembali apabila terjadi Business Event baru yang menghasilkan Need Action baru.
+
+Contoh kondisi tersebut antara lain:
+
+- Perpindahan Current Assignee.
+- Perubahan Workflow yang menghasilkan tugas baru.
+- Engineering Document kembali memerlukan tindakan setelah proses Review berikutnya.
+
+Setiap Re-Notification diperlakukan sebagai Notification baru dan tidak mengubah riwayat Notification sebelumnya.
+
+---
 
 # ==============================================================================
 # PART 8 — NOTIFICATION

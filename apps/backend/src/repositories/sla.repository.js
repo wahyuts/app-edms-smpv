@@ -44,7 +44,23 @@ const findSlaEvaluationByCycle = async ({ cycleId, documentId }) => {
   return rows[0] || null;
 };
 
+const findLatestSlaEvaluationByDocument = async ({ documentId }) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT id, project_id, document_id, cycle_id, current_state, notified_states, updated_at
+      FROM document_sla_evaluations
+      WHERE document_id = ?
+      ORDER BY updated_at DESC, id DESC
+      LIMIT 1
+    `,
+    [documentId]
+  );
+
+  return rows[0] || null;
+};
+
 module.exports = {
   findSlaEvaluationByCycle,
+  findLatestSlaEvaluationByDocument,
   upsertSlaEvaluation,
 };

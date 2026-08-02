@@ -576,3 +576,17 @@ Keputusan saat Manual UAT Authentication dan Administration:
 - Backend User Update tidak menerima perubahan Username melalui normal UI maupun manipulated API payload.
 - Create User wajib menampilkan confirmation setelah form valid dan sebelum request create dikirim, dengan Username aktual yang akan dibuat.
 
+---
+
+# NOTIFICATION SUPPRESSION POLICY DECISION
+
+Keputusan setelah PART 8 Notification menjadi Source of Truth:
+
+- Notification SLA tidak lagi menggunakan SLA Cycle sebagai business suppression utama.
+- `SLA Warning` hanya dibuat ketika SLA State berubah dari state selain `At Risk` menjadi `At Risk`.
+- `SLA Overdue` hanya dibuat ketika SLA State berubah dari state selain `Overdue` menjadi `Overdue`.
+- Evaluasi ulang pada state yang sama, termasuk setelah Upload Revision, Approval B/C, Workflow Restart, SLA Reset, scheduler tick, refresh, login ulang, dan page load, tidak membuat Notification SLA tambahan.
+- SLA Cycle tetap dipertahankan untuk audit, tracing, reporting, metadata notification, dan concurrency guard.
+- `identity_key` dan `INSERT IGNORE` tetap dipertahankan sebagai race-condition protection, tetapi bukan business suppression utama.
+- Decision layer Notification wajib mengevaluasi Need Action, previous SLA state, current SLA state, dan suppression reason sebelum memanggil repository insert.
+
