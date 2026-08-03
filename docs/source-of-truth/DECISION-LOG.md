@@ -590,3 +590,24 @@ Keputusan setelah PART 8 Notification menjadi Source of Truth:
 - `identity_key` dan `INSERT IGNORE` tetap dipertahankan sebagai race-condition protection, tetapi bukan business suppression utama.
 - Decision layer Notification wajib mengevaluasi Need Action, previous SLA state, current SLA state, dan suppression reason sebelum memanggil repository insert.
 
+---
+
+# REALTIME ARCHITECTURE DECISION
+
+Keputusan sebelum implementasi Realtime Infrastructure (Stage 6):
+
+- REST API tetap menjadi Command Channel dan sumber data final.
+- Realtime (Server-Sent Events) hanya digunakan sebagai Event Channel untuk sinkronisasi data.
+- Backend tetap menjadi Source of Truth untuk seluruh Business State.
+- Browser tidak boleh menetapkan Business State.
+- Browser hanya melakukan display projection seperti SLA Timer menggunakan Unified Time Authority.
+- Event realtime hanya menjadi sinyal perubahan data dan tidak menjalankan Business Mutation.
+- Frontend wajib melakukan Query Invalidation dan REST Refetch setelah menerima event realtime.
+- Event hanya boleh dipublikasikan setelah Business Transaction berhasil di-commit.
+- Kegagalan realtime tidak boleh membatalkan Business Transaction.
+- Notification tetap mengikuti Notification Domain dan Message Dictionary.
+- Workflow realtime wajib didahului oleh Optimistic Concurrency.
+- Active Project menjadi batas utama ruang lingkup event realtime.
+- In-memory Event Bus diperbolehkan selama deployment masih menggunakan satu backend instance.
+- REALTIME-SCOPE-BEHAVIOUR-DECISION.md menjadi Source of Truth resmi seluruh implementasi Realtime Infrastructure.
+
