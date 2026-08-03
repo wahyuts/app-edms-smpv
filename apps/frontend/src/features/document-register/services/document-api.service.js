@@ -19,7 +19,11 @@ const getErrorMessage = (error, fallback = "Request Document gagal.") => {
 };
 
 const throwDocumentApiError = (error, fallback) => {
-  throw new Error(getErrorMessage(error, fallback));
+  const documentError = new Error(getErrorMessage(error, fallback));
+  documentError.code = error?.response?.data?.code ?? null;
+  documentError.data = error?.response?.data?.data ?? null;
+  documentError.status = error?.response?.status ?? null;
+  throw documentError;
 };
 
 const normalizeFileMetadata = (file = {}) => {
@@ -365,6 +369,7 @@ const uploadRevision = async (documentId, {
   area,
   daysUntilValidation,
   description,
+  expectedState,
   file,
 } = {}) => {
   try {
@@ -376,6 +381,9 @@ const uploadRevision = async (documentId, {
         area,
         daysUntilValidation,
         description,
+        expectedActiveRevisionId: expectedState?.activeRevisionId,
+        expectedCurrentAssigneeUserId: expectedState?.currentAssigneeUserId,
+        expectedWorkflowStatus: expectedState?.workflowStatus,
         temporaryFileId: temporaryUpload.temporaryFileId,
       },
     ));
@@ -384,9 +392,13 @@ const uploadRevision = async (documentId, {
   }
 };
 
-const approveDocument = async (documentId) => {
+const approveDocument = async (documentId, { expectedState } = {}) => {
   try {
-    return unwrapDocument(await apiClient.post(`/v1/documents/${documentId}/approve`));
+    return unwrapDocument(await apiClient.post(`/v1/documents/${documentId}/approve`, {
+      expectedActiveRevisionId: expectedState?.activeRevisionId,
+      expectedCurrentAssigneeUserId: expectedState?.currentAssigneeUserId,
+      expectedWorkflowStatus: expectedState?.workflowStatus,
+    }));
   } catch (error) {
     throwDocumentApiError(error, "Approval A gagal diproses.");
   }
@@ -395,6 +407,7 @@ const approveDocument = async (documentId) => {
 const submitApprovalWithComment = async (documentId, {
   attachmentFile = null,
   comment = "",
+  expectedState,
 } = {}) => {
   try {
     const temporaryUpload = attachmentFile ? await uploadTemporaryFile(attachmentFile) : null;
@@ -403,6 +416,9 @@ const submitApprovalWithComment = async (documentId, {
       `/v1/documents/${documentId}/approve-with-comment`,
       {
         comment,
+        expectedActiveRevisionId: expectedState?.activeRevisionId,
+        expectedCurrentAssigneeUserId: expectedState?.currentAssigneeUserId,
+        expectedWorkflowStatus: expectedState?.workflowStatus,
         temporaryFileId: temporaryUpload?.temporaryFileId,
       },
     ));
@@ -414,6 +430,7 @@ const submitApprovalWithComment = async (documentId, {
 const rejectDocument = async (documentId, {
   attachmentFile = null,
   comment = "",
+  expectedState,
 } = {}) => {
   try {
     const temporaryUpload = attachmentFile ? await uploadTemporaryFile(attachmentFile) : null;
@@ -422,6 +439,9 @@ const rejectDocument = async (documentId, {
       `/v1/documents/${documentId}/reject`,
       {
         comment,
+        expectedActiveRevisionId: expectedState?.activeRevisionId,
+        expectedCurrentAssigneeUserId: expectedState?.currentAssigneeUserId,
+        expectedWorkflowStatus: expectedState?.workflowStatus,
         temporaryFileId: temporaryUpload?.temporaryFileId,
       },
     ));

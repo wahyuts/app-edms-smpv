@@ -611,3 +611,16 @@ Keputusan sebelum implementasi Realtime Infrastructure (Stage 6):
 - In-memory Event Bus diperbolehkan selama deployment masih menggunakan satu backend instance.
 - REALTIME-SCOPE-BEHAVIOUR-DECISION.md menjadi Source of Truth resmi seluruh implementasi Realtime Infrastructure.
 
+---
+
+# WORKFLOW CONCURRENCY HARDENING DECISION
+
+Keputusan Stage 6.2 sebelum implementasi Realtime Workflow:
+
+- Approval A/B/C wajib membawa expected workflow state dari frontend.
+- Expected workflow state minimal terdiri dari `expectedWorkflowStatus` dan `expectedActiveRevisionId`.
+- Backend wajib melakukan atomic conditional update terhadap workflow status dan active revision sebelum mencatat history, audit, notification, atau SLA reset.
+- Current Assignee wajib menjadi bagian dari guard workflow agar action stale tidak menimpa hasil user lain.
+- Jika expected state tidak lagi cocok dengan canonical database state, backend mengembalikan HTTP `409 Conflict` dengan code `WORKFLOW_CONFLICT` atau `REVISION_CONFLICT`.
+- Frontend wajib menutup modal stale, melakukan refetch data terkait, dan menampilkan pesan bahwa dokumen telah diperbarui oleh pengguna lain.
+- Optimistic Concurrency menjadi prasyarat resmi sebelum Workflow Realtime/SSE diaktifkan.

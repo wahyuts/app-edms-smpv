@@ -802,11 +802,13 @@ Approval request schema:
 
 | Action | Comment | Attachment | Required Data |
 |---|---|---|---|
-| Approval A | Optional | Optional | reviewer, workflow history, timestamp, audit, notification |
-| Approval B | Mandatory | Optional | reviewer, workflow history, timestamp, attachment metadata if any, audit, notification |
-| Approval C | Optional | Optional | reviewer, workflow history, timestamp, attachment metadata if any, audit, notification |
+| Approval A | Optional | Optional | `expectedWorkflowStatus`, `expectedActiveRevisionId`, optional `expectedCurrentAssigneeUserId`, reviewer, workflow history, timestamp, audit, notification |
+| Approval B | Mandatory | Optional | `expectedWorkflowStatus`, `expectedActiveRevisionId`, optional `expectedCurrentAssigneeUserId`, reviewer, workflow history, timestamp, attachment metadata if any, audit, notification |
+| Approval C | Optional | Optional | `expectedWorkflowStatus`, `expectedActiveRevisionId`, optional `expectedCurrentAssigneeUserId`, reviewer, workflow history, timestamp, attachment metadata if any, audit, notification |
 
 Attachment pada Approval B/C adalah workflow attachment dan bukan document revision.
+
+Jika expected workflow state tidak cocok dengan canonical database state, API mengembalikan HTTP `409 Conflict` dengan `code` `WORKFLOW_CONFLICT`.
 
 Workflow Status resmi yang harus didukung API Document Register adalah:
 
@@ -2209,7 +2211,7 @@ Candidate route dari audit atau dokumen historis yang berbeda dari dokumen ini d
 | `PATCH /api/v1/documents/{id}` | editable metadata | updated document | editable state, project ownership | `document-register.edit` | Edit Document | History, audit |
 | `PATCH /api/v1/documents/{id}/archive` | archive reason optional | archived document | Approved, Active lifecycle, Active project, Admin | `document-register.archive` + Admin | Archive | History, audit |
 | `PATCH /api/v1/documents/{id}/restore` | restore reason optional | restored document | Archived lifecycle, Active project, Admin | `document-register.archive` + Admin | Restore | History, audit |
-| `POST /api/v1/documents/{id}/revisions` | `temporaryFileId`, optional `description`, `area`, `daysUntilValidation` | updated document and revision | Comment/Reject status, temporary file rules, active project, `daysUntilValidation >= 0` | `document-register.edit` | Upload Revision | History, audit, notification, SLA cycle update; metadata update uses latest Days Until Validation |
+| `POST /api/v1/documents/{id}/revisions` | `temporaryFileId`, `expectedWorkflowStatus`, `expectedActiveRevisionId`, optional `expectedCurrentAssigneeUserId`, optional `description`, `area`, `daysUntilValidation` | updated document and revision | Comment/Reject status, expected active revision, temporary file rules, active project, `daysUntilValidation >= 0` | `document-register.edit` | Upload Revision | History, audit, notification, SLA cycle update; metadata update uses latest Days Until Validation |
 | `GET /api/v1/documents/{id}/revisions` | document id | revision collection | project ownership | `document-register.view` | Read only | None |
 | `GET /api/v1/documents/{id}/history` | document id | history collection | project ownership | `document-register.view` | Read only | None |
 | `GET /api/v1/documents/{id}/comments` | document id | workflow comment collection | project ownership | `document-register.view` | Read only | Comment read receipt may update only through explicit read flow if implemented |
@@ -2218,9 +2220,9 @@ Candidate route dari audit atau dokumen historis yang berbeda dari dokumen ini d
 | `GET /api/v1/documents/{id}/download` | document id or active file | attachment file response | project ownership, file metadata valid | `document-register.download` | Read only | Audit Download Document |
 | `GET /api/v1/documents/{id}/revisions/{revisionId}/view` | document id, revision id | inline historical revision file response | project ownership, file metadata valid | `document-register.view` | Read only | Audit View Document with revision context |
 | `GET /api/v1/documents/{id}/revisions/{revisionId}/download` | document id, revision id | attachment historical revision file response | project ownership, file metadata valid | `document-register.download` | Read only | Audit Download Document with revision context |
-| `POST /api/v1/documents/{id}/approve` | optional comment/attachment | updated document | Approval A status/role rule | `approval.a` | Approval | History, audit, notification |
-| `POST /api/v1/documents/{id}/approve-with-comment` | mandatory comment, optional attachment `temporaryFileId` | updated document/comment | Approval B status/role/comment rule | `approval.b` | Approval | Comment, optional attachment, history, audit, notification |
-| `POST /api/v1/documents/{id}/reject` | optional comment, optional attachment `temporaryFileId` | updated document/comment | Approval C status/role rule | `approval.c` | Approval | Comment if provided, optional attachment, history, audit, notification |
+| `POST /api/v1/documents/{id}/approve` | `expectedWorkflowStatus`, `expectedActiveRevisionId`, optional `expectedCurrentAssigneeUserId` | updated document | Approval A status/role/current assignee/expected state rule | `approval.a` | Approval | History, audit, notification |
+| `POST /api/v1/documents/{id}/approve-with-comment` | mandatory comment, optional attachment `temporaryFileId`, `expectedWorkflowStatus`, `expectedActiveRevisionId`, optional `expectedCurrentAssigneeUserId` | updated document/comment | Approval B status/role/comment/current assignee/expected state rule | `approval.b` | Approval | Comment, optional attachment, history, audit, notification |
+| `POST /api/v1/documents/{id}/reject` | optional comment, optional attachment `temporaryFileId`, `expectedWorkflowStatus`, `expectedActiveRevisionId`, optional `expectedCurrentAssigneeUserId` | updated document/comment | Approval C status/role/current assignee/expected state rule | `approval.c` | Approval | Comment if provided, optional attachment, history, audit, notification |
 | `POST /api/v1/documents/{id}/workflow-attachments` | `commentId`, `temporaryFileId` | workflow attachment metadata | project ownership, temporary file rules | `storage.view` or document/workflow permissions | Workflow Attachment | Permanent storage promotion, audit |
 | `GET /api/v1/documents/{id}/workflow-attachments/{attachmentId}/download` | document id, attachment id | workflow attachment file response | project ownership, attachment metadata valid | `storage.view` or `document-register.view` or `document-register.download` | Read only | None |
 | `GET /api/v1/notifications` | pagination/filter/project | notification collection | recipient is current user | `notifications.view` | Read only | None |
@@ -2280,9 +2282,10 @@ Endpoint final berikut tidak menerima raw multipart file:
 | Endpoint | Request Body |
 |---|---|
 | `POST /api/v1/documents` | metadata document + `temporaryFileId` |
-| `POST /api/v1/documents/{id}/revisions` | `temporaryFileId` |
-| `POST /api/v1/documents/{id}/approve-with-comment` | `comment`, optional `temporaryFileId` |
-| `POST /api/v1/documents/{id}/reject` | optional `comment`, optional `temporaryFileId` |
+| `POST /api/v1/documents/{id}/revisions` | `temporaryFileId`, `expectedWorkflowStatus`, `expectedActiveRevisionId`, optional `expectedCurrentAssigneeUserId` |
+| `POST /api/v1/documents/{id}/approve` | `expectedWorkflowStatus`, `expectedActiveRevisionId`, optional `expectedCurrentAssigneeUserId` |
+| `POST /api/v1/documents/{id}/approve-with-comment` | `comment`, optional `temporaryFileId`, `expectedWorkflowStatus`, `expectedActiveRevisionId`, optional `expectedCurrentAssigneeUserId` |
+| `POST /api/v1/documents/{id}/reject` | optional `comment`, optional `temporaryFileId`, `expectedWorkflowStatus`, `expectedActiveRevisionId`, optional `expectedCurrentAssigneeUserId` |
 | `POST /api/v1/documents/{id}/workflow-attachments` | `commentId`, `temporaryFileId` |
 
 Reuse `temporaryFileId`, penggunaan oleh user berbeda, file temporary yang sudah expired, atau storage temporary yang hilang wajib ditolak dan tidak boleh membuat permanent metadata.

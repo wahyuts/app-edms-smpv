@@ -56,6 +56,16 @@ const modalType = {
   VIEW: "view",
 };
 
+const createExpectedWorkflowState = (document = {}) => ({
+  activeRevisionId: document.activeRevisionId ?? null,
+  currentAssigneeUserId: document.currentAssigneeUserId ?? null,
+  workflowStatus: document.workflowStatus ?? document.status ?? null,
+});
+
+const isWorkflowConflictError = (error) =>
+  error?.status === 409 &&
+  ["WORKFLOW_CONFLICT", "REVISION_CONFLICT"].includes(error?.code);
+
 const ActionIconButton = ({ icon: Icon, label, onClick, showIndicator = false }) => {
   return (
     <button
@@ -118,6 +128,9 @@ export const DocumentActionGroup = ({
   const [workflowComment, setWorkflowComment] = useState("");
   const [selectedWorkflowAttachment, setSelectedWorkflowAttachment] = useState(null);
   const [validationMessage, setValidationMessage] = useState("");
+  const [workflowExpectedState, setWorkflowExpectedState] = useState(
+    createExpectedWorkflowState(documentItem),
+  );
 
   const activeMembership = useProjectContextStore((state) => state.activeMembership);
   const projectRoleName = activeMembership?.officialRole;
@@ -210,6 +223,7 @@ export const DocumentActionGroup = ({
     setWorkflowAttachmentErrorMessage("");
     setArchiveReason("");
     setWorkflowComment("");
+    setWorkflowExpectedState(createExpectedWorkflowState(documentItem));
     setSelectedWorkflowAttachment(null);
     setValidationMessage("");
   };
@@ -431,13 +445,50 @@ export const DocumentActionGroup = ({
     }
   };
 
-  const openWorkflowModal = (nextModalType) => {
-    setWorkflowAttachmentFile(null);
-    setWorkflowAttachmentPreview(null);
-    setWorkflowAttachmentErrorMessage("");
-    setWorkflowComment("");
-    setValidationMessage("");
-    setActiveModal(nextModalType);
+  const openWorkflowModal = async (nextModalType) => {
+    try {
+      const latestDocument = await DocumentApiService.getDocumentById(documentItem.id);
+      const latestVisibility = getDocumentActionVisibility({
+        hasPermission: hasProjectPermission,
+        roleName: projectRoleName,
+        status: latestDocument?.status,
+      });
+      const actionByModalType = {
+        [modalType.APPROVAL_A]: ACTION_CODE.APPROVAL_A,
+        [modalType.APPROVAL_B]: ACTION_CODE.APPROVAL_B,
+        [modalType.APPROVAL_C]: ACTION_CODE.APPROVAL_C,
+      };
+      const requiredAction = actionByModalType[nextModalType];
+
+      if (
+        latestDocument?.lifecycle === DOCUMENT_LIFECYCLE.ARCHIVED ||
+        !latestVisibility.workflowActions.includes(requiredAction)
+      ) {
+        await synchronizeDocumentRuntimeQueries({
+          refreshCurrentSurface: onWorkflowComplete,
+        });
+        showToast({
+          message: "Dokumen telah diperbarui. Data terbaru telah dimuat.",
+          variant: "warning",
+        });
+        return;
+      }
+
+      setDetailDocument(latestDocument);
+      setWorkflowExpectedState(createExpectedWorkflowState(latestDocument));
+      setWorkflowAttachmentFile(null);
+      setWorkflowAttachmentPreview(null);
+      setWorkflowAttachmentErrorMessage("");
+      setWorkflowComment("");
+      setValidationMessage("");
+      setActiveModal(nextModalType);
+    } catch (error) {
+      showToast({
+        message:
+          error instanceof Error ? error.message : "Detail Document gagal dimuat.",
+        variant: "error",
+      });
+    }
   };
 
   const handleWorkflowAttachmentChange = ({
@@ -482,6 +533,7 @@ export const DocumentActionGroup = ({
           area: formValue.area,
           daysUntilValidation: formValue.daysUntilValidation,
           description: formValue.description,
+          expectedState: createExpectedWorkflowState(detailDocument),
           file: formValue.file,
         });
 
@@ -511,6 +563,17 @@ export const DocumentActionGroup = ({
         variant: "success",
       });
     } catch (error) {
+      if (isWorkflowConflictError(error)) {
+        closeModal();
+        await synchronizeDocumentRuntimeQueries({
+          refreshCurrentSurface: onWorkflowComplete,
+        });
+        showToast({
+          message: "Dokumen telah diperbarui oleh pengguna lain. Data dimuat ulang.",
+          variant: "warning",
+        });
+        return;
+      }
       showToast({
         message:
           error instanceof Error ? error.message : "Edit Document gagal.",
@@ -569,16 +632,20 @@ export const DocumentActionGroup = ({
   ) => {
     try {
       if (workflowAction === ACTION_CODE.APPROVAL_A) {
-        await DocumentApiService.approveDocument(documentItem.id);
+        await DocumentApiService.approveDocument(documentItem.id, {
+          expectedState: workflowExpectedState,
+        });
       } else if (workflowAction === ACTION_CODE.APPROVAL_B) {
         await DocumentApiService.submitApprovalWithComment(documentItem.id, {
           attachmentFile,
           comment,
+          expectedState: workflowExpectedState,
         });
       } else if (workflowAction === ACTION_CODE.APPROVAL_C) {
         await DocumentApiService.rejectDocument(documentItem.id, {
           attachmentFile,
           comment,
+          expectedState: workflowExpectedState,
         });
       }
 
@@ -593,6 +660,18 @@ export const DocumentActionGroup = ({
     } catch (error) {
       const nextMessage =
         error instanceof Error ? error.message : `${workflowAction} gagal diproses.`;
+
+      if (isWorkflowConflictError(error)) {
+        closeModal();
+        await synchronizeDocumentRuntimeQueries({
+          refreshCurrentSurface: onWorkflowComplete,
+        });
+        showToast({
+          message: "Dokumen telah diperbarui oleh pengguna lain. Data dimuat ulang.",
+          variant: "warning",
+        });
+        return;
+      }
 
       setValidationMessage(nextMessage);
       showToast({
@@ -768,7 +847,7 @@ export const DocumentActionGroup = ({
         <ApprovalConfirmationModal
           actionSummary="Approval A will continue the document to the next workflow status."
           confirmLabel="Confirm"
-          documentItem={documentItem}
+          documentItem={detailDocument}
           message="Are you sure you want to approve this document?"
           onCancel={closeModal}
           onConfirm={() => executeWorkflowAction(ACTION_CODE.APPROVAL_A)}
@@ -780,7 +859,7 @@ export const DocumentActionGroup = ({
           attachmentErrorMessage={workflowAttachmentErrorMessage}
           attachmentPreview={workflowAttachmentPreview}
           comment={workflowComment}
-          documentItem={documentItem}
+          documentItem={detailDocument}
           errorMessage={validationMessage}
           onAttachmentChange={handleWorkflowAttachmentChange}
           onAttachmentRemove={removeWorkflowAttachment}
@@ -801,7 +880,7 @@ export const DocumentActionGroup = ({
           attachmentErrorMessage={workflowAttachmentErrorMessage}
           attachmentPreview={workflowAttachmentPreview}
           comment={workflowComment}
-          documentItem={documentItem}
+          documentItem={detailDocument}
           errorMessage={validationMessage}
           isDanger
           onAttachmentChange={handleWorkflowAttachmentChange}

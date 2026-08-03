@@ -209,6 +209,11 @@ const processApproval = (type, { requireComment = false } = {}) => async (req, r
         actorUserId: req.user.id,
         comment: validation.value.comment,
         documentId: req.params.documentId,
+        expectedState: {
+          activeRevisionId: validation.value.expectedActiveRevisionId,
+          currentAssigneeUserId: validation.value.expectedCurrentAssigneeUserId,
+          workflowStatus: validation.value.expectedWorkflowStatus,
+        },
         temporaryFileId: validation.value.temporaryFileId,
         type,
       }),

@@ -104,9 +104,22 @@ const consumeTemporaryUploadMetadata = async (connection, temporaryFileId) => {
   return temporaryUploadRepository.deleteAvailableTemporaryUpload(connection, { temporaryFileId });
 };
 
+const discardTemporaryUpload = async (temporaryMetadata) => {
+  if (!temporaryMetadata?.temporaryFileId) return;
+
+  await temporaryUploadRepository
+    .deleteAvailableTemporaryUpload(null, { temporaryFileId: temporaryMetadata.temporaryFileId })
+    .catch(() => {});
+
+  if (temporaryMetadata.storageKey) {
+    await storageService.deleteTemporary(temporaryMetadata.storageKey).catch(() => {});
+  }
+};
+
 module.exports = {
   assertTemporaryUploadConsumable,
   consumeTemporaryUploadMetadata,
+  discardTemporaryUpload,
   getTemporaryUploadMetadata,
   uploadTemporaryFile,
 };

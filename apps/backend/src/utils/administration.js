@@ -17,11 +17,17 @@ const createEntityId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
 
 const createUserCode = (userId) => `USR-${String(userId).padStart(6, '0')}`;
 
-const createHttpError = (message, statusCode = 400, errors) => {
+const createHttpError = (message, statusCode = 400, errors, options = {}) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   if (errors !== undefined) {
     error.errors = errors;
+  }
+  if (options.code !== undefined) {
+    error.code = options.code;
+  }
+  if (options.data !== undefined) {
+    error.data = options.data;
   }
   return error;
 };

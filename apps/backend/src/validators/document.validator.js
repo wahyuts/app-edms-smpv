@@ -96,14 +96,26 @@ const validateArchivePayload = (body = {}) => ({
 });
 
 const validateTemporaryFilePayload = (body = {}) => {
+  const expectedActiveRevisionId = normalizeText(body.expectedActiveRevisionId);
+  const expectedCurrentAssigneeUserId = normalizeText(body.expectedCurrentAssigneeUserId);
+  const expectedWorkflowStatus = normalizeText(body.expectedWorkflowStatus);
   const temporaryFileId = normalizeText(body.temporaryFileId);
   const errors = [];
   const value = {
+    expectedActiveRevisionId,
+    expectedCurrentAssigneeUserId: expectedCurrentAssigneeUserId || null,
+    expectedWorkflowStatus,
     temporaryFileId,
   };
 
   if (!temporaryFileId) {
     errors.push({ field: 'temporaryFileId', message: 'Temporary File Wajib Diisi' });
+  }
+  if (!expectedWorkflowStatus) {
+    errors.push({ field: 'expectedWorkflowStatus', message: 'Expected Workflow Status Wajib Diisi' });
+  }
+  if (!expectedActiveRevisionId) {
+    errors.push({ field: 'expectedActiveRevisionId', message: 'Expected Active Revision Wajib Diisi' });
   }
 
   if (Object.prototype.hasOwnProperty.call(body, 'description')) {

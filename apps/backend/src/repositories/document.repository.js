@@ -741,6 +741,7 @@ const updateDocumentLifecycleStatus = async (connection, {
 const updateDocumentWorkflowState = async (connection, {
   currentAssigneeUserId,
   documentId,
+  expectedState = null,
   responsibleRole,
   revisionLabel,
   resetSla = false,
@@ -748,7 +749,38 @@ const updateDocumentWorkflowState = async (connection, {
   updatedByUserId,
   workflowStatus,
 }) => {
-  await connection.query(
+  const conditions = ['id = ?'];
+  const params = [
+    workflowStatus,
+    revisionLabel,
+    responsibleRole,
+    currentAssigneeUserId,
+    updatedByUserId,
+    documentId,
+  ];
+
+  if (expectedState?.workflowStatus) {
+    conditions.push('workflow_status = ?');
+    params.push(expectedState.workflowStatus);
+  }
+  if (expectedState?.activeRevisionId) {
+    conditions.push('active_revision_id = ?');
+    params.push(expectedState.activeRevisionId);
+  }
+  if (Object.prototype.hasOwnProperty.call(expectedState || {}, 'currentAssigneeUserId')) {
+    if (expectedState.currentAssigneeUserId) {
+      conditions.push('current_assignee_user_id = ?');
+      params.push(expectedState.currentAssigneeUserId);
+    } else {
+      conditions.push('current_assignee_user_id IS NULL');
+    }
+  }
+  if (expectedState?.lifecycleStatus) {
+    conditions.push('lifecycle_status = ?');
+    params.push(expectedState.lifecycleStatus);
+  }
+
+  const [result] = await connection.query(
     `
       UPDATE engineering_documents
       SET workflow_status = ?,
@@ -758,17 +790,12 @@ const updateDocumentWorkflowState = async (connection, {
           updated_by_user_id = ?,
           sla_started_at = ${resetSla ? 'UTC_TIMESTAMP(3)' : 'sla_started_at'},
           sla_stopped_at = ${slaStoppedAtExpression || 'sla_stopped_at'}
-      WHERE id = ?
+      WHERE ${conditions.join(' AND ')}
     `,
-    [
-      workflowStatus,
-      revisionLabel,
-      responsibleRole,
-      currentAssigneeUserId,
-      updatedByUserId,
-      documentId,
-    ]
+    params
   );
+
+  return Number(result.affectedRows || 0);
 };
 
 const insertDocumentHistory = async (connection, history) => {
