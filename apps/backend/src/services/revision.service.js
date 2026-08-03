@@ -1,5 +1,6 @@
 const {
   DOCUMENT_RESPONSIBLE_ROLE,
+  DOCUMENT_LIFECYCLE_STATUS,
   DOCUMENT_REVISION_LABEL,
   DOCUMENT_WORKFLOW_STATUS,
   STORED_FILE_CATEGORY,
@@ -25,6 +26,67 @@ const uploadRevisionTransitionMatrix = Object.freeze({
   [DOCUMENT_WORKFLOW_STATUS.PROJECT_REJECT]: DOCUMENT_WORKFLOW_STATUS.PROJECT_REVIEW,
 });
 
+const createRevisionConflict = ({ conflictType, document, expectedState }) =>
+  createHttpError(
+    'Dokumen telah diperbarui oleh pengguna lain.',
+    409,
+    [{ field: 'document', message: 'Dokumen telah diperbarui oleh pengguna lain.' }],
+    {
+      code: 'REVISION_CONFLICT',
+      data: {
+        actualActiveRevisionId: document?.activeRevisionId || null,
+        actualCurrentAssigneeUserId: document?.currentAssigneeUserId || null,
+        actualWorkflowStatus: document?.status || document?.workflowStatus || null,
+        conflictType,
+        documentId: document?.id || expectedState?.documentId || null,
+        expectedActiveRevisionId: expectedState?.activeRevisionId || null,
+        expectedCurrentAssigneeUserId: expectedState?.currentAssigneeUserId || null,
+        expectedWorkflowStatus: expectedState?.workflowStatus || null,
+      },
+    }
+  );
+
+const assertExpectedRevisionState = ({ document, expectedState }) => {
+  if (!expectedState?.workflowStatus || !expectedState?.activeRevisionId) {
+    throw createRevisionConflict({
+      conflictType: 'EXPECTED_STATE_REQUIRED',
+      document,
+      expectedState,
+    });
+  }
+  if (document.lifecycle !== DOCUMENT_LIFECYCLE_STATUS.ACTIVE) {
+    throw createRevisionConflict({
+      conflictType: 'DOCUMENT_ALREADY_PROCESSED',
+      document,
+      expectedState,
+    });
+  }
+  if (document.status !== expectedState.workflowStatus) {
+    throw createRevisionConflict({
+      conflictType: 'WORKFLOW_STATE_CHANGED',
+      document,
+      expectedState,
+    });
+  }
+  if (document.activeRevisionId !== expectedState.activeRevisionId) {
+    throw createRevisionConflict({
+      conflictType: 'ACTIVE_REVISION_CHANGED',
+      document,
+      expectedState,
+    });
+  }
+  if (
+    expectedState.currentAssigneeUserId &&
+    String(document.currentAssigneeUserId) !== String(expectedState.currentAssigneeUserId)
+  ) {
+    throw createRevisionConflict({
+      conflictType: 'CURRENT_ASSIGNEE_CHANGED',
+      document,
+      expectedState,
+    });
+  }
+};
+
 const assertActorCanUploadRevision = async ({ document, userId }) => {
   const membership = await projectMembershipRepository.findActiveMembershipByProjectAndUser({
     projectId: document.projectId,
@@ -44,6 +106,11 @@ const assertActorCanUploadRevision = async ({ document, userId }) => {
 
 const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserId, documentId, payload }) => {
   const temporaryFileId = payload.temporaryFileId;
+  const expectedState = {
+    activeRevisionId: payload.expectedActiveRevisionId,
+    currentAssigneeUserId: payload.expectedCurrentAssigneeUserId,
+    workflowStatus: payload.expectedWorkflowStatus,
+  };
   const temporaryMetadata = await uploadService.assertTemporaryUploadConsumable({
     actorUserId,
     temporaryFileId,
@@ -54,44 +121,17 @@ const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserI
     throw createHttpError('Document Tidak Ditemukan', 404);
   }
 
-  const nextStatus = uploadRevisionTransitionMatrix[document.status];
-  if (!nextStatus) {
-    throw createHttpError('Upload Revision Tidak Diizinkan Pada Status Ini', 422, [
-      { field: 'status', message: 'Upload Revision Tidak Diizinkan Pada Status Ini' },
-    ]);
-  }
-
   await assertActorCanUploadRevision({ document, userId: actorUserId });
-
-  const nextAssignee = await workflowEngine.resolveCurrentAssigneeForStatus({
-    projectId: document.projectId,
-    status: nextStatus,
-  });
-
-  if (!nextAssignee) {
-    throw createHttpError('Current Assignee Tidak Tersedia Untuk Status Tujuan', 409);
-  }
 
   const revisionId = createEntityId('REV');
   const fileId = createEntityId('FILE');
   const revisionSequence = await documentRepository.getNextRevisionSequence(document.id);
-  const revisionLabel = nextStatus === DOCUMENT_WORKFLOW_STATUS.PROJECT_REVIEW
-    ? DOCUMENT_REVISION_LABEL.IFA_SUBMITTED
-    : DOCUMENT_REVISION_LABEL.IFR_SUBMITTED;
+  let nextStatus = null;
+  let nextAssignee = null;
+  let revisionLabel = null;
   const submittedAt = new Date();
-  const physicalFileName = buildCanonicalPhysicalFileName({
-    documentNumber: document.documentNumber,
-    fileId,
-    originalFileName: temporaryMetadata.originalFileName,
-    revisionLabel,
-    submittedAt,
-  });
-  const storageKey = buildRevisionStorageKey({
-    documentNumber: document.documentNumber,
-    physicalFileName,
-    projectCode: document.projectCode,
-    revisionLabel,
-  });
+  let physicalFileName = null;
+  let storageKey = null;
   const nextMetadata = {
     area: payload.area ?? document.area,
     daysUntilValidation: payload.daysUntilValidation ?? document.daysUntilValidation,
@@ -102,7 +142,66 @@ const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserI
   let finalized = false;
 
   try {
+    assertExpectedRevisionState({ document, expectedState });
+
+    nextStatus = uploadRevisionTransitionMatrix[document.status];
+    if (!nextStatus) {
+      throw createHttpError('Upload Revision Tidak Diizinkan Pada Status Ini', 422, [
+        { field: 'status', message: 'Upload Revision Tidak Diizinkan Pada Status Ini' },
+      ]);
+    }
+
+    nextAssignee = await workflowEngine.resolveCurrentAssigneeForStatus({
+      projectId: document.projectId,
+      status: nextStatus,
+    });
+
+    if (!nextAssignee) {
+      throw createHttpError('Current Assignee Tidak Tersedia Untuk Status Tujuan', 409);
+    }
+
+    revisionLabel = nextStatus === DOCUMENT_WORKFLOW_STATUS.PROJECT_REVIEW
+      ? DOCUMENT_REVISION_LABEL.IFA_SUBMITTED
+      : DOCUMENT_REVISION_LABEL.IFR_SUBMITTED;
+    physicalFileName = buildCanonicalPhysicalFileName({
+      documentNumber: document.documentNumber,
+      fileId,
+      originalFileName: temporaryMetadata.originalFileName,
+      revisionLabel,
+      submittedAt,
+    });
+    storageKey = buildRevisionStorageKey({
+      documentNumber: document.documentNumber,
+      physicalFileName,
+      projectCode: document.projectCode,
+      revisionLabel,
+    });
+
     await documentRepository.runInTransaction(async (connection) => {
+      const workflowAffectedRows = await documentRepository.updateDocumentWorkflowState(connection, {
+        currentAssigneeUserId: nextAssignee.userId,
+        documentId: document.id,
+        expectedState: {
+          activeRevisionId: expectedState.activeRevisionId,
+          currentAssigneeUserId: document.currentAssigneeUserId || null,
+          lifecycleStatus: DOCUMENT_LIFECYCLE_STATUS.ACTIVE,
+          workflowStatus: expectedState.workflowStatus,
+        },
+        responsibleRole: workflowEngine.getResponsibleRoleForStatus(nextStatus),
+        revisionLabel,
+        resetSla: true,
+        slaStoppedAtExpression: 'NULL',
+        updatedByUserId: actorUserId,
+        workflowStatus: nextStatus,
+      });
+
+      if (workflowAffectedRows !== 1) {
+        throw createRevisionConflict({
+          conflictType: 'ACTIVE_REVISION_CHANGED',
+          document,
+          expectedState,
+        });
+      }
       await documentRepository.updateDocumentMetadata(connection, {
         ...nextMetadata,
         documentId: document.id,
@@ -145,16 +244,6 @@ const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserI
         documentId: document.id,
         updatedByUserId: actorUserId,
       });
-      await documentRepository.updateDocumentWorkflowState(connection, {
-        currentAssigneeUserId: nextAssignee.userId,
-        documentId: document.id,
-        responsibleRole: workflowEngine.getResponsibleRoleForStatus(nextStatus),
-        revisionLabel,
-        resetSla: true,
-        slaStoppedAtExpression: 'NULL',
-        updatedByUserId: actorUserId,
-        workflowStatus: nextStatus,
-      });
       await documentRepository.insertDocumentHistory(connection, {
         id: createEntityId('DTH'),
         projectId: document.projectId,
@@ -182,6 +271,9 @@ const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserI
   } catch (error) {
     if (finalized) {
       await storageService.delete(storageKey).catch(() => {});
+    }
+    if (!finalized && temporaryMetadata && error?.code === 'REVISION_CONFLICT') {
+      await uploadService.discardTemporaryUpload(temporaryMetadata);
     }
     throw error;
   }

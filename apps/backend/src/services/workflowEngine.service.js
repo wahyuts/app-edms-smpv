@@ -54,6 +54,71 @@ const workflowEventByAction = Object.freeze({
   [DOCUMENT_WORKFLOW_ACTION.APPROVAL_C]: 'Approval C Completed',
 });
 
+const createWorkflowConflict = ({ conflictType, document, expectedState }) =>
+  createHttpError(
+    'Dokumen telah diperbarui oleh pengguna lain.',
+    409,
+    [{ field: 'document', message: 'Dokumen telah diperbarui oleh pengguna lain.' }],
+    {
+      code: 'WORKFLOW_CONFLICT',
+      data: {
+        actualActiveRevisionId: document?.activeRevisionId || null,
+        actualCurrentAssigneeUserId: document?.currentAssigneeUserId || null,
+        actualWorkflowStatus: document?.status || document?.workflowStatus || null,
+        conflictType,
+        documentId: document?.id || expectedState?.documentId || null,
+        expectedActiveRevisionId: expectedState?.activeRevisionId || null,
+        expectedCurrentAssigneeUserId: expectedState?.currentAssigneeUserId || null,
+        expectedWorkflowStatus: expectedState?.workflowStatus || null,
+      },
+    }
+  );
+
+const assertExpectedWorkflowState = ({ document, expectedState }) => {
+  if (!expectedState?.workflowStatus || !expectedState?.activeRevisionId) {
+    throw createWorkflowConflict({
+      conflictType: 'EXPECTED_STATE_REQUIRED',
+      document,
+      expectedState,
+    });
+  }
+
+  if (document.lifecycle !== DOCUMENT_LIFECYCLE_STATUS.ACTIVE) {
+    throw createWorkflowConflict({
+      conflictType: 'DOCUMENT_ALREADY_PROCESSED',
+      document,
+      expectedState,
+    });
+  }
+
+  if (document.status !== expectedState.workflowStatus) {
+    throw createWorkflowConflict({
+      conflictType: 'WORKFLOW_STATE_CHANGED',
+      document,
+      expectedState,
+    });
+  }
+
+  if (document.activeRevisionId !== expectedState.activeRevisionId) {
+    throw createWorkflowConflict({
+      conflictType: 'ACTIVE_REVISION_CHANGED',
+      document,
+      expectedState,
+    });
+  }
+
+  if (
+    expectedState.currentAssigneeUserId &&
+    String(document.currentAssigneeUserId) !== String(expectedState.currentAssigneeUserId)
+  ) {
+    throw createWorkflowConflict({
+      conflictType: 'CURRENT_ASSIGNEE_CHANGED',
+      document,
+      expectedState,
+    });
+  }
+};
+
 const getNextWorkflowStatus = ({ action, currentStatus }) => {
   return workflowTransitionMatrix[currentStatus]?.[action] || null;
 };
@@ -123,11 +188,14 @@ const applyWorkflowTransition = async ({
   actorUserFullName,
   actorUserId,
   document,
+  expectedState,
   reason = null,
   transactionHook = null,
   workflowAttachment = null,
   workflowComment = null,
 }) => {
+  assertExpectedWorkflowState({ document, expectedState });
+
   const nextStatus = assertWorkflowTransition({ action, document });
   const requiredRole = getResponsibleRoleForStatus(document.status);
   const actorMembership = await assertActorCanTransition({
@@ -135,6 +203,7 @@ const applyWorkflowTransition = async ({
     requiredRole,
     userId: actorUserId,
   });
+
   const nextResponsibleRole = getResponsibleRoleForStatus(nextStatus);
   const nextAssignee = await resolveCurrentAssigneeForStatus({
     projectId: document.projectId,
@@ -184,9 +253,15 @@ const applyWorkflowTransition = async ({
 
   try {
     await documentRepository.runInTransaction(async (connection) => {
-      await documentRepository.updateDocumentWorkflowState(connection, {
+      const workflowAffectedRows = await documentRepository.updateDocumentWorkflowState(connection, {
         currentAssigneeUserId: nextAssignee?.userId || null,
         documentId: document.id,
+        expectedState: {
+          activeRevisionId: expectedState.activeRevisionId,
+          currentAssigneeUserId: expectedState.currentAssigneeUserId || document.currentAssigneeUserId || null,
+          lifecycleStatus: DOCUMENT_LIFECYCLE_STATUS.ACTIVE,
+          workflowStatus: expectedState.workflowStatus,
+        },
         responsibleRole: nextResponsibleRole,
         revisionLabel: nextRevision,
         resetSla: true,
@@ -194,6 +269,15 @@ const applyWorkflowTransition = async ({
         updatedByUserId: actorUserId,
         workflowStatus: nextStatus,
       });
+
+      if (workflowAffectedRows !== 1) {
+        throw createWorkflowConflict({
+          conflictType: 'WORKFLOW_STATE_CHANGED',
+          document,
+          expectedState,
+        });
+      }
+
       await documentRepository.updateRevisionLabel(connection, {
         revisionId: document.activeRevisionId,
         revisionLabel: nextRevision,

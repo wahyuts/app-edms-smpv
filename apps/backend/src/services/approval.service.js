@@ -49,6 +49,7 @@ const processApproval = async ({
   actorUserId,
   comment = '',
   documentId,
+  expectedState,
   temporaryFileId = null,
   type,
 }) => {
@@ -125,6 +126,7 @@ const processApproval = async ({
       actorUserFullName,
       actorUserId,
       document,
+      expectedState,
       reason,
       transactionHook: temporaryFileId ? async (connection) => {
         const consumedRows = await uploadService.consumeTemporaryUploadMetadata(connection, temporaryFileId);
@@ -142,6 +144,9 @@ const processApproval = async ({
   } catch (error) {
     if (finalized && workflowAttachment?.storageKey) {
       await storageService.delete(workflowAttachment.storageKey).catch(() => {});
+    }
+    if (!finalized && temporaryMetadata && error?.code === 'WORKFLOW_CONFLICT') {
+      await uploadService.discardTemporaryUpload(temporaryMetadata);
     }
     throw error;
   }
