@@ -1,4 +1,5 @@
 const { pool } = require('../config/database');
+const logger = require('../config/logger');
 
 const mapFileMetadata = (row) => row.file_id ? ({
   fileId: row.file_id,
@@ -542,20 +543,37 @@ const listProjectDocumentRegister = async (projectId, { userId = 0 } = {}) => {
 
 const listSlaNotificationCandidateDocuments = async ({ limit = 200 } = {}) => {
   const normalizedLimit = Math.min(1000, Math.max(1, Number.parseInt(limit, 10) || 200));
-  const [rows] = await pool.execute(
-    `
+  const sql = `
       ${documentRegisterSelect}
       WHERE documents.lifecycle_status = 'Active'
         AND documents.workflow_status <> 'Approved'
         AND documents.sla_started_at IS NOT NULL
         AND LOWER(TRIM(projects.status)) = 'active'
       ORDER BY documents.sla_started_at ASC, documents.id ASC
-      LIMIT ?
-    `,
-    [0, 0, normalizedLimit]
-  );
+      LIMIT ${normalizedLimit}
+    `;
+  const params = [0, 0];
 
-  return rows.map(mapDocumentRegisterRow);
+  try {
+    const [rows] = await pool.execute(sql, params);
+
+    return rows.map(mapDocumentRegisterRow);
+  } catch (error) {
+    logger.error(
+      '[SLA_NOTIFICATION_SCHEDULER]',
+      'event=sla_scheduler_query_failed',
+      'repositoryMethod=listSlaNotificationCandidateDocuments',
+      'sqlIdentifier=document_register_sla_notification_candidates',
+      `placeholderCount=${(sql.match(/\?/g) || []).length}`,
+      `parameterCount=${params.length}`,
+      `parameterTypes=${params.map((value) => value === null ? 'null' : typeof value).join('|')}`,
+      `batchSize=${normalizedLimit}`,
+      `errorCode=${error.code || '-'}`,
+      `errorNumber=${error.errno || '-'}`,
+      `sqlState=${error.sqlState || '-'}`
+    );
+    throw error;
+  }
 };
 
 const markWorkflowCommentsReadForUser = async ({ documentId, projectId, userId }) => {
