@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
@@ -12,42 +12,6 @@ import { DocumentApiService } from "../services/document-api.service";
 
 const DEFAULT_PAGE_SIZE = 5;
 const DEFAULT_SORT_BY = "updatedAt";
-const isSlaDiagnosticsEnabled =
-  import.meta.env.DEV || import.meta.env.VITE_ENABLE_SLA_DIAGNOSTICS === "true";
-const slaDiagnosticDocumentId = String(import.meta.env.VITE_SLA_DIAGNOSTIC_DOCUMENT_ID ?? "").trim();
-const slaDiagnosticDocumentNumber = String(import.meta.env.VITE_SLA_DIAGNOSTIC_DOCUMENT_NUMBER ?? "").trim();
-const SLA_DIAG_QUERY_MAX_DOCUMENTS = 5;
-
-const createDiagnosticSnapshot = (payload) => JSON.parse(JSON.stringify(payload));
-
-const shouldTraceDocument = (document = {}) => {
-  if (!isSlaDiagnosticsEnabled) return false;
-  if (slaDiagnosticDocumentNumber) return document.documentNumber === slaDiagnosticDocumentNumber;
-  if (slaDiagnosticDocumentId) return document.id === slaDiagnosticDocumentId;
-
-  return true;
-};
-
-const toSlaQuerySignature = (document = {}) => [
-  document.id,
-  document.documentNumber,
-  document.status,
-  document.workflowStatus,
-  document.slaStartedAt,
-  document.slaStoppedAt,
-  document.slaTimer?.display,
-  document.slaTimer?.totalMinutes,
-  document.daysUntilValidation,
-  document.updatedAt,
-  document.lastUpdated,
-  document.activeRevisionId,
-].join("|");
-
-const logSlaQueryDiagnostic = (payload) => {
-  if (!isSlaDiagnosticsEnabled) return;
-
-  console.info("[SLA_DIAG_QUERY]", createDiagnosticSnapshot(payload));
-};
 
 const getUniqueOptions = (documents, fieldName) => {
   return [...new Set(documents.map((documentItem) => documentItem[fieldName]))]
@@ -75,7 +39,6 @@ export const useDocumentRegisterTable = ({
   const activeOfficialRole = useProjectContextStore((state) => state.activeOfficialRole);
   const currentTimestamp = useSlaRuntimeClock();
   const canUseLifecycleFilter = activeOfficialRole === OFFICIAL_ROLE.ADMIN;
-  const previousQueryDiagnosticsRef = useRef(new Map());
   const effectiveLifecycleFilter = canUseLifecycleFilter
     ? lifecycleFilter
     : DOCUMENT_LIFECYCLE_FILTER.ACTIVE;
@@ -151,60 +114,6 @@ export const useDocumentRegisterTable = ({
       totalPages: 1,
     },
   };
-  useEffect(() => {
-    if (!isSlaDiagnosticsEnabled || !documentsQuery.data) return;
-
-    const changedDocuments = [];
-
-    documentsQuery.data.data.forEach((documentItem) => {
-      if (!shouldTraceDocument(documentItem)) return;
-
-      const signature = toSlaQuerySignature(documentItem);
-      const previousSignature = previousQueryDiagnosticsRef.current.get(documentItem.id);
-
-      if (
-        previousSignature !== signature ||
-        (!documentsQuery.isFetching && documentsQuery.dataUpdatedAt)
-      ) {
-        changedDocuments.push(documentItem);
-        previousQueryDiagnosticsRef.current.set(documentItem.id, signature);
-      }
-    });
-
-    changedDocuments.slice(0, SLA_DIAG_QUERY_MAX_DOCUMENTS).forEach((documentItem) => {
-      logSlaQueryDiagnostic({
-        activeProjectId,
-        activeRevisionId: documentItem.activeRevisionId,
-        dataUpdatedAt: documentsQuery.dataUpdatedAt,
-        dataUpdatedAtISO: documentsQuery.dataUpdatedAt
-          ? new Date(documentsQuery.dataUpdatedAt).toISOString()
-          : null,
-        dataUpdatedAtIso: documentsQuery.dataUpdatedAt
-          ? new Date(documentsQuery.dataUpdatedAt).toISOString()
-          : null,
-        daysUntilValidation: documentItem.daysUntilValidation,
-        documentId: documentItem.id,
-        documentNumber: documentItem.documentNumber,
-        isFetching: documentsQuery.isFetching,
-        lastUpdated: documentItem.lastUpdated,
-        queryStatus: documentsQuery.status,
-        slaStartedAt: documentItem.slaStartedAt,
-        slaStoppedAt: documentItem.slaStoppedAt,
-        slaTimer: documentItem.slaTimer ?? null,
-        slaTimerDisplay: documentItem.slaTimer?.display ?? null,
-        slaTimerTotalMinutes: documentItem.slaTimer?.totalMinutes ?? null,
-        status: documentItem.status,
-        updatedAt: documentItem.updatedAt,
-        workflowStatus: documentItem.workflowStatus,
-      });
-    });
-  }, [
-    activeProjectId,
-    documentsQuery.data,
-    documentsQuery.dataUpdatedAt,
-    documentsQuery.isFetching,
-    documentsQuery.status,
-  ]);
   const sourceDocuments = useMemo(
     () => response.data.map((documentItem) => resolveLiveSlaTimer(documentItem, currentTimestamp)),
     [currentTimestamp, response.data],
