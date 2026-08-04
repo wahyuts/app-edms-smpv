@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import navigation from "@/app/navigation";
 import { AuthService } from "@/features/auth/services/auth.service";
+import { useRealtimeDocumentRuntimeSync } from "@/features/document-register";
 import {
   useCurrentUserUnreadNotificationCount,
   useRealtimeNotificationSync,
@@ -48,6 +49,7 @@ const AppShell = ({ children }) => {
   const { showToast } = useToast();
   const { hasPermission } = usePermission();
   useRealtimeClient();
+  useRealtimeDocumentRuntimeSync();
   useRealtimeNotificationSync();
   const {
     activeOfficialRole,
