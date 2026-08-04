@@ -2,6 +2,12 @@ const notificationRepository = require('../repositories/notification.repository'
 const projectMembershipRepository = require('../repositories/projectMembership.repository');
 const logger = require('../config/logger');
 const auditService = require('./audit.service');
+const realtimePublisher = require('./realtimePublisher.service');
+const {
+  REALTIME_EVENT_SCOPE,
+  REALTIME_EVENT_TYPE,
+  REALTIME_RESOURCE_TYPE,
+} = require('../constants/realtime.constants');
 const { buildPagination, createEntityId, createHttpError, normalizeText, parseListQuery } = require('../utils/administration');
 
 const NOTIFICATION_EVENT_TYPE = Object.freeze({
@@ -192,6 +198,26 @@ const getNotificationDictionary = (eventType, dictionaryOverride = null) => ({
   ...(dictionaryOverride || {}),
 });
 
+const publishNotificationCreatedSafely = ({
+  document,
+  eventType,
+  notificationId,
+  recipientMembership,
+}) => {
+  if (!notificationId || !document?.projectId || !recipientMembership?.userId) return;
+
+  realtimePublisher.publishSafely({
+    documentId: document.id,
+    projectId: document.projectId,
+    reason: eventType,
+    recipientUserId: recipientMembership.userId,
+    resourceId: notificationId,
+    resourceType: REALTIME_RESOURCE_TYPE.NOTIFICATION,
+    scope: REALTIME_EVENT_SCOPE.USER_PROJECT,
+    type: REALTIME_EVENT_TYPE.NOTIFICATION_CREATED,
+  });
+};
+
 const createNotificationForMembership = async ({
   document,
   dictionaryOverride,
@@ -207,9 +233,10 @@ const createNotificationForMembership = async ({
     recipientMembership.userId,
     identityBasis || document.activeRevisionId || document.updatedAt || document.lastUpdated,
   ].join(':');
+  const notificationId = createEntityId('NTF');
 
   const affectedRows = await notificationRepository.createNotification({
-    id: createEntityId('NTF'),
+    id: notificationId,
     identityKey,
     projectId: document.projectId,
     recipientUserId: recipientMembership.userId,
@@ -229,9 +256,19 @@ const createNotificationForMembership = async ({
       revision: document.revision,
     },
   });
+  const created = affectedRows === 1;
+
+  if (created) {
+    publishNotificationCreatedSafely({
+      document,
+      eventType,
+      notificationId,
+      recipientMembership,
+    });
+  }
 
   return {
-    created: affectedRows === 1,
+    created,
     recipientProjectMembershipId: recipientMembership.id,
     recipientUserId: recipientMembership.userId,
   };
@@ -359,8 +396,9 @@ const createSlaStateNotifications = async ({
       return { created: false, skipped: 'duplicate' };
     }
 
+    const notificationId = createEntityId('NTF');
     const affectedRows = await notificationRepository.createNotification({
-      id: createEntityId('NTF'),
+      id: notificationId,
       identityKey: [
         eventType,
         document.projectId,
@@ -390,8 +428,18 @@ const createSlaStateNotifications = async ({
         workflowStatus: document.status,
       },
     });
+    const created = affectedRows === 1;
 
-    return { created: affectedRows === 1 };
+    if (created) {
+      publishNotificationCreatedSafely({
+        document,
+        eventType,
+        notificationId,
+        recipientMembership: recipient,
+      });
+    }
+
+    return { created };
   }));
   const createdCount = results.filter((result) => result?.created).length;
   logRecipientResolution({
