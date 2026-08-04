@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import navigation from "@/app/navigation";
 import { AuthService } from "@/features/auth/services/auth.service";
-import { useCurrentUserUnreadNotificationCount } from "@/features/notification";
+import {
+  useCurrentUserUnreadNotificationCount,
+  useRealtimeNotificationSync,
+} from "@/features/notification";
 import ActiveProjectSelector from "@/features/project/components/ActiveProjectSelector";
 import { useToast } from "@/shared/components/toast";
 import { usePermission } from "@/shared/hooks/usePermission";
@@ -45,6 +48,7 @@ const AppShell = ({ children }) => {
   const { showToast } = useToast();
   const { hasPermission } = usePermission();
   useRealtimeClient();
+  useRealtimeNotificationSync();
   const {
     activeOfficialRole,
     clearProjectContext,

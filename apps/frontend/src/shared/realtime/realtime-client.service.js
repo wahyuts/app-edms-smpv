@@ -2,6 +2,7 @@ import { env } from "@/app/config/env";
 
 import {
   REALTIME_CONNECTION_STATUS,
+  REALTIME_EVENT_TYPE,
   REALTIME_MAX_RECONNECT_DELAY_MS,
   REALTIME_MIN_RECONNECT_DELAY_MS,
   REALTIME_RECONNECT_JITTER_MS,
@@ -28,6 +29,8 @@ const getReconnectDelay = (attempt) => {
 
   return Math.min(cappedDelay + jitter, REALTIME_MAX_RECONNECT_DELAY_MS);
 };
+
+const realtimeEventNames = [...new Set(Object.values(REALTIME_EVENT_TYPE))];
 
 export class RealtimeClient {
   constructor({
@@ -103,12 +106,13 @@ export class RealtimeClient {
       }
     };
 
-    eventSource.onmessage = (messageEvent) => {
+    const handleMessageEvent = (messageEvent) => {
       this.handleEventData(messageEvent.data);
     };
 
-    eventSource.addEventListener("connected", (messageEvent) => {
-      this.handleEventData(messageEvent.data);
+    eventSource.onmessage = handleMessageEvent;
+    realtimeEventNames.forEach((eventName) => {
+      eventSource.addEventListener(eventName, handleMessageEvent);
     });
 
     eventSource.onerror = () => {
