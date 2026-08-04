@@ -436,6 +436,7 @@ export const ViewDocumentModal = ({
           {fileExtension === "pdf" ? (
             <iframe
               className="h-full w-full bg-white"
+              key={documentFile.objectUrl}
               src={documentFile.objectUrl}
               title={`${documentItem.documentNumber} PDF Viewer`}
             />
@@ -444,6 +445,7 @@ export const ViewDocumentModal = ({
             <img
               alt={metadata?.originalFileName ?? documentItem.documentNumber}
               className="rounded-md object-contain"
+              key={documentFile.objectUrl}
               src={documentFile.objectUrl}
             />
           ) : null}
