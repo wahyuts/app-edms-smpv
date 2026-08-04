@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Clock3,
   Download,
@@ -9,9 +9,11 @@ import {
   RotateCcw,
 } from "lucide-react";
 
+import { AuthService } from "@/features/auth/services/auth.service";
 import { useToast } from "@/shared/components/toast";
 import { queryClient } from "@/shared/api/query-client";
 import { usePermission } from "@/shared/hooks/usePermission";
+import { useRealtimeEvent, useRealtimeRecovery } from "@/shared/realtime";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 import {
@@ -24,6 +26,14 @@ import {
 import { DocumentApiService } from "../services/document-api.service";
 import { getDocumentActionVisibility } from "../utils/documentActionVisibility";
 import { synchronizeDocumentRuntimeQueries } from "../utils/documentRuntimeQuerySync";
+import { createRealtimeRefetchCoalescer } from "../utils/realtimeRefetchCoalescer";
+import {
+  isActorSelfEvent,
+  isRelevantWorkflowDetailEvent,
+  shouldCloseWorkflowActionModal,
+  shouldRefreshWorkflowDocumentViewer,
+  WORKFLOW_DETAIL_STALE_NOTICE,
+} from "../utils/workflowRealtimeSync";
 import {
   ApprovalCommentModal,
   ApprovalConfirmationModal,
@@ -131,9 +141,13 @@ export const DocumentActionGroup = ({
   const [workflowExpectedState, setWorkflowExpectedState] = useState(
     createExpectedWorkflowState(documentItem),
   );
+  const activeModalRef = useRef(activeModal);
+  const detailRefetchCoalescerRef = useRef(null);
 
   const activeMembership = useProjectContextStore((state) => state.activeMembership);
+  const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
   const projectRoleName = activeMembership?.officialRole;
+  const currentUserId = AuthService.getCurrentUser()?.id ?? null;
   const isArchivedDocument = documentItem?.lifecycle === DOCUMENT_LIFECYCLE.ARCHIVED;
 
   const defaultVisibility = getDocumentActionVisibility({
@@ -204,7 +218,12 @@ export const DocumentActionGroup = ({
     };
   }, [attachmentViewerFile, documentFile]);
 
-  const closeModal = () => {
+  const setActiveModalState = useCallback((nextModal) => {
+    activeModalRef.current = nextModal;
+    setActiveModal(nextModal);
+  }, []);
+
+  const closeModal = useCallback(() => {
     if (documentFile?.objectUrl) {
       window.URL.revokeObjectURL(documentFile.objectUrl);
     }
@@ -212,7 +231,7 @@ export const DocumentActionGroup = ({
       window.URL.revokeObjectURL(attachmentViewerFile.objectUrl);
     }
 
-    setActiveModal(null);
+    setActiveModalState(null);
     setAttachmentErrors({});
     setAttachmentViewerFile(null);
     setComments([]);
@@ -226,7 +245,112 @@ export const DocumentActionGroup = ({
     setWorkflowExpectedState(createExpectedWorkflowState(documentItem));
     setSelectedWorkflowAttachment(null);
     setValidationMessage("");
-  };
+  }, [attachmentViewerFile, documentFile, documentItem, setActiveModalState]);
+
+  useEffect(() => {
+    activeModalRef.current = activeModal;
+  }, [activeModal]);
+
+  const refetchWorkflowDetail = useCallback(async ({
+    event = null,
+    forceStale = false,
+    showNotice = true,
+  } = {}) => {
+    const activeModalSnapshot = activeModalRef.current;
+    const isSelfEvent = isActorSelfEvent({ currentUserId, event });
+    const shouldCloseModal =
+      forceStale ||
+      (shouldCloseWorkflowActionModal(activeModalSnapshot) && !isSelfEvent);
+
+    if (shouldCloseModal) {
+      closeModal();
+    }
+
+    await synchronizeDocumentRuntimeQueries({
+      refreshCurrentSurface: onWorkflowComplete,
+    });
+
+    try {
+      const latestDocument = await DocumentApiService.getDocumentById(documentItem.id);
+      setDetailDocument(latestDocument);
+      setWorkflowExpectedState(createExpectedWorkflowState(latestDocument));
+
+      if (
+        shouldRefreshWorkflowDocumentViewer(activeModalSnapshot) &&
+        !shouldCloseModal
+      ) {
+        const latestDocumentFile =
+          await DocumentApiService.getDocumentPreview(latestDocument);
+        const nextObjectUrl = window.URL.createObjectURL(latestDocumentFile.file);
+
+        setDocumentFile((currentDocumentFile) => {
+          if (currentDocumentFile?.objectUrl) {
+            window.URL.revokeObjectURL(currentDocumentFile.objectUrl);
+          }
+
+          return {
+            ...latestDocumentFile,
+            objectUrl: nextObjectUrl,
+          };
+        });
+      }
+    } catch {
+      // Existing register/dashboard refetch remains the recovery source if detail fetch fails.
+    }
+
+    if (shouldCloseModal && showNotice && !isSelfEvent) {
+      showToast({
+        message: WORKFLOW_DETAIL_STALE_NOTICE,
+        variant: "warning",
+      });
+    }
+  }, [closeModal, currentUserId, documentItem.id, onWorkflowComplete, showToast]);
+
+  useEffect(() => {
+    detailRefetchCoalescerRef.current = createRealtimeRefetchCoalescer({
+      delayMs: 500,
+      onFlush: refetchWorkflowDetail,
+    });
+
+    return () => {
+      detailRefetchCoalescerRef.current?.cancel();
+      detailRefetchCoalescerRef.current = null;
+    };
+  }, [refetchWorkflowDetail]);
+
+  useEffect(() => {
+    detailRefetchCoalescerRef.current?.cancel();
+  }, [activeProjectId, documentItem.id]);
+
+  const handleWorkflowDetailRealtimeEvent = useCallback(
+    (event) => {
+      if (!isRelevantWorkflowDetailEvent({
+        activeProjectId,
+        documentId: documentItem.id,
+        event,
+      })) {
+        return;
+      }
+
+      detailRefetchCoalescerRef.current?.schedule({ event });
+    },
+    [activeProjectId, documentItem.id],
+  );
+
+  const handleWorkflowDetailRecovery = useCallback(
+    (context) => {
+      if (String(context.projectId ?? "") !== String(activeProjectId ?? "")) return;
+
+      detailRefetchCoalescerRef.current?.schedule({
+        forceStale: Boolean(activeModalRef.current),
+        showNotice: Boolean(activeModalRef.current),
+      });
+    },
+    [activeProjectId],
+  );
+
+  useRealtimeEvent(handleWorkflowDetailRealtimeEvent);
+  useRealtimeRecovery(handleWorkflowDetailRecovery);
 
   const openViewDocument = async () => {
     try {
@@ -239,7 +363,7 @@ export const DocumentActionGroup = ({
         ...activeDocumentFile,
         objectUrl,
       });
-      setActiveModal(modalType.VIEW);
+      setActiveModalState(modalType.VIEW);
     } catch (error) {
       showToast({
         message:
@@ -249,7 +373,7 @@ export const DocumentActionGroup = ({
       setDocumentFile({
         error: error instanceof Error ? error.message : "View Document failed.",
       });
-      setActiveModal(modalType.VIEW);
+      setActiveModalState(modalType.VIEW);
     }
   };
 
@@ -257,7 +381,7 @@ export const DocumentActionGroup = ({
     try {
       const documentDetail = await DocumentApiService.getDocumentById(documentItem.id);
       setDetailDocument(documentDetail);
-      setActiveModal(modalType.EDIT);
+      setActiveModalState(modalType.EDIT);
     } catch (error) {
       showToast({
         message:
@@ -274,7 +398,7 @@ export const DocumentActionGroup = ({
 
       setComments(documentComments);
       setAttachmentErrors({});
-      setActiveModal(modalType.COMMENT);
+      setActiveModalState(modalType.COMMENT);
       await DocumentApiService.markWorkflowCommentsRead(documentItem.id);
       setLocalReadState({
         documentId: documentItem.id,
@@ -299,7 +423,7 @@ export const DocumentActionGroup = ({
 
     setAttachmentViewerFile(null);
     setSelectedWorkflowAttachment(null);
-    setActiveModal(modalType.COMMENT);
+    setActiveModalState(modalType.COMMENT);
   };
 
   const setAttachmentError = (commentId, message) => {
@@ -343,7 +467,7 @@ export const DocumentActionGroup = ({
         ...attachmentPreview,
         objectUrl,
       });
-      setActiveModal(modalType.ATTACHMENT_VIEWER);
+      setActiveModalState(modalType.ATTACHMENT_VIEWER);
     } catch (error) {
       const errorMessage =
         error instanceof Error
@@ -355,7 +479,7 @@ export const DocumentActionGroup = ({
         error: errorMessage,
         metadata: attachment,
       });
-      setActiveModal(modalType.ATTACHMENT_VIEWER);
+      setActiveModalState(modalType.ATTACHMENT_VIEWER);
       showToast({
         message: errorMessage,
         variant: "error",
@@ -435,7 +559,7 @@ export const DocumentActionGroup = ({
       }));
 
       setTimeline([...documentHistory, ...revisionTimeline]);
-      setActiveModal(modalType.HISTORY);
+      setActiveModalState(modalType.HISTORY);
     } catch (error) {
       showToast({
         message:
@@ -481,7 +605,7 @@ export const DocumentActionGroup = ({
       setWorkflowAttachmentErrorMessage("");
       setWorkflowComment("");
       setValidationMessage("");
-      setActiveModal(nextModalType);
+      setActiveModalState(nextModalType);
     } catch (error) {
       showToast({
         message:
@@ -731,7 +855,7 @@ export const DocumentActionGroup = ({
             <ActionIconButton
               icon={Archive}
               label="Archive Document"
-              onClick={() => setActiveModal(modalType.ARCHIVE)}
+              onClick={() => setActiveModalState(modalType.ARCHIVE)}
             />
           ) : null}
           {!isReadOnlyActionMode && canRestoreDocument ? (
