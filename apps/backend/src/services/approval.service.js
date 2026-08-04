@@ -5,6 +5,7 @@ const {
 const documentRepository = require('../repositories/document.repository');
 const auditService = require('./audit.service');
 const notificationService = require('./notification.service');
+const realtimeDocumentPublisher = require('./realtimeDocumentPublisher.service');
 const slaNotificationProducer = require('./slaNotificationProducer.service');
 const storageService = require('./storage.service');
 const uploadService = require('./upload.service');
@@ -235,6 +236,10 @@ const processApproval = async ({
       resourceType: 'Workflow Attachment',
     });
   }
+  realtimeDocumentPublisher.publishWorkflowChanged({
+    actorUserId,
+    document: updatedDocument,
+  });
 
   return workflowComment
     ? {

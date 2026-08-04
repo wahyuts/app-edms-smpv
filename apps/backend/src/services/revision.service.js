@@ -9,6 +9,7 @@ const documentRepository = require('../repositories/document.repository');
 const projectMembershipRepository = require('../repositories/projectMembership.repository');
 const auditService = require('./audit.service');
 const notificationService = require('./notification.service');
+const realtimeDocumentPublisher = require('./realtimeDocumentPublisher.service');
 const slaNotificationProducer = require('./slaNotificationProducer.service');
 const storageService = require('./storage.service');
 const uploadService = require('./upload.service');
@@ -305,6 +306,11 @@ const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserI
     reference: updatedDocument.documentNumber,
     resourceId: revisionId,
     resourceType: 'Document',
+  });
+  realtimeDocumentPublisher.publishRevisionUploaded({
+    actorUserId,
+    document: updatedDocument,
+    revisionId,
   });
 
   return updatedDocument;

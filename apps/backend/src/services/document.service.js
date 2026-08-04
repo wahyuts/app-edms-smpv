@@ -14,6 +14,7 @@ const projectMembershipRepository = require('../repositories/projectMembership.r
 const storageService = require('./storage.service');
 const uploadService = require('./upload.service');
 const notificationService = require('./notification.service');
+const realtimeDocumentPublisher = require('./realtimeDocumentPublisher.service');
 const slaNotificationProducer = require('./slaNotificationProducer.service');
 const auditService = require('./audit.service');
 const {
@@ -286,6 +287,10 @@ const createDocument = async ({ activeProject, actorOfficialRole, actorUserFullN
     resourceId: createdDocument.id,
     resourceType: 'Document',
   });
+  realtimeDocumentPublisher.publishDocumentCreated({
+    actorUserId,
+    document: createdDocument,
+  });
 
   return createdDocument;
 };
@@ -381,6 +386,13 @@ const updateDocument = async ({
     resourceId: updatedDocument.id,
     resourceType: 'Document',
   });
+  realtimeDocumentPublisher.publishDocumentUpdated({
+    actorUserId,
+    document: updatedDocument,
+    reason: payload.daysUntilValidation !== undefined
+      ? 'document_updated_days_until_validation'
+      : 'document_updated',
+  });
 
   return updatedDocument;
 };
@@ -451,6 +463,10 @@ const archiveDocument = async ({
     resourceId: archivedDocument.id,
     resourceType: 'Document',
   });
+  realtimeDocumentPublisher.publishDocumentArchived({
+    actorUserId,
+    document: archivedDocument,
+  });
 
   return archivedDocument;
 };
@@ -514,6 +530,10 @@ const restoreDocument = async ({
     reference: restoredDocument.documentNumber,
     resourceId: restoredDocument.id,
     resourceType: 'Document',
+  });
+  realtimeDocumentPublisher.publishDocumentRestored({
+    actorUserId,
+    document: restoredDocument,
   });
 
   return restoredDocument;
