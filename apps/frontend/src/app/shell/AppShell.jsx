@@ -9,6 +9,7 @@ import ActiveProjectSelector from "@/features/project/components/ActiveProjectSe
 import { useToast } from "@/shared/components/toast";
 import { usePermission } from "@/shared/hooks/usePermission";
 import { useOutsideClick } from "@/shared/hooks/useOutsideClick";
+import { useRealtimeClient } from "@/shared/realtime";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "edms.sidebar.collapsed";
@@ -43,6 +44,7 @@ const AppShell = ({ children }) => {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { hasPermission } = usePermission();
+  useRealtimeClient();
   const {
     activeOfficialRole,
     clearProjectContext,
