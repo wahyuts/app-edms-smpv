@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { queryClient } from "@/shared/api/query-client";
 import {
@@ -7,6 +7,10 @@ import {
   useRealtimeRecovery,
 } from "@/shared/realtime";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
+
+import { createRealtimeRefetchCoalescer } from "../utils/realtimeRefetchCoalescer";
+
+const REALTIME_DOCUMENT_REFETCH_DELAY_MS = 500;
 
 const documentRuntimeEventTypes = new Set([
   REALTIME_EVENT_TYPE.DOCUMENT_ARCHIVED,
@@ -24,13 +28,34 @@ const refreshDocumentRegisterAndDashboardQueries = () => {
 
 export const useRealtimeDocumentRuntimeSync = () => {
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
+  const refetchCoalescerRef = useRef(null);
+
+  useEffect(() => {
+    refetchCoalescerRef.current = createRealtimeRefetchCoalescer({
+      delayMs: REALTIME_DOCUMENT_REFETCH_DELAY_MS,
+      onFlush: refreshDocumentRegisterAndDashboardQueries,
+    });
+
+    return () => {
+      refetchCoalescerRef.current?.cancel();
+      refetchCoalescerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    refetchCoalescerRef.current?.cancel();
+  }, [activeProjectId]);
 
   const handleDocumentRuntimeEvent = useCallback(
     (event) => {
       if (!documentRuntimeEventTypes.has(event.type)) return;
       if (String(event.projectId ?? "") !== String(activeProjectId ?? "")) return;
 
-      refreshDocumentRegisterAndDashboardQueries();
+      refetchCoalescerRef.current?.schedule({
+        eventId: event.eventId,
+        projectId: activeProjectId,
+        reason: event.type,
+      });
     },
     [activeProjectId],
   );
@@ -39,7 +64,10 @@ export const useRealtimeDocumentRuntimeSync = () => {
     (context) => {
       if (String(context.projectId ?? "") !== String(activeProjectId ?? "")) return;
 
-      refreshDocumentRegisterAndDashboardQueries();
+      refetchCoalescerRef.current?.schedule({
+        projectId: activeProjectId,
+        reason: "recovery",
+      });
     },
     [activeProjectId],
   );
