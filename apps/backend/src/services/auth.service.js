@@ -163,7 +163,7 @@ const refresh = async ({ refreshToken, ipAddress }) => {
 
 const logout = async ({ refreshToken }) => {
   if (!refreshToken) {
-    return true;
+    return { userId: null };
   }
 
   try {
@@ -174,11 +174,11 @@ const logout = async ({ refreshToken }) => {
       refreshTokenHash: hashToken(refreshToken),
       reason: 'Logout',
     });
-  } catch (error) {
-    return true;
-  }
 
-  return true;
+    return { userId: payload.sub };
+  } catch (error) {
+    return { userId: null };
+  }
 };
 
 const changePassword = async ({ userId, currentPassword, newPassword }) => {
