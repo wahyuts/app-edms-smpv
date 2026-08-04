@@ -4,6 +4,7 @@ let app;
 let env;
 let server;
 let closeDatabasePool;
+let realtimeConnectionRegistry;
 let slaNotificationScheduler;
 let isShuttingDown = false;
 
@@ -31,7 +32,7 @@ const shutdown = async (signalOrReason, exitCode = 0) => {
 
   try {
     if (server) {
-      await new Promise((resolve, reject) => {
+      const closeServerPromise = new Promise((resolve, reject) => {
         server.close((error) => {
           if (error) {
             if (error.code === 'ERR_SERVER_NOT_RUNNING') {
@@ -48,6 +49,12 @@ const shutdown = async (signalOrReason, exitCode = 0) => {
           resolve();
         });
       });
+
+      if (realtimeConnectionRegistry) {
+        realtimeConnectionRegistry.closeAll({ reason: 'shutdown' });
+      }
+
+      await closeServerPromise;
     }
 
     if (slaNotificationScheduler) {
@@ -74,6 +81,7 @@ const startServer = async () => {
     env = require('./config/env');
     const database = require('./config/database');
     const storage = require('./services/storage.service');
+    realtimeConnectionRegistry = require('./services/realtimeConnectionRegistry.service');
     slaNotificationScheduler = require('./services/slaNotificationScheduler.service');
     app = require('./app');
     closeDatabasePool = database.closeDatabasePool;

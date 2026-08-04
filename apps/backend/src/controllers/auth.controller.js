@@ -9,6 +9,7 @@ const {
   AUTH_MESSAGES,
 } = require('../constants/auth.constants');
 const { clearAuthCookies, setAuthCookies } = require('../utils/authCookie');
+const realtimeConnectionRegistry = require('../services/realtimeConnectionRegistry.service');
 
 const login = async (req, res, next) => {
   try {
@@ -50,9 +51,13 @@ const login = async (req, res, next) => {
 
 const logout = async (req, res, next) => {
   try {
-    await authService.logout({
+    const result = await authService.logout({
       refreshToken: req.cookies[AUTH_COOKIE_NAMES.REFRESH_TOKEN],
     });
+
+    if (result?.userId) {
+      realtimeConnectionRegistry.closeConnectionsByUser(result.userId, { reason: 'logout' });
+    }
 
     clearAuthCookies(res);
 
