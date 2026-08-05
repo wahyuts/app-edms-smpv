@@ -3,9 +3,9 @@ import { useCallback } from "react";
 import DocumentRegisterTable from "./DocumentRegisterTable";
 
 const DashboardDocumentRegisterTable = ({ onDataChanged, tableState }) => {
-  const refreshDocuments = useCallback(() => {
+  const refreshDocuments = useCallback((options) => {
     return Promise.all([
-      tableState.refreshDocuments(),
+      tableState.refreshDocuments(options),
       Promise.resolve(onDataChanged?.()),
     ]);
   }, [onDataChanged, tableState]);

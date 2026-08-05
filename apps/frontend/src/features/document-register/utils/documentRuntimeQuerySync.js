@@ -11,12 +11,13 @@ export const synchronizeDocumentRuntimeQueries = async ({
   refreshCurrentSurface,
 } = {}) => {
   await Promise.all(
-    documentRuntimeQueryKeys.map((queryKey) =>
-      queryClient.invalidateQueries({ queryKey, refetchType: "active" }),
-    ),
+    [
+      ...documentRuntimeQueryKeys.map((queryKey) =>
+        queryClient.invalidateQueries({ queryKey, refetchType: "active" }),
+      ),
+      Promise.resolve(refreshCurrentSurface?.()),
+    ],
   );
-
-  await Promise.resolve(refreshCurrentSurface?.());
 };
 
 export default synchronizeDocumentRuntimeQueries;

@@ -120,6 +120,8 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
   const [refreshKey, setRefreshKey] = useState(0);
   const hasLoadedOnceRef = useRef(false);
   const activeProjectIdRef = useRef(null);
+  const forceRefreshLoadingRef = useRef(false);
+  const refreshResolverRef = useRef(null);
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
   const currentTimestamp = useSlaRuntimeClock();
 
@@ -153,9 +155,10 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
 
     const loadDocuments = async () => {
       const projectChanged = activeProjectIdRef.current !== activeProjectId;
+      const shouldForceRefreshLoading = forceRefreshLoadingRef.current;
       activeProjectIdRef.current = activeProjectId;
 
-      if (!hasLoadedOnceRef.current || projectChanged) {
+      if (!hasLoadedOnceRef.current || projectChanged || shouldForceRefreshLoading) {
         setSourceDocuments([]);
         setIsLoading(true);
       }
@@ -174,6 +177,9 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
         if (isActive) {
           hasLoadedOnceRef.current = true;
           setIsLoading(false);
+          forceRefreshLoadingRef.current = false;
+          refreshResolverRef.current?.();
+          refreshResolverRef.current = null;
         }
       }
     };
@@ -194,6 +200,18 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
       window.clearInterval(runtimeRefreshIntervalId);
     };
   }, []);
+
+  const refreshDocuments = ({ showLoading = false } = {}) =>
+    new Promise((resolve) => {
+      if (showLoading) {
+        forceRefreshLoadingRef.current = true;
+        refreshResolverRef.current = resolve;
+      } else {
+        resolve();
+      }
+
+      setRefreshKey((currentKey) => currentKey + 1);
+    });
 
   const runtimeDocuments = useMemo(
     () => sourceDocuments.map((documentItem) => resolveLiveSlaTimer(documentItem, currentTimestamp)),
@@ -223,7 +241,7 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
     isLoading,
     pageNumber: normalizedPageNumber,
     pageSize,
-    refreshDocuments: () => setRefreshKey((currentKey) => currentKey + 1),
+    refreshDocuments,
     rows: paginatedDocuments,
     searchValue,
     setPageNumber,
