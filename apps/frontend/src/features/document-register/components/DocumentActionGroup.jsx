@@ -3,6 +3,7 @@ import {
   Clock3,
   Download,
   Eye,
+  Loader2,
   Pencil,
   MessageSquare,
   Archive,
@@ -71,6 +72,19 @@ const modalType = {
   VIEW: "view",
 };
 
+const actionLoadingType = {
+  APPROVAL_A: "approvalA",
+  APPROVAL_B: "approvalB",
+  APPROVAL_C: "approvalC",
+  ARCHIVE: "archive",
+  COMMENT: "comment",
+  DOWNLOAD: "download",
+  EDIT: "edit",
+  HISTORY: "history",
+  RESTORE: "restore",
+  VIEW: "view",
+};
+
 const createExpectedWorkflowState = (document = {}) => ({
   activeRevisionId: document.activeRevisionId ?? null,
   currentAssigneeUserId: document.currentAssigneeUserId ?? null,
@@ -81,16 +95,31 @@ const isWorkflowConflictError = (error) =>
   error?.status === 409 &&
   ["WORKFLOW_CONFLICT", "REVISION_CONFLICT"].includes(error?.code);
 
-const ActionIconButton = ({ icon: Icon, label, onClick, showIndicator = false }) => {
+const ActionButtonSpinner = ({ className = "h-4 w-4" }) => (
+  <Loader2
+    aria-hidden="true"
+    className={["animate-spin", className].join(" ")}
+  />
+);
+
+const ActionIconButton = ({
+  disabled = false,
+  icon: Icon,
+  isLoading = false,
+  label,
+  onClick,
+  showIndicator = false,
+}) => {
   return (
     <button
       aria-label={label}
       className={[baseIconButtonClassName, "relative"].join(" ")}
+      disabled={disabled}
       onClick={onClick}
       title={label}
       type="button"
     >
-      <Icon className="h-4 w-4" />
+      {isLoading ? <ActionButtonSpinner /> : <Icon className="h-4 w-4" />}
       {showIndicator ? (
         <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-[#061B2F] bg-[#EF4444] px-1 text-[10px] font-bold leading-none text-white">
           !
@@ -100,7 +129,14 @@ const ActionIconButton = ({ icon: Icon, label, onClick, showIndicator = false })
   );
 };
 
-const ReviewActionButton = ({ children, label, onClick, tone }) => {
+const ReviewActionButton = ({
+  children,
+  disabled = false,
+  isLoading = false,
+  label,
+  onClick,
+  tone,
+}) => {
   return (
     <button
       aria-label={label}
@@ -108,11 +144,12 @@ const ReviewActionButton = ({ children, label, onClick, tone }) => {
         "inline-flex h-8 w-8 items-center justify-center rounded-md border text-xs font-bold transition-colors",
         reviewButtonStyles[tone],
       ].join(" ")}
+      disabled={disabled}
       onClick={onClick}
       title={label}
       type="button"
     >
-      {children}
+      {isLoading ? <ActionButtonSpinner className="h-3.5 w-3.5" /> : children}
     </button>
   );
 };
@@ -126,6 +163,7 @@ export const DocumentActionGroup = ({
   const { showToast } = useToast();
   const { hasProjectPermission } = usePermission();
   const [activeModal, setActiveModal] = useState(null);
+  const [activeAction, setActiveAction] = useState(null);
   const [attachmentErrors, setAttachmentErrors] = useState({});
   const [attachmentViewerFile, setAttachmentViewerFile] = useState(null);
   const [comments, setComments] = useState([]);
@@ -147,6 +185,7 @@ export const DocumentActionGroup = ({
     createExpectedWorkflowState(documentItem),
   );
   const activeModalRef = useRef(activeModal);
+  const activeActionRef = useRef(activeAction);
   const commentRefetchCoalescerRef = useRef(null);
   const detailRefetchCoalescerRef = useRef(null);
 
@@ -212,9 +251,57 @@ export const DocumentActionGroup = ({
     isArchivedDocument &&
     projectRoleName === OFFICIAL_ROLE.ADMIN &&
     hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.ARCHIVE);
+  const currentActiveAction =
+    activeAction?.documentId === documentItem.id &&
+    String(activeAction?.projectId ?? "") === String(activeProjectId ?? "")
+      ? activeAction.type
+      : null;
+  const isActionLocked = Boolean(currentActiveAction);
+
+  const setActiveActionState = useCallback((nextAction) => {
+    activeActionRef.current = nextAction;
+    setActiveAction(nextAction);
+  }, []);
+
+  const runAction = useCallback(async (actionType, handler) => {
+    const activeActionSnapshot = activeActionRef.current;
+
+    if (
+      activeActionSnapshot?.documentId === documentItem.id &&
+      String(activeActionSnapshot?.projectId ?? "") === String(activeProjectId ?? "")
+    ) {
+      return;
+    }
+
+    const nextAction = {
+      documentId: documentItem.id,
+      projectId: activeProjectId,
+      type: actionType,
+    };
+
+    setActiveActionState(nextAction);
+
+    try {
+      await handler();
+    } finally {
+      const latestAction = activeActionRef.current;
+      if (
+        latestAction?.documentId === nextAction.documentId &&
+        String(latestAction?.projectId ?? "") === String(nextAction.projectId ?? "") &&
+        latestAction?.type === nextAction.type
+      ) {
+        setActiveActionState(null);
+      }
+    }
+  }, [activeProjectId, documentItem.id, setActiveActionState]);
+
+  useEffect(() => {
+    activeActionRef.current = activeAction;
+  }, [activeAction]);
 
   useEffect(() => {
     return () => {
+      activeActionRef.current = null;
       if (documentFile?.objectUrl) {
         window.URL.revokeObjectURL(documentFile.objectUrl);
       }
@@ -902,45 +989,59 @@ export const DocumentActionGroup = ({
         <div className="flex flex-wrap gap-2">
           {workflowVisibility.topActions.includes(ACTION_CODE.VIEW) ? (
             <ActionIconButton
+              disabled={isActionLocked}
               icon={Eye}
+              isLoading={currentActiveAction === actionLoadingType.VIEW}
               label="View Document"
-              onClick={openViewDocument}
+              onClick={() => runAction(actionLoadingType.VIEW, openViewDocument)}
             />
           ) : null}
           {!isReadOnlyActionMode && !isArchivedDocument && canEditDocument ? (
             <ActionIconButton
+              disabled={isActionLocked}
               icon={Pencil}
+              isLoading={currentActiveAction === actionLoadingType.EDIT}
               label="Edit Document"
-              onClick={openEditDocument}
+              onClick={() => runAction(actionLoadingType.EDIT, openEditDocument)}
             />
           ) : null}
           {workflowVisibility.topActions.includes(ACTION_CODE.DOWNLOAD) ? (
             <ActionIconButton
+              disabled={isActionLocked}
               icon={Download}
+              isLoading={currentActiveAction === actionLoadingType.DOWNLOAD}
               label="Download Document"
-              onClick={downloadDocument}
+              onClick={() => runAction(actionLoadingType.DOWNLOAD, downloadDocument)}
             />
           ) : null}
           {workflowVisibility.topActions.includes(ACTION_CODE.COMMENT) ? (
             <ActionIconButton
+              disabled={isActionLocked}
               icon={MessageSquare}
+              isLoading={currentActiveAction === actionLoadingType.COMMENT}
               label="View Comments"
-              onClick={openCommentViewer}
-              showIndicator={hasUnreadComments}
+              onClick={() => runAction(actionLoadingType.COMMENT, openCommentViewer)}
+              showIndicator={hasUnreadComments && currentActiveAction !== actionLoadingType.COMMENT}
             />
           ) : null}
           {!isReadOnlyActionMode && canArchiveDocument ? (
             <ActionIconButton
+              disabled={isActionLocked}
               icon={Archive}
+              isLoading={currentActiveAction === actionLoadingType.ARCHIVE}
               label="Archive Document"
-              onClick={() => setActiveModalState(modalType.ARCHIVE)}
+              onClick={() => runAction(actionLoadingType.ARCHIVE, () => {
+                setActiveModalState(modalType.ARCHIVE);
+              })}
             />
           ) : null}
           {!isReadOnlyActionMode && canRestoreDocument ? (
             <ActionIconButton
+              disabled={isActionLocked}
               icon={RotateCcw}
+              isLoading={currentActiveAction === actionLoadingType.RESTORE}
               label="Restore Document"
-              onClick={submitRestoreDocument}
+              onClick={() => runAction(actionLoadingType.RESTORE, submitRestoreDocument)}
             />
           ) : null}
         </div>
@@ -948,19 +1049,31 @@ export const DocumentActionGroup = ({
         {isReadOnlyActionMode ? null : workflowVisibility.showHistory ? (
           <button
             className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[#6D3FD6]/60 bg-[#3B0764] px-3 text-xs font-semibold text-white transition-colors hover:border-[#A78BFA] hover:bg-[#581C87]"
-            onClick={openHistory}
+            disabled={isActionLocked}
+            onClick={() => runAction(actionLoadingType.HISTORY, openHistory)}
             title="View History"
             type="button"
           >
-            <Clock3 className="h-3.5 w-3.5" />
-            <span>History</span>
+            {currentActiveAction === actionLoadingType.HISTORY ? (
+              <ActionButtonSpinner className="h-3.5 w-3.5" />
+            ) : (
+              <Clock3 className="h-3.5 w-3.5" />
+            )}
+            <span className="inline-flex min-w-[3.25rem] justify-center">
+              {currentActiveAction === actionLoadingType.HISTORY ? "" : "History"}
+            </span>
           </button>
         ) : (
           <div className="grid grid-cols-3 gap-2">
             {workflowVisibility.workflowActions.includes(ACTION_CODE.APPROVAL_A) ? (
               <ReviewActionButton
+                disabled={isActionLocked}
+                isLoading={currentActiveAction === actionLoadingType.APPROVAL_A}
                 label="Approved"
-                onClick={() => openWorkflowModal(modalType.APPROVAL_A)}
+                onClick={() => runAction(
+                  actionLoadingType.APPROVAL_A,
+                  () => openWorkflowModal(modalType.APPROVAL_A),
+                )}
                 tone="a"
               >
                 A
@@ -968,8 +1081,13 @@ export const DocumentActionGroup = ({
             ) : null}
             {workflowVisibility.workflowActions.includes(ACTION_CODE.APPROVAL_B) ? (
               <ReviewActionButton
+                disabled={isActionLocked}
+                isLoading={currentActiveAction === actionLoadingType.APPROVAL_B}
                 label="Approved with Comment"
-                onClick={() => openWorkflowModal(modalType.APPROVAL_B)}
+                onClick={() => runAction(
+                  actionLoadingType.APPROVAL_B,
+                  () => openWorkflowModal(modalType.APPROVAL_B),
+                )}
                 tone="b"
               >
                 B
@@ -977,8 +1095,13 @@ export const DocumentActionGroup = ({
             ) : null}
             {workflowVisibility.workflowActions.includes(ACTION_CODE.APPROVAL_C) ? (
               <ReviewActionButton
+                disabled={isActionLocked}
+                isLoading={currentActiveAction === actionLoadingType.APPROVAL_C}
                 label="Not Approved"
-                onClick={() => openWorkflowModal(modalType.APPROVAL_C)}
+                onClick={() => runAction(
+                  actionLoadingType.APPROVAL_C,
+                  () => openWorkflowModal(modalType.APPROVAL_C),
+                )}
                 tone="c"
               >
                 C
