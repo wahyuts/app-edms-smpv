@@ -162,6 +162,7 @@ export const SlaMonitoringTable = ({
             onChange={(event) => setSortBy(event.target.value)}
             value={sortBy}
           >
+            <option value="updatedAt">Newest First</option>
             <option value="slaTimer">SLA Timer</option>
             <option value="documentNumber">Document Number</option>
           </SelectDropdown>
