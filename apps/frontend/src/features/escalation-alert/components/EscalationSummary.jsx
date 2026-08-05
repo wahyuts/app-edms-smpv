@@ -1,3 +1,5 @@
+import { Loader2 } from "lucide-react";
+
 const summaryItems = [
   {
     key: "total",
@@ -26,7 +28,15 @@ const summaryItems = [
   },
 ];
 
-export const EscalationSummary = ({ summary }) => {
+const LoadingValue = () => (
+  <Loader2
+    aria-label="Loading escalation summary value"
+    className="inline-block h-8 w-8 animate-spin"
+    role="status"
+  />
+);
+
+export const EscalationSummary = ({ isLoading = false, summary }) => {
   return (
     <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
       {summaryItems.map((item) => (
@@ -39,7 +49,7 @@ export const EscalationSummary = ({ summary }) => {
         >
           <p className="text-sm font-semibold text-[#CBD5E1]">{item.label}</p>
           <p className="mt-3 text-4xl font-extrabold">
-            {summary[item.key] ?? 0}
+            {isLoading ? <LoadingValue /> : summary[item.key] ?? 0}
           </p>
         </article>
       ))}

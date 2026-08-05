@@ -292,6 +292,7 @@ export const useAuditTrailPage = () => {
       activityQuery.isLoading ||
       summaryQuery.isLoading ||
       filterOptionsQuery.isLoading,
+    isSummaryLoading: summaryQuery.isLoading,
     officialRoleFilter,
     pageNumber: normalizedPageNumber,
     pageSize: normalizedPageSize,

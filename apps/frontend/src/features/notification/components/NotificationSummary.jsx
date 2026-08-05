@@ -1,3 +1,5 @@
+import { Loader2 } from "lucide-react";
+
 const summaryCards = [
   {
     key: "total",
@@ -16,7 +18,15 @@ const summaryCards = [
   },
 ];
 
-export const NotificationSummary = ({ summary }) => (
+const LoadingValue = () => (
+  <Loader2
+    aria-label="Loading notification summary value"
+    className="inline-block h-7 w-7 animate-spin"
+    role="status"
+  />
+);
+
+export const NotificationSummary = ({ isLoading = false, summary }) => (
   <section className="grid gap-4 md:grid-cols-3">
     {summaryCards.map((card) => (
       <div
@@ -27,7 +37,7 @@ export const NotificationSummary = ({ summary }) => (
           {card.label}
         </p>
         <p className={`mt-3 text-3xl font-bold ${card.valueClassName}`}>
-          {summary?.[card.key] ?? 0}
+          {isLoading ? <LoadingValue /> : summary?.[card.key] ?? 0}
         </p>
       </div>
     ))}

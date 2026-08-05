@@ -248,7 +248,10 @@ export const NotificationPage = () => {
         </p>
       </header>
 
-      <NotificationSummary summary={tableState.summary} />
+      <NotificationSummary
+        isLoading={tableState.isSummaryLoading}
+        summary={tableState.summary}
+      />
       <NotificationTable
         {...tableState}
         hasActiveFilter={hasActiveFilter}
