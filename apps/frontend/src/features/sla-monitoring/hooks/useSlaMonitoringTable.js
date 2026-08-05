@@ -14,7 +14,7 @@ import { useProjectContextStore } from "@/shared/stores/project-context.store";
 import { SlaMonitoringService } from "../services/sla-monitoring.service";
 
 const DEFAULT_PAGE_SIZE = 5;
-const DEFAULT_SORT_BY = "slaTimer";
+const DEFAULT_SORT_BY = "updatedAt";
 const RUNTIME_REFRESH_INTERVAL_MS = 60 * 1000;
 
 const normalizeSearchValue = (value) => String(value ?? "").trim().toLowerCase();
