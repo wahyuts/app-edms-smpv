@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { ChevronLeft, ChevronRight, ClipboardList } from "lucide-react";
 
 import SelectDropdown from "@/shared/components/form/SelectDropdown";
@@ -162,12 +162,10 @@ export const DocumentRegisterTable = ({
   const { hasProjectPermission } = usePermission();
   useProjectContextStore((state) => state.activeOfficialRole);
   const [activeAction, setActiveAction] = useState(null);
-  const activeActionRef = useRef(activeAction);
   const canViewDocument = hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.VIEW);
   const paginationItems = getPaginationItems(totalPages, pageNumber);
   const statusFilterValue = Array.isArray(statusFilter) ? "" : statusFilter;
   const setGlobalActiveAction = useCallback((nextAction) => {
-    activeActionRef.current = nextAction;
     setActiveAction(nextAction);
   }, []);
 

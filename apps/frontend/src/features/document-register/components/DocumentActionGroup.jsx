@@ -263,7 +263,9 @@ export const DocumentActionGroup = ({
     String(activeAction?.projectId ?? "") === String(activeProjectId ?? "")
       ? activeAction.type
       : null;
-  const isActionLocked = Boolean(currentActiveAction);
+  const isActionLocked =
+    Boolean(activeAction) &&
+    String(activeAction?.projectId ?? "") === String(activeProjectId ?? "");
 
   const setActiveActionState = useCallback((nextAction) => {
     activeActionRef.current = nextAction;
@@ -278,10 +280,7 @@ export const DocumentActionGroup = ({
   const runAction = useCallback(async (actionType, handler) => {
     const activeActionSnapshot = activeActionRef.current;
 
-    if (
-      activeActionSnapshot?.documentId === documentItem.id &&
-      String(activeActionSnapshot?.projectId ?? "") === String(activeProjectId ?? "")
-    ) {
+    if (String(activeActionSnapshot?.projectId ?? "") === String(activeProjectId ?? "")) {
       return;
     }
 
