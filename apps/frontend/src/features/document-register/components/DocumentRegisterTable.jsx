@@ -1,3 +1,4 @@
+import { useCallback, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, ClipboardList } from "lucide-react";
 
 import SelectDropdown from "@/shared/components/form/SelectDropdown";
@@ -160,9 +161,15 @@ export const DocumentRegisterTable = ({
 }) => {
   const { hasProjectPermission } = usePermission();
   useProjectContextStore((state) => state.activeOfficialRole);
+  const [activeAction, setActiveAction] = useState(null);
+  const activeActionRef = useRef(activeAction);
   const canViewDocument = hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.VIEW);
   const paginationItems = getPaginationItems(totalPages, pageNumber);
   const statusFilterValue = Array.isArray(statusFilter) ? "" : statusFilter;
+  const setGlobalActiveAction = useCallback((nextAction) => {
+    activeActionRef.current = nextAction;
+    setActiveAction(nextAction);
+  }, []);
 
   if (!canViewDocument) {
     return (
@@ -431,8 +438,10 @@ export const DocumentRegisterTable = ({
                     ) : null}
                     <td className="sticky right-0 z-10 bg-[#061B2F] px-4 py-3 shadow-[-8px_0_16px_rgba(2,11,22,0.28)] transition-colors group-hover:bg-[#08233B]">
                       <DocumentActionGroup
+                        activeAction={activeAction}
                         documentItem={documentItem}
                         isDashboard={isDashboard}
+                        onActiveActionChange={setGlobalActiveAction}
                         onWorkflowComplete={refreshDocuments}
                       />
                     </td>
