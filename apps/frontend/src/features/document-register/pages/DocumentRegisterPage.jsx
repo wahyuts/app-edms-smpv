@@ -76,7 +76,7 @@ const DocumentRegisterPage = () => {
 
       setIsCreateModalOpen(false);
       await synchronizeDocumentRuntimeQueries({
-        refreshCurrentSurface: tableState.refreshDocuments,
+        refreshCurrentSurface: () => tableState.refreshDocuments({ showLoading: true }),
       });
       showToast({
         message: "Document berhasil dibuat.",

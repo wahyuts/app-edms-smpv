@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
@@ -35,6 +35,7 @@ export const useDocumentRegisterTable = ({
   const [sortBy, setSortBy] = useState(DEFAULT_SORT_BY);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);
+  const [isPostMutationRefreshLoading, setIsPostMutationRefreshLoading] = useState(false);
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
   const activeOfficialRole = useProjectContextStore((state) => state.activeOfficialRole);
   const currentTimestamp = useSlaRuntimeClock();
@@ -105,6 +106,19 @@ export const useDocumentRegisterTable = ({
     queryFn: () => DocumentApiService.getDocuments(query),
     queryKey: ["documents", "register", activeProjectId ?? null, query],
   });
+  const refreshDocuments = useCallback(async ({ showLoading = false } = {}) => {
+    if (showLoading) {
+      setIsPostMutationRefreshLoading(true);
+    }
+
+    try {
+      return await documentsQuery.refetch();
+    } finally {
+      if (showLoading) {
+        setIsPostMutationRefreshLoading(false);
+      }
+    }
+  }, [documentsQuery]);
   const response = documentsQuery.data ?? {
     data: [],
     pagination: {
@@ -133,12 +147,12 @@ export const useDocumentRegisterTable = ({
     drawingOptions: getUniqueOptions(sourceDocuments, "drawing"),
     error: documentsQuery.error,
     isError: documentsQuery.isError,
-    isLoading: documentsQuery.isLoading,
+    isLoading: documentsQuery.isLoading || isPostMutationRefreshLoading,
     lifecycleFilter,
     pageNumber: normalizedPageNumber,
     pageSize: pagination.pageSize ?? pageSize,
     paginatedDocuments: rows,
-    refreshDocuments: () => documentsQuery.refetch(),
+    refreshDocuments,
     revisionFilter,
     rows,
     searchValue,

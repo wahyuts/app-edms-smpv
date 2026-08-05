@@ -839,7 +839,7 @@ export const DocumentActionGroup = ({
 
         closeModal();
         await synchronizeDocumentRuntimeQueries({
-          refreshCurrentSurface: onWorkflowComplete,
+          refreshCurrentSurface: () => onWorkflowComplete({ showLoading: true }),
         });
         showToast({
           message: "Upload Revision berhasil.",
@@ -856,7 +856,7 @@ export const DocumentActionGroup = ({
 
       closeModal();
       await synchronizeDocumentRuntimeQueries({
-        refreshCurrentSurface: onWorkflowComplete,
+        refreshCurrentSurface: () => onWorkflowComplete({ showLoading: true }),
       });
       showToast({
         message: "Edit Document berhasil.",
