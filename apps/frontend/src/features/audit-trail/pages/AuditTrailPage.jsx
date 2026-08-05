@@ -141,7 +141,10 @@ export const AuditTrailPage = () => {
         </p>
       </header>
 
-      <AuditTrailSummary summary={tableState.summary} />
+      <AuditTrailSummary
+        isLoading={tableState.isSummaryLoading}
+        summary={tableState.summary}
+      />
       <AuditTrailTable
         {...tableState}
         onBulkDeleteRequest={handleBulkDeleteRequest}

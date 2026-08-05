@@ -226,6 +226,7 @@ export const useNotificationPage = ({ onError } = {}) => {
     isMarkSelectedAsReadPending: markSelectedAsReadMutation.isPending,
     isMarkAllAsReadPending: markAllAsReadMutation.isPending,
     isMarkAsReadPending: markAsReadMutation.isPending,
+    isSummaryLoading: summaryQuery.isLoading,
     isCurrentPageSelected,
     isCurrentPageSelectionIndeterminate,
     markAllAsRead: markAllAsReadMutation.mutateAsync,

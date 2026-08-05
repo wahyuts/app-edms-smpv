@@ -44,6 +44,7 @@ const SlaMonitoringPage = () => {
       </header>
 
       <SlaSummary
+        isLoading={tableState.isLoading}
         onSelectSlaStatus={tableState.setSlaStatusFilter}
         selectedSlaStatus={tableState.slaStatusFilter}
         summary={tableState.summary}

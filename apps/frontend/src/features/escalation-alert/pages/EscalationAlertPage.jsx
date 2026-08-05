@@ -43,7 +43,7 @@ const EscalationAlertPage = () => {
         </p>
       </header>
 
-      <EscalationSummary summary={tableState.summary} />
+      <EscalationSummary isLoading={tableState.isLoading} summary={tableState.summary} />
       <EscalationAlertTable {...tableStateWithUrlSearchSync} />
     </>
   );
