@@ -1214,7 +1214,7 @@ export const EditDocumentModal = ({
             onClick={handleSubmit}
             type="button"
           >
-            {isSubmitting ? "Saving..." : "Submit"}
+            {isSubmitting ? "Updating..." : "Submit"}
           </button>
         </>
       }
