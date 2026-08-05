@@ -11,6 +11,7 @@ const eventTypePattern = /^[a-z]+(?:[._][a-z]+)*$/;
 
 const buildRealtimeEvent = ({
   actorUserId = null,
+  commentId = null,
   correlationId = null,
   documentId = null,
   eventId = createEntityId('RT-EVT'),
@@ -26,6 +27,7 @@ const buildRealtimeEvent = ({
 }) => {
   const event = {
     actorUserId: actorUserId ?? null,
+    commentId: commentId ?? null,
     correlationId: correlationId ?? null,
     documentId: documentId ?? null,
     eventId,
@@ -36,6 +38,7 @@ const buildRealtimeEvent = ({
     resourceId: normalizeText(resourceId),
     resourceType: normalizeText(resourceType),
     scope: normalizeText(scope),
+    timestamp: occurredAt,
     type: normalizeText(type),
     version,
   };

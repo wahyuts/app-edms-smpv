@@ -29,6 +29,7 @@ const REALTIME_RESOURCE_TYPE = Object.freeze({
   NOTIFICATION: 'Notification',
   REALTIME: 'Realtime',
   REVISION: 'Revision',
+  WORKFLOW_COMMENT: 'Workflow Comment',
 });
 
 const REALTIME_INTERNAL_EVENT_NAME = 'realtime.event';

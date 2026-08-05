@@ -24,6 +24,11 @@ import {
   OFFICIAL_ROLE,
 } from "../constants/document.constants";
 import { DocumentApiService } from "../services/document-api.service";
+import {
+  COMMENT_VIEWER_UPDATED_NOTICE,
+  isCommentActorSelfEvent,
+  isCommentViewerRealtimeEvent,
+} from "../utils/commentRealtimeSync";
 import { getDocumentActionVisibility } from "../utils/documentActionVisibility";
 import { synchronizeDocumentRuntimeQueries } from "../utils/documentRuntimeQuerySync";
 import { createRealtimeRefetchCoalescer } from "../utils/realtimeRefetchCoalescer";
@@ -142,6 +147,7 @@ export const DocumentActionGroup = ({
     createExpectedWorkflowState(documentItem),
   );
   const activeModalRef = useRef(activeModal);
+  const commentRefetchCoalescerRef = useRef(null);
   const detailRefetchCoalescerRef = useRef(null);
 
   const activeMembership = useProjectContextStore((state) => state.activeMembership);
@@ -351,6 +357,78 @@ export const DocumentActionGroup = ({
 
   useRealtimeEvent(handleWorkflowDetailRealtimeEvent);
   useRealtimeRecovery(handleWorkflowDetailRecovery);
+
+  const refetchCommentViewer = useCallback(async ({
+    event = null,
+    showNotice = true,
+  } = {}) => {
+    if (activeModalRef.current !== modalType.COMMENT) return;
+
+    const nextComments = await DocumentApiService.getWorkflowComments(documentItem.id);
+    setComments(nextComments);
+
+    await DocumentApiService.markWorkflowCommentsRead(documentItem.id);
+    setLocalReadState({
+      documentId: documentItem.id,
+      unreadCommentCount: Number(documentItem?.unreadCommentCount ?? 0),
+    });
+    await queryClient.invalidateQueries({ queryKey: ["documents"] });
+
+    if (
+      showNotice &&
+      !isCommentActorSelfEvent({ currentUserId, event })
+    ) {
+      showToast({
+        message: COMMENT_VIEWER_UPDATED_NOTICE,
+        variant: "warning",
+      });
+    }
+  }, [currentUserId, documentItem.id, documentItem.unreadCommentCount, showToast]);
+
+  useEffect(() => {
+    commentRefetchCoalescerRef.current = createRealtimeRefetchCoalescer({
+      delayMs: 500,
+      onFlush: refetchCommentViewer,
+    });
+
+    return () => {
+      commentRefetchCoalescerRef.current?.cancel();
+      commentRefetchCoalescerRef.current = null;
+    };
+  }, [refetchCommentViewer]);
+
+  useEffect(() => {
+    commentRefetchCoalescerRef.current?.cancel();
+  }, [activeProjectId, documentItem.id]);
+
+  const handleCommentRealtimeEvent = useCallback(
+    (event) => {
+      if (activeModalRef.current !== modalType.COMMENT) return;
+      if (!isCommentViewerRealtimeEvent({
+        activeProjectId,
+        documentId: documentItem.id,
+        event,
+      })) {
+        return;
+      }
+
+      commentRefetchCoalescerRef.current?.schedule({ event });
+    },
+    [activeProjectId, documentItem.id],
+  );
+
+  const handleCommentRecovery = useCallback(
+    (context) => {
+      if (activeModalRef.current !== modalType.COMMENT) return;
+      if (String(context.projectId ?? "") !== String(activeProjectId ?? "")) return;
+
+      commentRefetchCoalescerRef.current?.schedule({ showNotice: false });
+    },
+    [activeProjectId],
+  );
+
+  useRealtimeEvent(handleCommentRealtimeEvent);
+  useRealtimeRecovery(handleCommentRecovery);
 
   const openViewDocument = async () => {
     try {

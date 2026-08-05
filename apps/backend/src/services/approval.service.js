@@ -236,6 +236,13 @@ const processApproval = async ({
       resourceType: 'Workflow Attachment',
     });
   }
+  if (workflowComment) {
+    realtimeDocumentPublisher.publishCommentCreated({
+      actorUserId,
+      commentId: workflowComment.id,
+      document: updatedDocument,
+    });
+  }
   realtimeDocumentPublisher.publishWorkflowChanged({
     actorUserId,
     document: updatedDocument,
