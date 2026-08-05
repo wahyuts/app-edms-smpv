@@ -156,14 +156,16 @@ const ReviewActionButton = ({
 
 export const DocumentActionGroup = ({
   actionMode = "workflow",
+  activeAction: controlledActiveAction = undefined,
   documentItem,
   isDashboard = false,
+  onActiveActionChange = undefined,
   onWorkflowComplete = () => {},
 }) => {
   const { showToast } = useToast();
   const { hasProjectPermission } = usePermission();
   const [activeModal, setActiveModal] = useState(null);
-  const [activeAction, setActiveAction] = useState(null);
+  const [localActiveAction, setLocalActiveAction] = useState(null);
   const [attachmentErrors, setAttachmentErrors] = useState({});
   const [attachmentViewerFile, setAttachmentViewerFile] = useState(null);
   const [comments, setComments] = useState([]);
@@ -185,6 +187,11 @@ export const DocumentActionGroup = ({
     createExpectedWorkflowState(documentItem),
   );
   const activeModalRef = useRef(activeModal);
+  const isControlledActionLock = controlledActiveAction !== undefined &&
+    typeof onActiveActionChange === "function";
+  const activeAction = isControlledActionLock
+    ? controlledActiveAction
+    : localActiveAction;
   const activeActionRef = useRef(activeAction);
   const commentRefetchCoalescerRef = useRef(null);
   const detailRefetchCoalescerRef = useRef(null);
@@ -260,8 +267,13 @@ export const DocumentActionGroup = ({
 
   const setActiveActionState = useCallback((nextAction) => {
     activeActionRef.current = nextAction;
-    setActiveAction(nextAction);
-  }, []);
+    if (isControlledActionLock) {
+      onActiveActionChange(nextAction);
+      return;
+    }
+
+    setLocalActiveAction(nextAction);
+  }, [isControlledActionLock, onActiveActionChange]);
 
   const runAction = useCallback(async (actionType, handler) => {
     const activeActionSnapshot = activeActionRef.current;
