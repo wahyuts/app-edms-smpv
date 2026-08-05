@@ -58,7 +58,7 @@ export const formatTimeForReview = (days) => {
 
   const normalizedDays = Number(days);
   if (!Number.isFinite(normalizedDays) || normalizedDays < 0) return "-";
-  if (normalizedDays === 0) return "Today";
+  if (normalizedDays === 0) return "Less than 1 Day";
   if (normalizedDays === 1) return "1 Day";
 
   return `${normalizedDays} Days`;
