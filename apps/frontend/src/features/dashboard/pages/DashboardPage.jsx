@@ -9,6 +9,7 @@ import {
   Clock3,
   FileText,
   Folder,
+  Loader2,
   MessageCircle,
   MessagesSquare,
   UsersRound,
@@ -165,6 +166,14 @@ const escalationRows = [
 
 const getSummaryValue = (summary, key) => Number(summary?.[key] ?? 0);
 
+const DashboardLoadingValue = ({ className = "h-5 w-5" }) => (
+  <Loader2
+    aria-label="Loading dashboard value"
+    className={["inline-block animate-spin", className].join(" ")}
+    role="status"
+  />
+);
+
 const DashboardKpiCard = ({ card, isActive, isError, isLoading, onSelect, summary, value }) => {
   const Icon = card.icon;
   const activeDescription = isActive ? "Active status filter" : "Apply status filter";
@@ -199,7 +208,7 @@ const DashboardKpiCard = ({ card, isActive, isError, isLoading, onSelect, summar
         </h2>
       </div>
       <p className="mt-4 text-center text-4xl font-extrabold text-[#F8FAFC]">
-        {isLoading ? "-" : value}
+        {isLoading ? <DashboardLoadingValue className="h-8 w-8" /> : value}
       </p>
       <p className="mt-2 text-center text-sm text-[#CBD5E1]">
         {isError ? "Data gagal dimuat" : card.description}
@@ -214,7 +223,11 @@ const DashboardKpiCard = ({ card, isActive, isError, isLoading, onSelect, summar
                   summaryRow.label === "Reject" ? "text-[#EF4444]" : ""
                 }
               >
-                {isLoading ? "-" : getSummaryValue(summary, summaryRow.key)}
+                {isLoading ? (
+                  <DashboardLoadingValue className="h-4 w-4" />
+                ) : (
+                  getSummaryValue(summary, summaryRow.key)
+                )}
               </span>
             </p>
           ))}
@@ -383,7 +396,13 @@ const DashboardPage = () => {
                         {item.label}
                       </span>
                       <span className="text-2xl font-extrabold">
-                        {isDashboardLoading || isDashboardError ? "-" : getSummaryValue(slaSummary, item.key)}
+                        {isDashboardLoading ? (
+                          <DashboardLoadingValue className="h-5 w-5" />
+                        ) : isDashboardError ? (
+                          "-"
+                        ) : (
+                          getSummaryValue(slaSummary, item.key)
+                        )}
                       </span>
                     </div>
                   ))}
@@ -408,7 +427,13 @@ const DashboardPage = () => {
                         {item.label}
                       </span>
                       <span className={["text-lg font-extrabold", item.tone].join(" ")}>
-                        {isDashboardLoading || isDashboardError ? "-" : getSummaryValue(escalationSummary, item.key)}
+                        {isDashboardLoading ? (
+                          <DashboardLoadingValue className="h-4 w-4" />
+                        ) : isDashboardError ? (
+                          "-"
+                        ) : (
+                          getSummaryValue(escalationSummary, item.key)
+                        )}
                       </span>
                     </div>
                   ))}
