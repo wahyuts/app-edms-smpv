@@ -77,7 +77,24 @@ const publishWorkflowChanged = ({ actorUserId = null, document }) =>
     type: REALTIME_EVENT_TYPE.WORKFLOW_CHANGED,
   });
 
+const publishCommentCreated = ({ actorUserId = null, commentId, document }) => {
+  if (!commentId || !document?.id || !document?.projectId) return;
+
+  realtimePublisher.publishSafely({
+    actorUserId,
+    commentId,
+    documentId: document.id,
+    projectId: document.projectId,
+    reason: 'comment_created',
+    resourceId: commentId,
+    resourceType: REALTIME_RESOURCE_TYPE.WORKFLOW_COMMENT,
+    scope: REALTIME_EVENT_SCOPE.PROJECT,
+    type: REALTIME_EVENT_TYPE.COMMENT_CREATED,
+  });
+};
+
 module.exports = {
+  publishCommentCreated,
   publishDocumentArchived,
   publishDocumentCreated,
   publishDocumentRestored,
