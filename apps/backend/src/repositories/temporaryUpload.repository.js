@@ -97,9 +97,8 @@ const listExpiredUnconsumedTemporaryUploads = async ({ limit = 100 } = {}) => {
       WHERE consumed_at IS NULL
         AND expires_at <= UTC_TIMESTAMP(3)
       ORDER BY expires_at ASC, id ASC
-      LIMIT ?
-    `,
-    [safeLimit]
+      LIMIT ${safeLimit}
+    `
   );
 
   return rows.map(mapTemporaryUploadRow);
