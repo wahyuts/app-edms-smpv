@@ -185,6 +185,21 @@ const deleteTemporary = async (storageKey) => {
   return activeDriver.deleteTemporary(normalizeKey(storageKey, 'temporaryStorageKey'));
 };
 
+const cleanupEmptyTemporaryDirectories = async ({ limit = 100 } = {}) => {
+  if (typeof activeDriver.cleanupEmptyTemporaryDirectories !== 'function') {
+    return {
+      deletedDirectories: 0,
+      driver: activeDriver.name,
+      failed: 0,
+      scannedDirectories: 0,
+      skippedDirectories: 0,
+      supported: false,
+    };
+  }
+
+  return activeDriver.cleanupEmptyTemporaryDirectories({ limit });
+};
+
 const getActiveStorageDriver = () => {
   return {
     driver: activeDriver.name,
@@ -208,5 +223,6 @@ module.exports = {
   move,
   delete: deleteObject,
   deleteTemporary,
+  cleanupEmptyTemporaryDirectories,
   getActiveStorageDriver,
 };
