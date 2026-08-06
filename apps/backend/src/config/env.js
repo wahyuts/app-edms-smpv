@@ -154,6 +154,21 @@ const getPositiveIntegerEnv = (key, defaultValue) => {
   return parsedValue;
 };
 
+const getBoundedPositiveIntegerEnv = (key, defaultValue, { max = Number.MAX_SAFE_INTEGER, min = 1 } = {}) => {
+  const value = process.env[key];
+
+  if (value === undefined || value.trim() === '') {
+    return defaultValue;
+  }
+
+  const parsedValue = Number(value);
+  if (!Number.isInteger(parsedValue) || parsedValue < min || parsedValue > max) {
+    throw new Error(`[ENV] ${key} must be an integer between ${min} and ${max}`);
+  }
+
+  return parsedValue;
+};
+
 const validateSecurityEnv = () => {
   validateRequiredEnv(requiredSecurityEnv, 'security');
 
@@ -297,6 +312,13 @@ const env = {
     enabled: getBooleanEnv('SLA_NOTIFICATION_SCHEDULER_ENABLED', false),
     intervalMs: getPositiveIntegerEnv('SLA_NOTIFICATION_SCHEDULER_INTERVAL_MS', 15 * 60 * 1000),
     jobToken: process.env.SLA_NOTIFICATION_JOB_TOKEN || '',
+  },
+  temporaryUploadCleanupScheduler: {
+    batchSize: getBoundedPositiveIntegerEnv('TEMPORARY_UPLOAD_CLEANUP_BATCH_SIZE', 100, { max: 1000 }),
+    enabled: getBooleanEnv('TEMPORARY_UPLOAD_CLEANUP_SCHEDULER_ENABLED', true),
+    intervalMs: getBoundedPositiveIntegerEnv('TEMPORARY_UPLOAD_CLEANUP_INTERVAL_MS', 5 * 60 * 1000, {
+      min: 60 * 1000,
+    }),
   },
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS),
   cookie: {

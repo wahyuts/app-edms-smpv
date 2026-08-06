@@ -6,6 +6,7 @@ let server;
 let closeDatabasePool;
 let realtimeConnectionRegistry;
 let slaNotificationScheduler;
+let temporaryUploadCleanupScheduler;
 let isShuttingDown = false;
 
 const getSafeErrorSummary = (error) => {
@@ -60,6 +61,9 @@ const shutdown = async (signalOrReason, exitCode = 0) => {
     if (slaNotificationScheduler) {
       slaNotificationScheduler.stop();
     }
+    if (temporaryUploadCleanupScheduler) {
+      temporaryUploadCleanupScheduler.stop();
+    }
 
     if (closeDatabasePool) {
       await closeDatabasePool();
@@ -83,6 +87,7 @@ const startServer = async () => {
     const storage = require('./services/storage.service');
     realtimeConnectionRegistry = require('./services/realtimeConnectionRegistry.service');
     slaNotificationScheduler = require('./services/slaNotificationScheduler.service');
+    temporaryUploadCleanupScheduler = require('./services/temporaryUploadCleanupScheduler.service');
     app = require('./app');
     closeDatabasePool = database.closeDatabasePool;
 
@@ -97,6 +102,7 @@ const startServer = async () => {
       logger.log(`${env.appName} ${env.appVersion} running on port ${env.port}`);
     });
     slaNotificationScheduler.start();
+    temporaryUploadCleanupScheduler.start();
   } catch (error) {
     logger.error('[BOOT] Backend startup failed');
     logger.error(error.message);

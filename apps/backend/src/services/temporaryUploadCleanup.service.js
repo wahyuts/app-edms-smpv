@@ -9,6 +9,7 @@ const isTemporaryStorageKey = (storageKey) => (
 
 const cleanupExpiredTemporaryUploads = async ({ limit = 100, dryRun = false } = {}) => {
   const candidates = await temporaryUploadRepository.listExpiredUnconsumedTemporaryUploads({ limit });
+  const storageDriver = storageService.getActiveStorageDriver().driver;
   const summary = {
     candidates: candidates.length,
     deletedMetadata: 0,
@@ -53,8 +54,13 @@ const cleanupExpiredTemporaryUploads = async ({ limit = 100, dryRun = false } = 
       });
     } catch (error) {
       summary.failed += 1;
-      logger.error('[UPLOAD CLEANUP] Failed to cleanup expired temporary upload');
-      logger.error(error.code || error.name || 'TemporaryUploadCleanupError');
+      logger.error(
+        '[TEMPORARY_UPLOAD_CLEANUP]',
+        'event=temporary_upload_cleanup_item_failed',
+        `storageDriver=${storageDriver}`,
+        `temporaryUploadId=${candidate.id}`,
+        `errorCode=${error.code || error.name || 'TemporaryUploadCleanupError'}`
+      );
       results.push({
         id: candidate.id,
         status: 'failed',
