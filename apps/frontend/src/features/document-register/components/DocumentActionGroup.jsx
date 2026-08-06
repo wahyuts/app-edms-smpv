@@ -183,9 +183,11 @@ export const DocumentActionGroup = ({
   const [workflowComment, setWorkflowComment] = useState("");
   const [selectedWorkflowAttachment, setSelectedWorkflowAttachment] = useState(null);
   const [validationMessage, setValidationMessage] = useState("");
+  const [activeWorkflowSubmitAction, setActiveWorkflowSubmitAction] = useState(null);
   const [workflowExpectedState, setWorkflowExpectedState] = useState(
     createExpectedWorkflowState(documentItem),
   );
+  const activeWorkflowSubmitActionRef = useRef(null);
   const activeModalRef = useRef(activeModal);
   const isControlledActionLock = controlledActiveAction !== undefined &&
     typeof onActiveActionChange === "function";
@@ -349,6 +351,8 @@ export const DocumentActionGroup = ({
     setWorkflowExpectedState(createExpectedWorkflowState(documentItem));
     setSelectedWorkflowAttachment(null);
     setValidationMessage("");
+    activeWorkflowSubmitActionRef.current = null;
+    setActiveWorkflowSubmitAction(null);
   }, [attachmentViewerFile, documentFile, documentItem, setActiveModalState]);
 
   useEffect(() => {
@@ -930,6 +934,13 @@ export const DocumentActionGroup = ({
     comment = "",
     attachmentFile = null,
   ) => {
+    if (activeWorkflowSubmitActionRef.current) {
+      return;
+    }
+
+    activeWorkflowSubmitActionRef.current = workflowAction;
+    setActiveWorkflowSubmitAction(workflowAction);
+
     try {
       if (workflowAction === ACTION_CODE.APPROVAL_A) {
         await DocumentApiService.approveDocument(documentItem.id, {
@@ -978,6 +989,9 @@ export const DocumentActionGroup = ({
         message: nextMessage,
         variant: "error",
       });
+    } finally {
+      activeWorkflowSubmitActionRef.current = null;
+      setActiveWorkflowSubmitAction(null);
     }
   };
 
@@ -1184,6 +1198,7 @@ export const DocumentActionGroup = ({
           actionSummary="Approval A will continue the document to the next workflow status."
           confirmLabel="Confirm"
           documentItem={detailDocument}
+          isSubmitting={activeWorkflowSubmitAction === ACTION_CODE.APPROVAL_A}
           message="Are you sure you want to approve this document?"
           onCancel={closeModal}
           onConfirm={() => executeWorkflowAction(ACTION_CODE.APPROVAL_A)}
@@ -1197,6 +1212,7 @@ export const DocumentActionGroup = ({
           comment={workflowComment}
           documentItem={detailDocument}
           errorMessage={validationMessage}
+          isSubmitting={activeWorkflowSubmitAction === ACTION_CODE.APPROVAL_B}
           onAttachmentChange={handleWorkflowAttachmentChange}
           onAttachmentRemove={removeWorkflowAttachment}
           onCancel={closeModal}
@@ -1219,6 +1235,7 @@ export const DocumentActionGroup = ({
           documentItem={detailDocument}
           errorMessage={validationMessage}
           isDanger
+          isSubmitting={activeWorkflowSubmitAction === ACTION_CODE.APPROVAL_C}
           onAttachmentChange={handleWorkflowAttachmentChange}
           onAttachmentRemove={removeWorkflowAttachment}
           onCancel={closeModal}

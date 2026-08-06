@@ -5,6 +5,7 @@ import {
   Eye,
   FileText,
   FileUp,
+  Loader2,
   Paperclip,
   Trash2,
   X,
@@ -232,9 +233,17 @@ const textareaClassName =
   "mt-2 min-h-24 w-full rounded-md border border-[#123A5A] bg-[#08233B] px-3 py-2 text-sm text-[#F8FAFC] outline-none transition-colors placeholder:text-[#64748B] focus:border-[#0F7BFF]";
 const validationClassName = "mt-2 text-sm font-semibold text-[#FCA5A5]";
 
+const renderLoadingButtonContent = (label) => (
+  <span className="inline-flex items-center gap-2">
+    <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+    {label}
+  </span>
+);
+
 const DocumentActionModal = ({
   children,
   footer,
+  isCloseDisabled = false,
   onClose,
   size = "default",
   title,
@@ -262,7 +271,13 @@ const DocumentActionModal = ({
           <h2 className="text-lg font-bold">{title}</h2>
           <button
             aria-label="Close modal"
-            className="rounded-md p-1.5 text-[#CBD5E1] transition-colors hover:bg-[#0B2B47] hover:text-white"
+            className={[
+              "rounded-md p-1.5 text-[#CBD5E1] transition-colors",
+              isCloseDisabled
+                ? "cursor-not-allowed opacity-50"
+                : "hover:bg-[#0B2B47] hover:text-white",
+            ].join(" ")}
+            disabled={isCloseDisabled}
             onClick={onClose}
             type="button"
           >
@@ -794,6 +809,7 @@ export const ApprovalConfirmationModal = ({
   confirmLabel = "Confirm",
   documentItem,
   isDanger = false,
+  isSubmitting = false,
   message,
   onCancel,
   onConfirm,
@@ -802,18 +818,25 @@ export const ApprovalConfirmationModal = ({
     <DocumentActionModal
       footer={
         <>
-          <button className={secondaryButtonClassName} onClick={onCancel} type="button">
+          <button
+            className={secondaryButtonClassName}
+            disabled={isSubmitting}
+            onClick={onCancel}
+            type="button"
+          >
             Cancel
           </button>
           <button
             className={isDanger ? dangerButtonClassName : primaryButtonClassName}
+            disabled={isSubmitting}
             onClick={onConfirm}
             type="button"
           >
-            {confirmLabel}
+            {isSubmitting ? renderLoadingButtonContent("Confirming...") : confirmLabel}
           </button>
         </>
       }
+      isCloseDisabled={isSubmitting}
       onClose={onCancel}
       title={confirmLabel}
     >
@@ -838,6 +861,7 @@ export const ApprovalCommentModal = ({
   errorMessage,
   isCommentRequired = false,
   isDanger = false,
+  isSubmitting = false,
   onAttachmentChange = () => {},
   onAttachmentRemove = () => {},
   onCancel,
@@ -850,18 +874,25 @@ export const ApprovalCommentModal = ({
     <DocumentActionModal
       footer={
         <>
-          <button className={secondaryButtonClassName} onClick={onCancel} type="button">
+          <button
+            className={secondaryButtonClassName}
+            disabled={isSubmitting}
+            onClick={onCancel}
+            type="button"
+          >
             Cancel
           </button>
           <button
             className={isDanger ? dangerButtonClassName : primaryButtonClassName}
+            disabled={isSubmitting}
             onClick={onSubmit}
             type="button"
           >
-            {submitLabel}
+            {isSubmitting ? renderLoadingButtonContent("Submitting...") : submitLabel}
           </button>
         </>
       }
+      isCloseDisabled={isSubmitting}
       onClose={onCancel}
       title={title}
     >
