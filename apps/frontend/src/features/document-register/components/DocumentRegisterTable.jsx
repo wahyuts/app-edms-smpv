@@ -28,7 +28,7 @@ const statusStyles = {
   [DOCUMENT_STATUS.PROJECT_REVIEW]:
     "border-[#FACC15]/40 bg-[#FACC15]/15 text-[#FDE68A]",
   [DOCUMENT_STATUS.PROJECT_COMMENT]:
-    "border-[#F97316]/40 bg-[#F97316]/15 text-[#FDBA74]",
+    "border-[#FACC15]/40 bg-[#FACC15]/15 text-[#FDE68A]",
   [DOCUMENT_STATUS.PROJECT_REJECT]:
     "border-[#EF4444]/40 bg-[#EF4444]/15 text-[#FCA5A5]",
   [DOCUMENT_STATUS.APPROVED]:
