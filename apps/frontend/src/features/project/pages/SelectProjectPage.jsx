@@ -1,7 +1,8 @@
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
+import { getReturnToPath } from "@/app/routes/redirect.utils";
 import ActiveProjectSelector from "@/features/project/components/ActiveProjectSelector";
 import { ProjectService } from "@/features/project/services/project.service";
 import { AuthService } from "@/features/auth/services/auth.service";
@@ -19,19 +20,21 @@ const invalidateProjectScopedQueries = () => {
 };
 
 const SelectProjectPage = () => {
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const location = useLocation();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const {
     accessibleProjects,
-    activeProject,
     error,
     isLoading,
     setProjectContext,
     setProjectContextError,
     setProjectContextLoading,
   } = useProjectContextStore();
+  const returnToPath = getReturnToPath(location);
 
   useEffect(() => {
     let isActive = true;
@@ -45,10 +48,24 @@ const SelectProjectPage = () => {
         const context = await ProjectService.resolveActiveProject(currentUser);
         if (!isActive) return;
 
-        setProjectContext(context);
         if (context.accessibleProjects.length === 0) {
-          navigate("/dashboard", { replace: true });
+          setProjectContext(context);
+          navigate(returnToPath, { replace: true });
+          return;
         }
+
+        if (AuthService.hasValidActiveProject()) {
+          setProjectContext(context);
+          navigate(returnToPath, { replace: true });
+          return;
+        }
+
+        setSelectedProjectId(context.activeProject?.id ?? null);
+        setProjectContext({
+          ...context,
+          activeMembership: null,
+          activeProject: null,
+        });
       } catch (projectError) {
         if (!isActive) return;
         setProjectContextError(
@@ -66,6 +83,7 @@ const SelectProjectPage = () => {
     };
   }, [
     navigate,
+    returnToPath,
     setProjectContext,
     setProjectContextError,
     setProjectContextLoading,
@@ -73,20 +91,22 @@ const SelectProjectPage = () => {
 
   const handleContinue = async (event) => {
     event.preventDefault();
-    if (!activeProject?.id || isSubmitting) return;
+    if (!selectedProjectId || isSubmitting) return;
 
     setSubmitError("");
     setIsSubmitting(true);
 
     try {
-      const context = await ProjectService.setActiveProjectForUser({
-        projectId: activeProject.id,
+      await ProjectService.setActiveProjectForUser({
+        projectId: selectedProjectId,
         user: AuthService.getCurrentUser(),
       });
+      const authResponse = await AuthService.completeProjectSelection();
+      const context = authResponse.data;
 
       setProjectContext(context);
       invalidateProjectScopedQueries();
-      navigate("/dashboard", { replace: true });
+      navigate(returnToPath, { replace: true });
     } catch (continueError) {
       const message = continueError instanceof Error
         ? continueError.message
@@ -104,7 +124,7 @@ const SelectProjectPage = () => {
   };
 
   const isInitializing = isLoading && accessibleProjects.length === 0;
-  const isContinueDisabled = !activeProject || isSubmitting || isInitializing;
+  const isContinueDisabled = !selectedProjectId || isSubmitting || isInitializing;
 
   return (
     <section className="text-left">
@@ -142,7 +162,11 @@ const SelectProjectPage = () => {
                 Loading project...
               </div>
             ) : (
-              <ActiveProjectSelector variant="gateway" />
+              <ActiveProjectSelector
+                onProjectSelected={setSelectedProjectId}
+                selectedProjectId={selectedProjectId}
+                variant="gateway"
+              />
             )}
           </div>
         </div>

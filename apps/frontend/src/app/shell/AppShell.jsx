@@ -4,11 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import navigation from "@/app/navigation";
 import { AuthService } from "@/features/auth/services/auth.service";
-import { useCurrentUserUnreadNotificationCount } from "@/features/notification";
+import { useRealtimeDocumentRuntimeSync } from "@/features/document-register";
+import {
+  useCurrentUserUnreadNotificationCount,
+  useRealtimeNotificationSync,
+} from "@/features/notification";
 import ActiveProjectSelector from "@/features/project/components/ActiveProjectSelector";
 import { useToast } from "@/shared/components/toast";
 import { usePermission } from "@/shared/hooks/usePermission";
 import { useOutsideClick } from "@/shared/hooks/useOutsideClick";
+import { useRealtimeClient } from "@/shared/realtime";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "edms.sidebar.collapsed";
@@ -19,7 +24,11 @@ const COLLAPSED_FLYOUT_WIDTH = 192;
 const getInitialSidebarCollapsed = () => {
   if (typeof window === "undefined") return false;
 
-  return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
 };
 
 const AppShell = ({ children }) => {
@@ -39,6 +48,9 @@ const AppShell = ({ children }) => {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { hasPermission } = usePermission();
+  useRealtimeClient();
+  useRealtimeDocumentRuntimeSync();
+  useRealtimeNotificationSync();
   const {
     activeOfficialRole,
     clearProjectContext,
@@ -71,12 +83,13 @@ const AppShell = ({ children }) => {
     }
 
     const activeProject = AuthService.getActiveProject();
-    const officialRole = AuthService.getOfficialRole();
+    const accessibleProjects = AuthService.getAccessibleProjects();
+    const activeMembership = AuthService.getActiveMembership();
 
     setProjectContextLoading(true);
     setProjectContext({
-      accessibleProjects: activeProject ? [activeProject] : [],
-      activeMembership: officialRole ? { officialRole } : null,
+      accessibleProjects,
+      activeMembership,
       activeProject,
     });
   }, [
@@ -217,10 +230,14 @@ const AppShell = ({ children }) => {
 
     if (!nextValue) closeCollapsedFlyout();
 
-    window.localStorage.setItem(
-      SIDEBAR_COLLAPSED_STORAGE_KEY,
-      String(nextValue),
-    );
+    try {
+      window.localStorage.setItem(
+        SIDEBAR_COLLAPSED_STORAGE_KEY,
+        String(nextValue),
+      );
+    } catch {
+      // UI preference persistence is non-critical; keep the interaction working.
+    }
     setIsSidebarCollapsed(nextValue);
   };
 

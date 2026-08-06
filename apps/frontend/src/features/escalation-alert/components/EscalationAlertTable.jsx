@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import DocumentActionGroup from "@/features/document-register/components/DocumentActionGroup";
@@ -104,7 +105,11 @@ export const EscalationAlertTable = ({
   statusOptions,
   totalPages,
 }) => {
+  const [activeAction, setActiveAction] = useState(null);
   const paginationItems = getPaginationItems(totalPages, pageNumber);
+  const setGlobalActiveAction = useCallback((nextAction) => {
+    setActiveAction(nextAction);
+  }, []);
 
   return (
     <section className="overflow-hidden rounded-lg border border-[#123A5A] bg-[#061B2F]">
@@ -200,7 +205,7 @@ export const EscalationAlertTable = ({
             {!isLoading && rows.length === 0 ? (
               <tr>
                 <td className="px-4 py-8 text-center text-[#94A3B8]" colSpan={10}>
-                  Tidak ada dokumen yang sedang mengalami eskalasi.
+                  No Engineering Document found.
                 </td>
               </tr>
             ) : null}
@@ -255,7 +260,9 @@ export const EscalationAlertTable = ({
                     <td className="sticky right-0 z-10 bg-[#061B2F] px-4 py-3 shadow-[-8px_0_16px_rgba(2,11,22,0.28)] transition-colors group-hover:bg-[#08233B]">
                       <DocumentActionGroup
                         actionMode="readOnly"
+                        activeAction={activeAction}
                         documentItem={item}
+                        onActiveActionChange={setGlobalActiveAction}
                         onWorkflowComplete={refreshEscalations}
                       />
                     </td>

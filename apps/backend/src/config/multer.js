@@ -1,8 +1,17 @@
+const multer = require('multer');
+const env = require('./env');
+
 const multerConfig = {
-  // Final upload storage strategy will be configured in the Upload API phase.
+  storage: multer.memoryStorage(),
   limits: {
     files: 1,
+    fileSize: env.upload.maxFileSizeBytes,
   },
 };
 
-module.exports = multerConfig;
+const uploadSingleFile = multer(multerConfig).single('file');
+
+module.exports = {
+  multerConfig,
+  uploadSingleFile,
+};

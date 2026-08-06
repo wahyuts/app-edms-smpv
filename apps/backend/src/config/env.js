@@ -4,10 +4,19 @@ dotenv.config({ quiet: true });
 
 const supportedAppEnvs = ['development', 'test', 'staging', 'production'];
 const supportedCookieSameSites = ['none', 'lax', 'strict'];
+const supportedStorageDrivers = ['local', 'r2'];
 const weakJwtSecrets = ['replace_with_secure_secret', 'change_this_secret', 'secret'];
 const requiredAppEnv = ['APP_NAME', 'APP_VERSION', 'APP_ENV', 'PORT'];
 const requiredDatabaseEnv = ['MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_DATABASE', 'MYSQL_USER'];
-const requiredStorageEnv = ['STORAGE_PATH'];
+const requiredLocalStorageEnv = ['STORAGE_PATH'];
+const requiredR2StorageEnv = [
+  'R2_ACCOUNT_ID',
+  'R2_BUCKET_NAME',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_ENDPOINT',
+  'R2_REGION',
+];
 const requiredSecurityEnv = [
   'JWT_SECRET',
   'JWT_EXPIRES_IN',
@@ -76,11 +85,89 @@ const validateRequiredDatabaseEnv = () => {
 validateAppEnv();
 validateRequiredDatabaseEnv();
 
+const getStorageDriver = () => {
+  return (process.env.STORAGE_DRIVER || 'local').trim().toLowerCase();
+};
+
 const validateRequiredStorageEnv = () => {
-  validateRequiredEnv(requiredStorageEnv, 'storage');
+  const storageDriver = getStorageDriver();
+
+  if (!supportedStorageDrivers.includes(storageDriver)) {
+    throw new Error(`[ENV] STORAGE_DRIVER must be one of: ${supportedStorageDrivers.join(', ')}`);
+  }
+
+  if (storageDriver === 'local') {
+    validateRequiredEnv(requiredLocalStorageEnv, 'local storage');
+  }
+
+  if (storageDriver === 'r2') {
+    validateRequiredEnv(requiredR2StorageEnv, 'R2 storage');
+
+    try {
+      new URL(process.env.R2_ENDPOINT);
+    } catch (error) {
+      throw new Error('[ENV] R2_ENDPOINT must be a valid URL');
+    }
+  }
 };
 
 validateRequiredStorageEnv();
+
+const getUploadMaxFileSizeBytes = () => {
+  const value = process.env.UPLOAD_MAX_FILE_SIZE_BYTES || String(25 * 1024 * 1024);
+  const maxFileSizeBytes = Number(value);
+
+  if (!Number.isInteger(maxFileSizeBytes) || maxFileSizeBytes <= 0) {
+    throw new Error('[ENV] UPLOAD_MAX_FILE_SIZE_BYTES must be a positive integer');
+  }
+
+  return maxFileSizeBytes;
+};
+
+const uploadMaxFileSizeBytes = getUploadMaxFileSizeBytes();
+
+const getUploadTemporaryTtlHours = () => {
+  const value = process.env.UPLOAD_TEMPORARY_TTL_HOURS || '24';
+  const ttlHours = Number(value);
+
+  if (!Number.isInteger(ttlHours) || ttlHours <= 0) {
+    throw new Error('[ENV] UPLOAD_TEMPORARY_TTL_HOURS must be a positive integer');
+  }
+
+  return ttlHours;
+};
+
+const uploadTemporaryTtlHours = getUploadTemporaryTtlHours();
+
+const getPositiveIntegerEnv = (key, defaultValue) => {
+  const value = process.env[key];
+
+  if (value === undefined || value.trim() === '') {
+    return defaultValue;
+  }
+
+  const parsedValue = Number(value);
+  if (!Number.isInteger(parsedValue) || parsedValue <= 0) {
+    throw new Error(`[ENV] ${key} must be a positive integer`);
+  }
+
+  return parsedValue;
+};
+
+const getBoundedPositiveIntegerEnv = (key, defaultValue, { max = Number.MAX_SAFE_INTEGER, min = 1 } = {}) => {
+  const value = process.env[key];
+
+  if (value === undefined || value.trim() === '') {
+    return defaultValue;
+  }
+
+  const parsedValue = Number(value);
+  if (!Number.isInteger(parsedValue) || parsedValue < min || parsedValue > max) {
+    throw new Error(`[ENV] ${key} must be an integer between ${min} and ${max}`);
+  }
+
+  return parsedValue;
+};
 
 const validateSecurityEnv = () => {
   validateRequiredEnv(requiredSecurityEnv, 'security');
@@ -202,7 +289,37 @@ const env = {
     frontendResetPasswordUrl: process.env.FRONTEND_RESET_PASSWORD_URL || 'http://localhost:5173/reset-password',
   },
   corsAllowedOrigins: process.env.CORS_ALLOWED_ORIGINS,
-  storagePath: process.env.STORAGE_PATH,
+  storage: {
+    driver: getStorageDriver(),
+    path: process.env.STORAGE_PATH || './storage',
+    r2: {
+      accountId: process.env.R2_ACCOUNT_ID || '',
+      bucketName: process.env.R2_BUCKET_NAME || '',
+      accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+      endpoint: process.env.R2_ENDPOINT || '',
+      region: process.env.R2_REGION || 'auto',
+      publicBaseUrl: process.env.R2_PUBLIC_BASE_URL || '',
+    },
+  },
+  storagePath: process.env.STORAGE_PATH || './storage',
+  upload: {
+    maxFileSizeBytes: uploadMaxFileSizeBytes,
+    temporaryTtlHours: uploadTemporaryTtlHours,
+  },
+  slaNotificationScheduler: {
+    batchSize: getPositiveIntegerEnv('SLA_NOTIFICATION_BATCH_SIZE', 200),
+    enabled: getBooleanEnv('SLA_NOTIFICATION_SCHEDULER_ENABLED', false),
+    intervalMs: getPositiveIntegerEnv('SLA_NOTIFICATION_SCHEDULER_INTERVAL_MS', 15 * 60 * 1000),
+    jobToken: process.env.SLA_NOTIFICATION_JOB_TOKEN || '',
+  },
+  temporaryUploadCleanupScheduler: {
+    batchSize: getBoundedPositiveIntegerEnv('TEMPORARY_UPLOAD_CLEANUP_BATCH_SIZE', 100, { max: 1000 }),
+    enabled: getBooleanEnv('TEMPORARY_UPLOAD_CLEANUP_SCHEDULER_ENABLED', true),
+    intervalMs: getBoundedPositiveIntegerEnv('TEMPORARY_UPLOAD_CLEANUP_INTERVAL_MS', 5 * 60 * 1000, {
+      min: 60 * 1000,
+    }),
+  },
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS),
   cookie: {
     secure: getBooleanEnv('COOKIE_SECURE', false),

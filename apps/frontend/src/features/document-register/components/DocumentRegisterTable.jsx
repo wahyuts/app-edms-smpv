@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { ChevronLeft, ChevronRight, ClipboardList } from "lucide-react";
 
 import SelectDropdown from "@/shared/components/form/SelectDropdown";
@@ -132,7 +133,9 @@ export const DocumentRegisterTable = ({
   areaOptions = [],
   drawingFilter,
   drawingOptions = [],
+  error = null,
   isDashboard = false,
+  isError = false,
   isLoading = false,
   canUseLifecycleFilter = false,
   lifecycleFilter = DOCUMENT_LIFECYCLE_FILTER.ACTIVE,
@@ -158,9 +161,13 @@ export const DocumentRegisterTable = ({
 }) => {
   const { hasProjectPermission } = usePermission();
   useProjectContextStore((state) => state.activeOfficialRole);
+  const [activeAction, setActiveAction] = useState(null);
   const canViewDocument = hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.VIEW);
   const paginationItems = getPaginationItems(totalPages, pageNumber);
   const statusFilterValue = Array.isArray(statusFilter) ? "" : statusFilter;
+  const setGlobalActiveAction = useCallback((nextAction) => {
+    setActiveAction(nextAction);
+  }, []);
 
   if (!canViewDocument) {
     return (
@@ -358,7 +365,18 @@ export const DocumentRegisterTable = ({
               </tr>
             ) : null}
 
-            {!isLoading && rows.length === 0 ? (
+            {!isLoading && isError ? (
+              <tr>
+                <td
+                  className="px-4 py-8 text-center font-semibold text-[#FCA5A5]"
+                  colSpan={isDashboard ? 9 : 8}
+                >
+                  {error instanceof Error ? error.message : "Document Register gagal dimuat."}
+                </td>
+              </tr>
+            ) : null}
+
+            {!isLoading && !isError && rows.length === 0 ? (
               <tr>
                 <td
                   className="px-4 py-8 text-center text-[#94A3B8]"
@@ -369,7 +387,7 @@ export const DocumentRegisterTable = ({
               </tr>
             ) : null}
 
-            {!isLoading
+            {!isLoading && !isError
               ? rows.map((documentItem, rowIndex) => (
                   <tr
                     className="group border-t border-[#123A5A] text-[#F8FAFC] transition-colors hover:bg-[#08233B]"
@@ -418,8 +436,10 @@ export const DocumentRegisterTable = ({
                     ) : null}
                     <td className="sticky right-0 z-10 bg-[#061B2F] px-4 py-3 shadow-[-8px_0_16px_rgba(2,11,22,0.28)] transition-colors group-hover:bg-[#08233B]">
                       <DocumentActionGroup
+                        activeAction={activeAction}
                         documentItem={documentItem}
                         isDashboard={isDashboard}
+                        onActiveActionChange={setGlobalActiveAction}
                         onWorkflowComplete={refreshDocuments}
                       />
                     </td>

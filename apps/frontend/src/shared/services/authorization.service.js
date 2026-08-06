@@ -11,8 +11,11 @@ const getCurrentPermissions = () => AuthService.getCurrentPermissions();
 const getCurrentPermissionCodes = () =>
   getCurrentPermissions().map((permission) => permission.code ?? permission.permissionCode);
 
+const getEffectiveActiveOfficialRole = () =>
+  getActiveOfficialRole() ?? AuthService.getActiveMembership()?.officialRole;
+
 const getActiveProjectRole = () => {
-  const activeOfficialRole = getActiveOfficialRole();
+  const activeOfficialRole = getEffectiveActiveOfficialRole();
   if (!activeOfficialRole) return null;
 
   return (
@@ -23,7 +26,7 @@ const getActiveProjectRole = () => {
 };
 
 const getActiveProjectPermissions = () => {
-  const activeOfficialRole = getActiveOfficialRole();
+  const activeOfficialRole = getEffectiveActiveOfficialRole();
   if (!activeOfficialRole) return [];
 
   return getCurrentPermissions();
@@ -38,7 +41,7 @@ const hasPermission = (permissionCode) => {
 };
 
 const hasProjectPermission = (permissionCode) => {
-  if (!permissionCode || !getActiveOfficialRole()) return false;
+  if (!permissionCode || !getEffectiveActiveOfficialRole()) return false;
   return getActiveProjectPermissionCodes().includes(permissionCode);
 };
 

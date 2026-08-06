@@ -1,3 +1,5 @@
+import { Loader2 } from "lucide-react";
+
 import { SLA_STATUS } from "@/features/document-register/constants/document.constants";
 
 const summaryItems = [
@@ -23,7 +25,15 @@ const summaryItems = [
   },
 ];
 
-export const SlaSummary = ({ onSelectSlaStatus, selectedSlaStatus, summary }) => {
+const LoadingValue = () => (
+  <Loader2
+    aria-label="Loading SLA summary value"
+    className="inline-block h-8 w-8 animate-spin"
+    role="status"
+  />
+);
+
+export const SlaSummary = ({ isLoading = false, onSelectSlaStatus, selectedSlaStatus, summary }) => {
   return (
     <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       {summaryItems.map((item) => {
@@ -42,7 +52,7 @@ export const SlaSummary = ({ onSelectSlaStatus, selectedSlaStatus, summary }) =>
           >
             <p className="text-sm font-semibold text-[#CBD5E1]">{item.label}</p>
             <p className="mt-3 text-4xl font-extrabold">
-              {summary[item.key] ?? 0}
+              {isLoading ? <LoadingValue /> : summary[item.key] ?? 0}
             </p>
           </button>
         );

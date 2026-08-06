@@ -5,6 +5,7 @@ import {
   Eye,
   FileText,
   FileUp,
+  Loader2,
   Paperclip,
   Trash2,
   X,
@@ -80,6 +81,9 @@ const formatTimelineActor = (timelineItem) => {
 
   return actorRole ? `${actorName} (${actorRole})` : actorName;
 };
+
+const normalizeFileExtension = (extension = "") =>
+  String(extension).trim().replace(/^\./, "").toLowerCase();
 
 const FileUploadField = ({
   errorMessage,
@@ -229,16 +233,17 @@ const textareaClassName =
   "mt-2 min-h-24 w-full rounded-md border border-[#123A5A] bg-[#08233B] px-3 py-2 text-sm text-[#F8FAFC] outline-none transition-colors placeholder:text-[#64748B] focus:border-[#0F7BFF]";
 const validationClassName = "mt-2 text-sm font-semibold text-[#FCA5A5]";
 
-const uploadRevisionTargetStatusByCurrentStatus = {
-  [DOCUMENT_STATUS.PROCESS_COMMENT]: DOCUMENT_STATUS.PROCESS_REVIEW,
-  [DOCUMENT_STATUS.PROCESS_REJECT]: DOCUMENT_STATUS.PROCESS_REVIEW,
-  [DOCUMENT_STATUS.PROJECT_COMMENT]: DOCUMENT_STATUS.PROJECT_REVIEW,
-  [DOCUMENT_STATUS.PROJECT_REJECT]: DOCUMENT_STATUS.PROJECT_REVIEW,
-};
+const renderLoadingButtonContent = (label) => (
+  <span className="inline-flex items-center gap-2">
+    <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+    {label}
+  </span>
+);
 
 const DocumentActionModal = ({
   children,
   footer,
+  isCloseDisabled = false,
   onClose,
   size = "default",
   title,
@@ -266,7 +271,13 @@ const DocumentActionModal = ({
           <h2 className="text-lg font-bold">{title}</h2>
           <button
             aria-label="Close modal"
-            className="rounded-md p-1.5 text-[#CBD5E1] transition-colors hover:bg-[#0B2B47] hover:text-white"
+            className={[
+              "rounded-md p-1.5 text-[#CBD5E1] transition-colors",
+              isCloseDisabled
+                ? "cursor-not-allowed opacity-50"
+                : "hover:bg-[#0B2B47] hover:text-white",
+            ].join(" ")}
+            disabled={isCloseDisabled}
             onClick={onClose}
             type="button"
           >
@@ -312,11 +323,11 @@ export const ViewDocumentModal = ({
   const metadata = documentItem.fileMetadata;
   const fileExtension = documentFile?.error
     ? ""
-    : (
+    : normalizeFileExtension(
         documentFile?.metadata?.fileExtension ??
         metadata?.fileExtension ??
         ""
-      ).toLowerCase();
+      );
   const isDocxPreviewAvailable =
     fileExtension === "docx" && Boolean(documentFile?.previewHtml);
   const isSpreadsheetPreviewAvailable =
@@ -440,6 +451,7 @@ export const ViewDocumentModal = ({
           {fileExtension === "pdf" ? (
             <iframe
               className="h-full w-full bg-white"
+              key={documentFile.objectUrl}
               src={documentFile.objectUrl}
               title={`${documentItem.documentNumber} PDF Viewer`}
             />
@@ -448,6 +460,7 @@ export const ViewDocumentModal = ({
             <img
               alt={metadata?.originalFileName ?? documentItem.documentNumber}
               className="rounded-md object-contain"
+              key={documentFile.objectUrl}
               src={documentFile.objectUrl}
             />
           ) : null}
@@ -488,7 +501,7 @@ export const ViewDocumentModal = ({
                 File is unavailable.
               </p>
               <p className="mt-2 max-w-md">
-                The active file could not be found in browser storage.
+                The active file could not be loaded from the backend.
               </p>
             </div>
           ) : null}
@@ -796,6 +809,7 @@ export const ApprovalConfirmationModal = ({
   confirmLabel = "Confirm",
   documentItem,
   isDanger = false,
+  isSubmitting = false,
   message,
   onCancel,
   onConfirm,
@@ -804,18 +818,25 @@ export const ApprovalConfirmationModal = ({
     <DocumentActionModal
       footer={
         <>
-          <button className={secondaryButtonClassName} onClick={onCancel} type="button">
+          <button
+            className={secondaryButtonClassName}
+            disabled={isSubmitting}
+            onClick={onCancel}
+            type="button"
+          >
             Cancel
           </button>
           <button
             className={isDanger ? dangerButtonClassName : primaryButtonClassName}
+            disabled={isSubmitting}
             onClick={onConfirm}
             type="button"
           >
-            {confirmLabel}
+            {isSubmitting ? renderLoadingButtonContent("Confirming...") : confirmLabel}
           </button>
         </>
       }
+      isCloseDisabled={isSubmitting}
       onClose={onCancel}
       title={confirmLabel}
     >
@@ -840,6 +861,7 @@ export const ApprovalCommentModal = ({
   errorMessage,
   isCommentRequired = false,
   isDanger = false,
+  isSubmitting = false,
   onAttachmentChange = () => {},
   onAttachmentRemove = () => {},
   onCancel,
@@ -852,18 +874,25 @@ export const ApprovalCommentModal = ({
     <DocumentActionModal
       footer={
         <>
-          <button className={secondaryButtonClassName} onClick={onCancel} type="button">
+          <button
+            className={secondaryButtonClassName}
+            disabled={isSubmitting}
+            onClick={onCancel}
+            type="button"
+          >
             Cancel
           </button>
           <button
             className={isDanger ? dangerButtonClassName : primaryButtonClassName}
+            disabled={isSubmitting}
             onClick={onSubmit}
             type="button"
           >
-            {submitLabel}
+            {isSubmitting ? renderLoadingButtonContent("Submitting...") : submitLabel}
           </button>
         </>
       }
+      isCloseDisabled={isSubmitting}
       onClose={onCancel}
       title={title}
     >
@@ -1095,19 +1124,18 @@ export const CreateDocumentModal = ({
 };
 
 export const EditDocumentModal = ({
+  allowUploadRevision = false,
   documentItem,
   onCancel,
   onSubmit,
   onValidationFailed = () => {},
 }) => {
-  const isUploadRevision = [
+  const isUploadRevision = allowUploadRevision && [
     DOCUMENT_STATUS.PROCESS_COMMENT,
     DOCUMENT_STATUS.PROCESS_REJECT,
     DOCUMENT_STATUS.PROJECT_COMMENT,
     DOCUMENT_STATUS.PROJECT_REJECT,
   ].includes(documentItem.status);
-  const uploadRevisionTargetStatus =
-    uploadRevisionTargetStatusByCurrentStatus[documentItem.status];
   const [formValue, setFormValue] = useState({
     area: documentItem.area,
     daysUntilValidation: documentItem.daysUntilValidation,
@@ -1217,7 +1245,7 @@ export const EditDocumentModal = ({
             onClick={handleSubmit}
             type="button"
           >
-            {isSubmitting ? "Saving..." : "Submit"}
+            {isSubmitting ? "Updating..." : "Submit"}
           </button>
         </>
       }
@@ -1227,10 +1255,8 @@ export const EditDocumentModal = ({
       <div className="space-y-4">
         {isUploadRevision ? (
           <div className="rounded-lg border border-[#FACC15]/40 bg-[#FACC15]/10 p-4 text-sm text-[#FDE68A]">
-            Upload Revision will replace the Active File and continue{" "}
-            {documentItem.status} to{" "}
-            {uploadRevisionTargetStatus}
-            .
+            Upload Revision will replace the Active File. Backend will determine
+            the next workflow status.
           </div>
         ) : null}
         <div

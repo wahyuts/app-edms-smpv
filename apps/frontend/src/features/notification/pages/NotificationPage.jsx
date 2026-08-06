@@ -103,7 +103,7 @@ export const NotificationPage = () => {
   const tableState = useNotificationPage({
     onError: (error) => {
       showToast({
-        message: getErrorMessage(error, "Notification action failed."),
+        message: getErrorMessage(error, "Aksi notifikasi gagal diproses."),
         variant: "error",
       });
     },
@@ -125,7 +125,7 @@ export const NotificationPage = () => {
         setSelectedNotification(updatedNotification);
       } catch (error) {
         showToast({
-          message: getErrorMessage(error, "Notification read status could not be saved."),
+          message: getErrorMessage(error, "Status baca notifikasi gagal disimpan."),
           variant: "error",
         });
       }
@@ -136,12 +136,12 @@ export const NotificationPage = () => {
     try {
       await tableState.markAsRead(notificationId);
       showToast({
-        message: "Notification marked as read.",
+        message: "Notifikasi ditandai sudah dibaca.",
         variant: "success",
       });
     } catch (error) {
       showToast({
-        message: getErrorMessage(error, "Notification read status could not be saved."),
+        message: getErrorMessage(error, "Status baca notifikasi gagal disimpan."),
         variant: "error",
       });
     }
@@ -151,12 +151,12 @@ export const NotificationPage = () => {
     try {
       await tableState.markAllAsRead();
       showToast({
-        message: "All notifications marked as read.",
+        message: "Semua notifikasi sudah dibaca.",
         variant: "success",
       });
     } catch (error) {
       showToast({
-        message: getErrorMessage(error, "Notifications could not be marked as read."),
+        message: getErrorMessage(error, "Notifikasi gagal ditandai sudah dibaca."),
         variant: "error",
       });
     }
@@ -171,7 +171,7 @@ export const NotificationPage = () => {
       });
     } catch (error) {
       showToast({
-        message: getErrorMessage(error, "Notifications could not be marked as read."),
+        message: getErrorMessage(error, "Notifikasi gagal ditandai sudah dibaca."),
         variant: "error",
       });
     }
@@ -199,7 +199,7 @@ export const NotificationPage = () => {
       });
     } catch (error) {
       showToast({
-        message: getErrorMessage(error, "Notification could not be deleted."),
+        message: getErrorMessage(error, "Notifikasi gagal dihapus."),
         variant: "error",
       });
     }
@@ -248,7 +248,10 @@ export const NotificationPage = () => {
         </p>
       </header>
 
-      <NotificationSummary summary={tableState.summary} />
+      <NotificationSummary
+        isLoading={tableState.isSummaryLoading}
+        summary={tableState.summary}
+      />
       <NotificationTable
         {...tableState}
         hasActiveFilter={hasActiveFilter}

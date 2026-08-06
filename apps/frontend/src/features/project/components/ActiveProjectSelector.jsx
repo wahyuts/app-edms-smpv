@@ -8,7 +8,11 @@ import { ProjectService } from "@/features/project/services/project.service";
 import { AuthService } from "@/features/auth/services/auth.service";
 import { useToast } from "@/shared/components/toast";
 
-const ActiveProjectSelector = ({ variant = "header" }) => {
+const ActiveProjectSelector = ({
+  onProjectSelected = null,
+  selectedProjectId = null,
+  variant = "header",
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const selectorRef = useRef(null);
   const {
@@ -20,10 +24,13 @@ const ActiveProjectSelector = ({ variant = "header" }) => {
     setProjectContextLoading,
   } = useProjectContextStore();
   const { showToast } = useToast();
-  const hasActiveProject = Boolean(activeProject);
-  const projectName = activeProject?.projectName ?? "Select Project";
-  const projectCode = activeProject?.projectCode ?? "No project selected";
   const isGatewayVariant = variant === "gateway";
+  const selectedProject = isGatewayVariant && selectedProjectId
+    ? accessibleProjects.find((project) => project.id === selectedProjectId)
+    : activeProject;
+  const hasActiveProject = Boolean(selectedProject);
+  const projectName = selectedProject?.projectName ?? "Select Project";
+  const projectCode = selectedProject?.projectCode ?? "No project selected";
 
   const closeDropdown = useCallback(() => {
     setIsOpen(false);
@@ -70,14 +77,21 @@ const ActiveProjectSelector = ({ variant = "header" }) => {
 
   const handleSelectProject = async (projectId) => {
     setIsOpen(false);
+    if (isGatewayVariant && onProjectSelected) {
+      onProjectSelected(projectId);
+      return;
+    }
+
     if (projectId === activeProject?.id) return;
 
     try {
       setProjectContextLoading(true);
-      const context = await ProjectService.setActiveProjectForUser({
+      await ProjectService.setActiveProjectForUser({
         projectId,
         user: AuthService.getCurrentUser(),
       });
+      const authResponse = await AuthService.completeProjectSelection();
+      const context = authResponse.data;
       setProjectContext(context);
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["audit-trail"] });
@@ -168,7 +182,7 @@ const ActiveProjectSelector = ({ variant = "header" }) => {
             role="listbox"
           >
             {accessibleProjects.map((project) => {
-              const isSelected = project.id === activeProject?.id;
+              const isSelected = project.id === selectedProject?.id;
 
               return (
                 <button

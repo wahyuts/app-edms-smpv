@@ -1,7 +1,7 @@
 const path = require('node:path');
 const storageConfig = require('../config/storage');
 const { STORAGE_DIRECTORIES } = require('../constants/storage.constants');
-const { validateProjectCode, validateDocumentCode } = require('../validators/storage.validator');
+const { validateProjectCode, validateDocumentCode, validateStorageKey } = require('../validators/storage.validator');
 
 const ensurePathInsideStorage = (targetPath) => {
   const storageRoot = path.resolve(storageConfig.rootPath);
@@ -22,6 +22,16 @@ const getStorageRootPath = () => {
 
 const getProjectsRootPath = () => {
   return ensurePathInsideStorage(storageConfig.projectsPath);
+};
+
+const getTemporaryRootPath = () => {
+  return ensurePathInsideStorage(storageConfig.temporaryPath);
+};
+
+const resolveStorageKeyPath = (storageKey) => {
+  const safeStorageKey = validateStorageKey(storageKey);
+
+  return ensurePathInsideStorage(path.join(getStorageRootPath(), safeStorageKey));
 };
 
 const getProjectPath = (projectCode) => {
@@ -46,7 +56,7 @@ const getRevisionDirectoryPath = (projectCode, documentCode) => {
 
 const getWorkflowAttachmentDirectoryPath = (projectCode, documentCode) => {
   return ensurePathInsideStorage(
-    path.join(getDocumentPath(projectCode, documentCode), STORAGE_DIRECTORIES.WORKFLOW_ATTACHMENTS)
+    path.join(getDocumentPath(projectCode, documentCode), STORAGE_DIRECTORIES.ATTACHMENTS)
   );
 };
 
@@ -54,6 +64,8 @@ module.exports = {
   ensurePathInsideStorage,
   getStorageRootPath,
   getProjectsRootPath,
+  getTemporaryRootPath,
+  resolveStorageKeyPath,
   getProjectPath,
   getDocumentPath,
   getRevisionDirectoryPath,

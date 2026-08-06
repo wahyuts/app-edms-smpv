@@ -2165,6 +2165,15 @@ Permission lama `document.read`, `document.review`, `sla.read`, `audit.read`, `e
 - `Team Project` menjalankan Approval A/B/C pada status `Project Review`.
 - User tanpa Membership aktif pada Project tidak boleh mengakses module project-scoped.
 
+## Effective Permission Resolution
+
+Runtime permission dipisahkan menjadi:
+
+- Global permission dari `users.role_id`, hanya untuk permission global seperti `profile.view`, `password.change`, dan `user-management.view`.
+- Project-scoped permission dari `project_memberships.official_role` pada Active Project.
+
+Dengan aturan ini, user yang memiliki Official Role `Document Owner` pada Active Project memperoleh capability Document Owner untuk project tersebut walaupun `users.role_id` runtime-nya berbeda. Sebaliknya, user tersebut tidak memperoleh capability review `Team Process` atau `Team Project` kecuali Active Project Membership miliknya memang memiliki Official Role tersebut.
+
 ## Route Protection
 
 Route project-scoped wajib melewati Authentication, Permission Guard, dan Active Project Guard. Route global hanya memerlukan Authentication dan system permission.

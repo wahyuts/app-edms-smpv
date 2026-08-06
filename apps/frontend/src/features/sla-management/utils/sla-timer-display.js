@@ -58,7 +58,7 @@ export const formatTimeForReview = (days) => {
 
   const normalizedDays = Number(days);
   if (!Number.isFinite(normalizedDays) || normalizedDays < 0) return "-";
-  if (normalizedDays === 0) return "Today";
+  if (normalizedDays === 0) return "Less than 1 Day";
   if (normalizedDays === 1) return "1 Day";
 
   return `${normalizedDays} Days`;
@@ -115,4 +115,55 @@ export const formatSlaTimerDisplay = ({
   const normalizedMinutes = Math.max(0, Number(minutes) || 0);
 
   return `${normalizedDays}d ${normalizedHours}h ${normalizedMinutes}m`;
+};
+
+const parseTimestamp = (value) => {
+  if (!value) return null;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const resolveSlaStartedAt = (document = {}) =>
+  document.slaStartedAt ?? document.slaTimer?.startedAt ?? null;
+
+const resolveSlaStoppedAt = (document = {}) =>
+  document.slaStoppedAt ?? document.slaTimer?.stoppedAt ?? null;
+
+export const resolveLiveSlaTimer = (document = {}, currentTimestamp = null) => {
+  const startedAt = parseTimestamp(resolveSlaStartedAt(document));
+  const normalizedCurrentTimestamp = Number(currentTimestamp);
+  const hasCurrentTimestamp = Number.isFinite(normalizedCurrentTimestamp);
+
+  if (!startedAt || !document.slaTimer || !hasCurrentTimestamp) {
+    return document;
+  }
+
+  const stoppedAt = parseTimestamp(resolveSlaStoppedAt(document));
+  const isFinal =
+    document.status === "Approved" ||
+    document.workflowStatus === "Approved" ||
+    document.slaStatus === SLA_STATUS.FINAL_AS_BUILT;
+  const calculationEnd = stoppedAt ?? (isFinal ? startedAt : new Date(normalizedCurrentTimestamp));
+  const totalMinutes = Math.max(
+    0,
+    Math.floor((calculationEnd.getTime() - startedAt.getTime()) / 60000),
+  );
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  const resultDisplay = isFinal ? (document.slaTimer.display ?? "Done") : formatSlaTimerDisplay({ days, hours, minutes });
+
+  return {
+    ...document,
+    slaTimer: {
+      ...document.slaTimer,
+      calculatedAt: calculationEnd.toISOString(),
+      days,
+      display: resultDisplay,
+      hours,
+      minutes,
+      totalMinutes,
+    },
+  };
 };
