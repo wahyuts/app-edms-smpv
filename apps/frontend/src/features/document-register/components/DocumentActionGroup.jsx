@@ -962,7 +962,7 @@ export const DocumentActionGroup = ({
 
       closeModal();
       await synchronizeDocumentRuntimeQueries({
-        refreshCurrentSurface: onWorkflowComplete,
+        refreshCurrentSurface: () => onWorkflowComplete({ showLoading: true }),
       });
       showToast({
         message: `${workflowAction} berhasil diproses.`,
