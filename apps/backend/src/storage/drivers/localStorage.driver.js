@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
 const path = require('node:path');
+const { pipeline } = require('node:stream/promises');
 const logger = require('../../config/logger');
 const { STORAGE_DIRECTORIES } = require('../../constants/storage.constants');
 const { resolveStorageKeyPath, getStorageRootPath, getTemporaryRootPath, getProjectsRootPath } = require('../../utils/storagePath');
@@ -30,6 +31,14 @@ class LocalStorageDriver {
     }
 
     return this.put(storageKey, content);
+  }
+
+  async putTemporaryStream(storageKey, stream) {
+    if (!storageKey.startsWith(`${STORAGE_DIRECTORIES.TEMPORARY}/`)) {
+      throw new StorageError('[STORAGE] temporary storage key must be under temporary/', 'STORAGE_INVALID_KEY');
+    }
+
+    return this.putStream(storageKey, stream);
   }
 
   async finalize(temporaryStorageKey, permanentStorageKey) {
@@ -121,6 +130,30 @@ class LocalStorageDriver {
       return { storageKey };
     } catch (error) {
       throw normalizeStorageError(error, 'write local storage object');
+    }
+  }
+
+  async putStream(storageKey, stream) {
+    const targetPath = resolveStorageKeyPath(storageKey);
+
+    try {
+      if (await this.exists(storageKey)) {
+        throw new StorageError('[STORAGE] target storage key already exists', 'STORAGE_TARGET_EXISTS');
+      }
+
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      await pipeline(stream, fsSync.createWriteStream(targetPath, { flags: 'wx' }));
+
+      return { storageKey };
+    } catch (error) {
+      await fs.unlink(targetPath).catch(() => {});
+      if (storageKey.startsWith(`${STORAGE_DIRECTORIES.TEMPORARY}/`)) {
+        await this.cleanupTemporaryParentDirectory(storageKey);
+      }
+      if (error.statusCode) {
+        throw error;
+      }
+      throw normalizeStorageError(error, 'stream local storage object');
     }
   }
 

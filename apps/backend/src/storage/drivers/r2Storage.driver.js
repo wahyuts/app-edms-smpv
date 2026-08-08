@@ -50,6 +50,14 @@ class R2StorageDriver {
     return this.put(storageKey, content);
   }
 
+  async putTemporaryStream(storageKey, stream, options = {}) {
+    if (!storageKey.startsWith(`${STORAGE_DIRECTORIES.TEMPORARY}/`)) {
+      throw new StorageError('[STORAGE] temporary storage key must be under temporary/', 'STORAGE_INVALID_KEY');
+    }
+
+    return this.putStream(storageKey, stream, options);
+  }
+
   async finalize(temporaryStorageKey, permanentStorageKey) {
     if (!(await this.exists(temporaryStorageKey))) {
       throw new StorageError('[STORAGE] temporary source object does not exist', 'STORAGE_SOURCE_NOT_FOUND');
@@ -91,6 +99,38 @@ class R2StorageDriver {
       return { storageKey };
     } catch (error) {
       throw normalizeStorageError(error, 'write R2 object');
+    }
+  }
+
+  async putStream(storageKey, stream, options = {}) {
+    try {
+      if (await this.exists(storageKey)) {
+        throw new StorageError('[STORAGE] target storage key already exists', 'STORAGE_TARGET_EXISTS');
+      }
+
+      const commandPayload = {
+        Bucket: this.config.bucketName,
+        Key: storageKey,
+        Body: stream,
+      };
+
+      if (options.contentType) {
+        commandPayload.ContentType = options.contentType;
+      }
+
+      if (Number.isInteger(options.contentLength) && options.contentLength >= 0) {
+        commandPayload.ContentLength = options.contentLength;
+      }
+
+      await this.client.send(new PutObjectCommand(commandPayload));
+
+      return { storageKey };
+    } catch (error) {
+      await this.deleteTemporary(storageKey).catch(() => {});
+      if (error.statusCode) {
+        throw error;
+      }
+      throw normalizeStorageError(error, 'stream R2 object');
     }
   }
 

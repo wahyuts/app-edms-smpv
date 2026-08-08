@@ -146,6 +146,14 @@ const putTemporary = async (storageKey, content) => {
   return activeDriver.putTemporary(normalizeKey(storageKey, 'temporaryStorageKey'), content);
 };
 
+const putTemporaryStream = async (storageKey, stream, options = {}) => {
+  if (typeof activeDriver.putTemporaryStream !== 'function') {
+    throw new Error('[STORAGE] active driver does not support temporary stream upload');
+  }
+
+  return activeDriver.putTemporaryStream(normalizeKey(storageKey, 'temporaryStorageKey'), stream, options);
+};
+
 const finalize = async (temporaryStorageKey, permanentStorageKey) => {
   return activeDriver.finalize(
     normalizeKey(temporaryStorageKey, 'temporaryStorageKey'),
@@ -214,6 +222,7 @@ module.exports = {
   runStorageSmokeValidation,
   ensureDocumentStorageDirectories,
   putTemporary,
+  putTemporaryStream,
   finalize,
   put,
   get,
