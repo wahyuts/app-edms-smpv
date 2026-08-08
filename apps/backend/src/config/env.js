@@ -169,6 +169,8 @@ const getBoundedPositiveIntegerEnv = (key, defaultValue, { max = Number.MAX_SAFE
   return parsedValue;
 };
 
+const mysqlConnectionLimit = getBoundedPositiveIntegerEnv('MYSQL_CONNECTION_LIMIT', 10, { max: 100 });
+
 const validateSecurityEnv = () => {
   validateRequiredEnv(requiredSecurityEnv, 'security');
 
@@ -270,6 +272,7 @@ const env = {
     database: process.env.MYSQL_DATABASE,
     user: process.env.MYSQL_USER,
     password: process.env.MYSQL_PASSWORD || '',
+    connectionLimit: mysqlConnectionLimit,
   },
   jwt: {
     secret: process.env.JWT_SECRET,
