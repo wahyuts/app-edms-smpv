@@ -6,7 +6,8 @@ const { STORAGE_DIRECTORIES } = require('../constants/storage.constants');
 const temporaryUploadRepository = require('../repositories/temporaryUpload.repository');
 const storageService = require('./storage.service');
 const { sanitizeFileName } = require('../utils/fileName');
-const { validateUploadedFile } = require('../validators/upload.validator');
+const { UploadInspectionStream } = require('../utils/uploadStream');
+const { validateUploadedFileMetadata } = require('../validators/upload.validator');
 
 const buildPhysicalFileName = (temporaryFileId, originalFileName) => {
   const safeOriginalFileName = sanitizeFileName(originalFileName);
@@ -21,27 +22,46 @@ const buildTemporaryStorageKey = ({ temporaryFileId, physicalFileName }) => {
   return `${STORAGE_DIRECTORIES.TEMPORARY}/${temporaryFileId}/${physicalFileName}`;
 };
 
-const buildChecksum = (buffer) => {
-  return crypto.createHash('sha256').update(buffer).digest('hex');
-};
-
-const uploadTemporaryFile = async ({ actorUserId, file }) => {
-  const validatedFile = validateUploadedFile(file);
+const uploadTemporaryFileStream = async ({
+  actorUserId,
+  contentLength,
+  fileStream,
+  mimeType,
+  originalFileName,
+}) => {
+  const validatedFile = validateUploadedFileMetadata({
+    mimetype: mimeType,
+    originalname: originalFileName,
+  });
   const temporaryFileId = crypto.randomUUID();
   const physicalFileName = buildPhysicalFileName(temporaryFileId, validatedFile.originalFileName);
   const storageKey = buildTemporaryStorageKey({ temporaryFileId, physicalFileName });
-  const checksum = buildChecksum(validatedFile.buffer);
+  const inspectionStream = new UploadInspectionStream({
+    extension: validatedFile.extension,
+  });
+  inspectionStream.on('error', (error) => {
+    fileStream.destroy(error);
+  });
 
   try {
-    await storageService.putTemporary(storageKey, validatedFile.buffer);
+    await storageService.putTemporaryStream(storageKey, fileStream.pipe(inspectionStream), {
+      contentLength,
+      contentType: validatedFile.mimeType,
+    });
   } catch (error) {
-    logger.error('[UPLOAD] Temporary upload storage failure');
-    logger.error(error.code || error.name || 'UploadStorageError');
+    if (error.statusCode) {
+      throw error;
+    }
+
+    logger.error('[UPLOAD] Temporary upload stream storage failure');
+    logger.error(error.code || error.name || 'UploadStreamStorageError');
 
     const uploadError = new Error('Gagal menyimpan file upload');
     uploadError.statusCode = 500;
     throw uploadError;
   }
+
+  const streamResult = inspectionStream.getResult();
 
   try {
     const metadata = await temporaryUploadRepository.createTemporaryUpload({
@@ -51,9 +71,9 @@ const uploadTemporaryFile = async ({ actorUserId, file }) => {
       physicalFileName,
       mimeType: validatedFile.mimeType,
       extension: validatedFile.extension,
-      fileSize: validatedFile.fileSize,
+      fileSize: streamResult.fileSize,
       storageKey,
-      checksum,
+      checksum: streamResult.checksum,
       expiresInHours: env.upload.temporaryTtlHours,
       createdByUserId: actorUserId,
     });
@@ -63,8 +83,8 @@ const uploadTemporaryFile = async ({ actorUserId, file }) => {
     return metadata;
   } catch (error) {
     await storageService.deleteTemporary(storageKey).catch(() => {});
-    logger.error('[UPLOAD] Temporary upload metadata persistence failure');
-    logger.error(error.code || error.name || 'UploadMetadataError');
+    logger.error('[UPLOAD] Temporary upload stream metadata persistence failure');
+    logger.error(error.code || error.name || 'UploadStreamMetadataError');
     throw error;
   }
 };
@@ -121,5 +141,5 @@ module.exports = {
   consumeTemporaryUploadMetadata,
   discardTemporaryUpload,
   getTemporaryUploadMetadata,
-  uploadTemporaryFile,
+  uploadTemporaryFileStream,
 };
