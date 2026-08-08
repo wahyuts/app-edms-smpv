@@ -1,6 +1,8 @@
 const { UPLOAD_ALLOWED_MIME_TYPES } = require('../constants/storage.constants');
 const { getFileExtension, sanitizeFileName } = require('../utils/fileName');
 
+const UPLOAD_SIGNATURE_PREFIX_BYTES = 8;
+
 const hasPdfSignature = (buffer) => {
   return buffer.subarray(0, 4).toString('ascii') === '%PDF';
 };
@@ -53,19 +55,14 @@ const buildUploadValidationError = (errors) => {
   return error;
 };
 
-const validateUploadedFile = (file) => {
+const validateUploadedFileMetadata = ({ mimetype, originalname, size } = {}) => {
   const errors = [];
 
-  if (!file) {
-    errors.push({ field: 'file', message: 'File wajib diunggah' });
-    throw buildUploadValidationError(errors);
-  }
-
-  const originalFileName = sanitizeFileName(file.originalname || '');
+  const originalFileName = sanitizeFileName(originalname || '');
   const extension = getFileExtension(originalFileName);
   const allowedMimeTypes = UPLOAD_ALLOWED_MIME_TYPES[extension];
 
-  if (!file.size || file.size <= 0) {
+  if (typeof size === 'number' && size <= 0) {
     errors.push({ field: 'file', message: 'File kosong tidak diperbolehkan' });
   }
 
@@ -73,12 +70,8 @@ const validateUploadedFile = (file) => {
     errors.push({ field: 'extension', message: 'Extension file tidak diperbolehkan' });
   }
 
-  if (!file.mimetype || !allowedMimeTypes?.includes(file.mimetype)) {
+  if (!mimetype || !allowedMimeTypes?.includes(mimetype)) {
     errors.push({ field: 'mimeType', message: 'MIME type file tidak diperbolehkan' });
-  }
-
-  if (file.buffer && allowedMimeTypes && !hasExpectedSignature(extension, file.buffer)) {
-    errors.push({ field: 'file', message: 'Isi file tidak sesuai dengan tipe file' });
   }
 
   if (errors.length > 0) {
@@ -86,14 +79,21 @@ const validateUploadedFile = (file) => {
   }
 
   return {
-    originalFileName,
+    allowedMimeTypes,
     extension,
-    mimeType: file.mimetype,
-    fileSize: file.size,
-    buffer: file.buffer,
+    mimeType: mimetype,
+    originalFileName,
   };
 };
 
+const validateUploadedFileSignature = ({ extension, prefixBuffer }) => {
+  if (!hasExpectedSignature(extension, prefixBuffer || Buffer.alloc(0))) {
+    throw buildUploadValidationError([{ field: 'file', message: 'Isi file tidak sesuai dengan tipe file' }]);
+  }
+};
+
 module.exports = {
-  validateUploadedFile,
+  UPLOAD_SIGNATURE_PREFIX_BYTES,
+  validateUploadedFileMetadata,
+  validateUploadedFileSignature,
 };

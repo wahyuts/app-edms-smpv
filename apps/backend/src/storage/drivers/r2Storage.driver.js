@@ -6,8 +6,13 @@ const {
   CopyObjectCommand,
   DeleteObjectCommand,
 } = require('@aws-sdk/client-s3');
+const { Upload } = require('@aws-sdk/lib-storage');
+const logger = require('../../config/logger');
 const { STORAGE_DIRECTORIES } = require('../../constants/storage.constants');
 const { StorageError, normalizeStorageError } = require('../storage.errors');
+
+const R2_STREAM_UPLOAD_PART_SIZE_BYTES = 8 * 1024 * 1024;
+const R2_STREAM_UPLOAD_QUEUE_SIZE = 1;
 
 const streamToBuffer = async (stream) => {
   const chunks = [];
@@ -21,6 +26,30 @@ const streamToBuffer = async (stream) => {
 
 const encodeCopySourceKey = (storageKey) => {
   return storageKey.split('/').map(encodeURIComponent).join('/');
+};
+
+const logR2ProviderError = (operation, error) => {
+  const providerError = error?.cause || error;
+  logger.error(
+    '[R2]',
+    `operation=${operation}`,
+    `name=${providerError?.name || 'UnknownError'}`,
+    `code=${providerError?.code || providerError?.Code || 'UNKNOWN'}`,
+    `status=${providerError?.$metadata?.httpStatusCode || 'UNKNOWN'}`,
+    `requestId=${providerError?.$metadata?.requestId || providerError?.$metadata?.extendedRequestId || 'UNKNOWN'}`
+  );
+
+  if (providerError?.message) {
+    logger.error('[R2]', `message=${providerError.message}`);
+  }
+
+  if (providerError?.cause?.name || providerError?.cause?.message) {
+    logger.error(
+      '[R2]',
+      `causeName=${providerError.cause.name || 'UNKNOWN'}`,
+      `causeMessage=${providerError.cause.message || 'UNKNOWN'}`
+    );
+  }
 };
 
 class R2StorageDriver {
@@ -48,6 +77,14 @@ class R2StorageDriver {
     }
 
     return this.put(storageKey, content);
+  }
+
+  async putTemporaryStream(storageKey, stream, options = {}) {
+    if (!storageKey.startsWith(`${STORAGE_DIRECTORIES.TEMPORARY}/`)) {
+      throw new StorageError('[STORAGE] temporary storage key must be under temporary/', 'STORAGE_INVALID_KEY');
+    }
+
+    return this.putStream(storageKey, stream, options);
   }
 
   async finalize(temporaryStorageKey, permanentStorageKey) {
@@ -91,6 +128,47 @@ class R2StorageDriver {
       return { storageKey };
     } catch (error) {
       throw normalizeStorageError(error, 'write R2 object');
+    }
+  }
+
+  async putStream(storageKey, stream, options = {}) {
+    try {
+      if (await this.exists(storageKey)) {
+        throw new StorageError('[STORAGE] target storage key already exists', 'STORAGE_TARGET_EXISTS');
+      }
+
+      const uploadParams = {
+        Bucket: this.config.bucketName,
+        Key: storageKey,
+        Body: stream,
+      };
+
+      if (options.contentType) {
+        uploadParams.ContentType = options.contentType;
+      }
+
+      if (Number.isInteger(options.contentLength) && options.contentLength >= 0) {
+        uploadParams.ContentLength = options.contentLength;
+      }
+
+      const upload = new Upload({
+        client: this.client,
+        leavePartsOnError: false,
+        params: uploadParams,
+        partSize: R2_STREAM_UPLOAD_PART_SIZE_BYTES,
+        queueSize: R2_STREAM_UPLOAD_QUEUE_SIZE,
+      });
+
+      await upload.done();
+
+      return { storageKey };
+    } catch (error) {
+      await this.deleteTemporary(storageKey).catch(() => {});
+      if (error.statusCode) {
+        throw error;
+      }
+      logR2ProviderError('putStream', error);
+      throw normalizeStorageError(error, 'stream R2 object');
     }
   }
 
