@@ -243,6 +243,23 @@ const listAuditRecordsByProject = async (projectId) => {
   return rows.map(mapAuditRow);
 };
 
+const listRecentAuditRecordsByProject = async ({ limit = 10, projectId }) => {
+  const normalizedLimit = Math.min(20, Math.max(1, Number.parseInt(limit, 10) || 10));
+  const [rows] = await pool.query(
+    `
+      SELECT ${auditRecordSelectColumns}
+      FROM audit_trail
+      WHERE project_id = ?
+        AND is_hidden = 0
+      ORDER BY occurred_at DESC, id DESC
+      LIMIT ?
+    `,
+    [projectId, normalizedLimit]
+  );
+
+  return rows.map(mapAuditRow);
+};
+
 const getAuditSummaryByProject = async (projectId) => {
   const [rows] = await pool.execute(
     `
@@ -342,4 +359,5 @@ module.exports = {
   insertAuditRecord,
   listAuditRecordsPage,
   listAuditRecordsByProject,
+  listRecentAuditRecordsByProject,
 };
