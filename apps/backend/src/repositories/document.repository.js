@@ -541,6 +541,158 @@ const listProjectDocumentRegister = async (projectId, { userId = 0 } = {}) => {
   return rows.map(mapDocumentRegisterRow);
 };
 
+const getDashboardKpiSummaryByProject = async (projectId) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        COUNT(*) AS total_documents,
+        SUM(CASE WHEN workflow_status = 'Process Review' THEN 1 ELSE 0 END) AS process_review,
+        SUM(CASE WHEN workflow_status = 'Process Comment' THEN 1 ELSE 0 END) AS process_comment,
+        SUM(CASE WHEN workflow_status = 'Process Reject' THEN 1 ELSE 0 END) AS process_reject,
+        SUM(CASE WHEN workflow_status = 'Project Review' THEN 1 ELSE 0 END) AS project_review,
+        SUM(CASE WHEN workflow_status = 'Project Comment' THEN 1 ELSE 0 END) AS project_comment,
+        SUM(CASE WHEN workflow_status = 'Project Reject' THEN 1 ELSE 0 END) AS project_reject,
+        SUM(CASE WHEN workflow_status = 'Approved' THEN 1 ELSE 0 END) AS approved,
+        SUM(CASE WHEN lifecycle_status = 'Archived' THEN 1 ELSE 0 END) AS archived
+      FROM engineering_documents
+      WHERE project_id = ?
+    `,
+    [projectId]
+  );
+  const row = rows[0] || {};
+  const processComment = Number(row.process_comment || 0);
+  const processReject = Number(row.process_reject || 0);
+  const projectComment = Number(row.project_comment || 0);
+  const projectReject = Number(row.project_reject || 0);
+  const approved = Number(row.approved || 0);
+
+  return {
+    approved,
+    archived: Number(row.archived || 0),
+    finalAsBuilt: approved,
+    processComment,
+    processCommentReject: processComment + processReject,
+    processReject,
+    processReview: Number(row.process_review || 0),
+    projectComment,
+    projectCommentReject: projectComment + projectReject,
+    projectReject,
+    projectReview: Number(row.project_review || 0),
+    totalDocuments: Number(row.total_documents || 0),
+  };
+};
+
+const getDashboardCurrentAssigneeSummaryByProject = async (projectId) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        COALESCE(current_assignee.full_name, documents.responsible_role, 'Unassigned') AS assignee_key,
+        COUNT(*) AS total
+      FROM engineering_documents documents
+      LEFT JOIN users current_assignee ON current_assignee.id = documents.current_assignee_user_id
+      WHERE documents.project_id = ?
+      GROUP BY assignee_key
+      ORDER BY total DESC, assignee_key ASC
+    `,
+    [projectId]
+  );
+
+  return rows.reduce((summary, row) => {
+    summary[row.assignee_key || 'Unassigned'] = Number(row.total || 0);
+    return summary;
+  }, {});
+};
+
+const mapDashboardSlaCandidateRow = (row) => ({
+  id: row.id,
+  projectId: row.project_id,
+  daysUntilValidation: Number(row.days_until_validation),
+  status: row.workflow_status,
+  workflowStatus: row.workflow_status,
+  slaStartedAt: row.sla_started_at,
+  slaStoppedAt: row.sla_stopped_at,
+  ...evaluateSla(row),
+});
+
+const listDashboardSlaCandidateDocumentsByProject = async (projectId) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        id,
+        project_id,
+        days_until_validation,
+        workflow_status,
+        sla_started_at,
+        sla_stopped_at
+      FROM engineering_documents
+      WHERE project_id = ?
+    `,
+    [projectId]
+  );
+
+  return rows.map(mapDashboardSlaCandidateRow);
+};
+
+const getDashboardStatisticsByProject = async (projectId) => {
+  const mapGroupedRows = (rows) => rows.reduce((summary, row) => {
+    summary[row.group_key] = Number(row.total || 0);
+    return summary;
+  }, {});
+
+  const [
+    [drawingRows],
+    [revisionRows],
+    [statusRows],
+    [totalRows],
+  ] = await Promise.all([
+    pool.execute(
+      `
+        SELECT drawing AS group_key, COUNT(*) AS total
+        FROM engineering_documents
+        WHERE project_id = ?
+        GROUP BY drawing
+        ORDER BY drawing ASC
+      `,
+      [projectId]
+    ),
+    pool.execute(
+      `
+        SELECT revision_label AS group_key, COUNT(*) AS total
+        FROM engineering_documents
+        WHERE project_id = ?
+        GROUP BY revision_label
+        ORDER BY revision_label ASC
+      `,
+      [projectId]
+    ),
+    pool.execute(
+      `
+        SELECT workflow_status AS group_key, COUNT(*) AS total
+        FROM engineering_documents
+        WHERE project_id = ?
+        GROUP BY workflow_status
+        ORDER BY workflow_status ASC
+      `,
+      [projectId]
+    ),
+    pool.execute(
+      `
+        SELECT COUNT(*) AS total_documents
+        FROM engineering_documents
+        WHERE project_id = ?
+      `,
+      [projectId]
+    ),
+  ]);
+
+  return {
+    byDrawing: mapGroupedRows(drawingRows),
+    byRevision: mapGroupedRows(revisionRows),
+    byStatus: mapGroupedRows(statusRows),
+    totalDocuments: Number(totalRows[0]?.total_documents || 0),
+  };
+};
+
 const listSlaNotificationCandidateDocuments = async ({ limit = 200 } = {}) => {
   const normalizedLimit = Math.min(1000, Math.max(1, Number.parseInt(limit, 10) || 200));
   const sql = `
@@ -1063,6 +1215,9 @@ module.exports = {
   findDocumentFoundationById,
   findDocumentRegisterById,
   findDocumentTypeByDrawing,
+  getDashboardCurrentAssigneeSummaryByProject,
+  getDashboardKpiSummaryByProject,
+  getDashboardStatisticsByProject,
   getNextRevisionSequence,
   deactivateDocumentRevisionFiles,
   deactivateDocumentRevisions,
@@ -1074,6 +1229,7 @@ module.exports = {
   listDocumentHistory,
   listDocumentRegister,
   listDocumentRevisions,
+  listDashboardSlaCandidateDocumentsByProject,
   listSlaNotificationCandidateDocuments,
   listProjectDocumentRegister,
   listWorkflowComments,

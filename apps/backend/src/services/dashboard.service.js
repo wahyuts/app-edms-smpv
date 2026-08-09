@@ -56,48 +56,41 @@ const resolveProjectId = async ({ activeProject, query = {}, userId }) => {
 
 const getDashboardSummary = async ({ activeProject, query = {}, userId }) => {
   const projectId = await resolveProjectId({ activeProject, query, userId });
-  const documents = await documentRepository.listProjectDocumentRegister(projectId, { userId });
-  const escalations = documents.map(escalationService.createEscalationItem).filter(Boolean);
+  const [
+    currentAssigneeSummary,
+    kpiSummary,
+    slaDocuments,
+  ] = await Promise.all([
+    documentRepository.getDashboardCurrentAssigneeSummaryByProject(projectId),
+    documentRepository.getDashboardKpiSummaryByProject(projectId),
+    documentRepository.listDashboardSlaCandidateDocumentsByProject(projectId),
+  ]);
+  const escalations = slaDocuments.map(escalationService.createEscalationItem).filter(Boolean);
 
   return {
-    currentAssigneeSummary: createCurrentAssigneeSummary(documents),
+    currentAssigneeSummary,
     escalationSummary: escalationService.createSummary(escalations),
-    kpiSummary: createKpiSummary(documents),
-    slaSummary: slaService.createSummary(documents),
+    kpiSummary,
+    slaSummary: slaService.createSummary(slaDocuments),
   };
 };
 
 const getDashboardStatistics = async ({ activeProject, query = {}, userId }) => {
   const projectId = await resolveProjectId({ activeProject, query, userId });
-  const documents = await documentRepository.listProjectDocumentRegister(projectId, { userId });
-  const byDrawing = documents.reduce((summary, document) => {
-    summary[document.drawing] = (summary[document.drawing] || 0) + 1;
-    return summary;
-  }, {});
-  const byStatus = documents.reduce((summary, document) => {
-    summary[document.status] = (summary[document.status] || 0) + 1;
-    return summary;
-  }, {});
-  const byRevision = documents.reduce((summary, document) => {
-    summary[document.revision] = (summary[document.revision] || 0) + 1;
-    return summary;
-  }, {});
 
-  return {
-    byDrawing,
-    byRevision,
-    byStatus,
-    totalDocuments: documents.length,
-  };
+  return documentRepository.getDashboardStatisticsByProject(projectId);
 };
 
 const getRecentActivities = async ({ activeProject, query = {}, userId }) => {
   const projectId = await resolveProjectId({ activeProject, query, userId });
   const limit = Math.min(20, Math.max(1, Number.parseInt(query.limit || query.pageSize, 10) || 10));
-  const records = await auditRepository.listAuditRecordsByProject(projectId);
+  const records = await auditRepository.listRecentAuditRecordsByProject({
+    limit,
+    projectId,
+  });
 
   return {
-    data: records.slice(0, limit),
+    data: records,
   };
 };
 
