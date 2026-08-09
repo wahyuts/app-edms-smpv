@@ -1,5 +1,8 @@
 # CURRENT IMPLEMENTATION AUDIT
 
+> **Current Status:** Historical / Legacy Frontend Baseline  
+> **Runtime Alignment:** Dokumen ini mencatat audit fase frontend-local sebelum backend-integrated runtime selesai. Source code saat ini sudah memiliki Backend REST API, MySQL, storage driver Local/R2, temporary upload pipeline, SSE realtime, scheduler, dan TanStack Query REST integration untuk scope yang sudah dimigrasikan. Informasi IndexedDB, Fake API, local workflow engine, browser file storage, dan localStorage business state pada dokumen ini tetap dipertahankan sebagai historical evidence, tetapi bukan Runtime Source of Truth saat ini.
+
 Document Status: Approved
 Phase: Completed (Phase B — Current Implementation Audit)
 Date: 2026-07-21

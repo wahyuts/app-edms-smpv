@@ -2120,7 +2120,27 @@ Bagian ini menetapkan Access Control resmi yang sesuai dengan implementasi saat 
 
 ## Current Implementation
 
-Authentication runtime menggunakan `AuthService`, IndexedDB `users` dan `userCredentials`, serta localStorage key `edms.currentUser`. Password reset menggunakan token lokal dengan TTL 15 menit dan mock email. Target produksi tetap wajib memindahkan session ke backend, hashing password, dan HttpOnly Cookie.
+Legacy / historical implementation:
+
+Authentication runtime menggunakan `AuthService`, IndexedDB `users` dan `userCredentials`, serta localStorage key `edms.currentUser`. Password reset menggunakan token lokal dengan TTL 15 menit dan mock email. Bagian ini adalah baseline fase frontend awal dan bukan runtime authority backend-integrated saat ini.
+
+Current backend-integrated runtime:
+
+- Authentication berjalan melalui Backend REST API:
+  - `POST /api/v1/auth/login`
+  - `POST /api/v1/auth/logout`
+  - `POST /api/v1/auth/refresh`
+  - `GET /api/v1/auth/me`
+  - `GET /api/v1/auth/profile`
+  - `POST /api/v1/auth/change-password`
+  - `PATCH /api/v1/profile`
+- Password reset berjalan melalui:
+  - `POST /api/v1/password/forgot`
+  - `POST /api/v1/password/reset`
+- Credential runtime disimpan dan divalidasi oleh backend/database dengan password hashing.
+- Frontend tetap memakai `AuthService` sebagai boundary, tetapi `AuthService` sekarang menjadi REST API client, bukan IndexedDB credential authority.
+- localStorage `edms.currentUser` hanya berfungsi sebagai frontend identity snapshot untuk UI/session bootstrap dan bukan canonical authentication authority.
+- Project-scoped authorization tetap memakai Active Project Context dan active `project_memberships.official_role`.
 
 Authorization runtime dipisahkan menjadi:
 

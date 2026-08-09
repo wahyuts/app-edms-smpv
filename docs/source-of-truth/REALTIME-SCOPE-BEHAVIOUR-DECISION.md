@@ -464,24 +464,26 @@ Seluruh consumer tidak boleh diimplementasikan dalam satu tahap besar.
 
 # 14. Realtime Event Catalogue
 
-| Event | Scope | Producer | Consumer |
-|---|---|---|---|
-| document.created | Project | Document Service | Dashboard, Document Register |
-| document.updated | Project | Document Service | Dashboard, Document Register, Detail |
-| document.archived | Project | Document Service | Dashboard, Document Register |
-| document.restored | Project | Document Service | Dashboard, Document Register |
-| revision.uploaded | Project | Revision Service | Document Register, Detail, Revision History |
-| workflow.changed | Project | Approval / Workflow Service | Dashboard, Register, Detail, SLA |
-| comment.created | Project | Workflow / Comment Service | Document Detail |
-| history.changed | Project | Workflow / Revision Service | Detail, Revision History |
-| notification.created | User + Project | Notification Service | Badge, Notification List |
-| notification.read | User + Project | Notification Service | Badge, Notification List |
-| notification.read_all | User + Project | Notification Service | Badge, Notification List |
-| notification.deleted | User + Project | Notification Service | Badge, Notification List |
-| sla.changed | Project | SLA Producer | Dashboard, SLA Monitoring |
-| escalation.changed | Project | SLA / Escalation Producer | Dashboard, Escalation Alert |
+| Event | Scope | Producer | Consumer | Current Runtime Status |
+|---|---|---|---|---|
+| document.created | Project | Document Service | Dashboard, Document Register | Active |
+| document.updated | Project | Document Service | Dashboard, Document Register, Detail | Active |
+| document.archived | Project | Document Service | Dashboard, Document Register | Active |
+| document.restored | Project | Document Service | Dashboard, Document Register | Active |
+| revision.uploaded | Project | Revision Service | Document Register, Detail, Revision History | Active |
+| workflow.changed | Project | Approval / Workflow Service | Dashboard, Register, Detail, SLA | Active |
+| comment.created | Project | Workflow / Comment Service | Document Detail / Comment Viewer | Active |
+| history.changed | Project | Workflow / Revision Service | Detail, Revision History | Reserved / Not Published In Current Runtime |
+| notification.created | User + Project | Notification Service | Badge, Notification List | Active |
+| notification.read | User + Project | Notification Service | Badge, Notification List | Active |
+| notification.read_all | User + Project | Notification Service | Badge, Notification List | Active |
+| notification.deleted | User + Project | Notification Service | Badge, Notification List | Active |
+| sla.changed | Project | SLA Producer | Dashboard, SLA Monitoring | Reserved / Not Published In Current Runtime |
+| escalation.changed | Project | SLA / Escalation Producer | Dashboard, Escalation Alert | Reserved / Not Published In Current Runtime |
 
 Event Catalogue ini merupakan catalogue v1.
+
+Status `Reserved / Not Published In Current Runtime` berarti event name sudah menjadi bagian dari canonical contract dan constant source code, tetapi producer runtime belum mengirim event tersebut. Consumer yang membutuhkan update final tetap wajib melakukan REST refetch melalui event lain, recovery, polling terkontrol yang sudah ada, atau lifecycle query existing sampai producer resmi diaktifkan.
 
 Event Audit Trail, User Presence, Document Locking, dan Collaborative Editing tidak termasuk scope awal.
 
