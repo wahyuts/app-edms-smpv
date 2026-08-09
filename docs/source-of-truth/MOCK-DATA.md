@@ -1419,6 +1419,13 @@ Seluruh React Component hanya berkomunikasi dengan Service Layer.
 
 Component tidak diperbolehkan membaca file JSON secara langsung.
 
+Current runtime alignment:
+
+- Fake API, Mock JSON, IndexedDB mock stores, dan local token simulation adalah **Legacy / Historical Frontend Baseline**.
+- Backend-integrated runtime saat ini menggunakan Backend REST API dan MySQL sebagai source data utama untuk scope yang sudah dimigrasikan.
+- Mock Data tetap dipertahankan sebagai seed/reference development dan historical parity document, bukan sebagai Runtime Source of Truth.
+- Component tetap tidak boleh membaca mock JSON secara langsung.
+
 ---
 
 # 7.2 Fake API Architecture
@@ -2198,7 +2205,15 @@ Dokumen ini juga menjadi referensi utama bagi Frontend Developer, Backend Develo
 
 ## Current Implementation
 
-Mock data dan local persistence saat ini menjadi runtime data source resmi untuk frontend.
+Legacy / historical implementation:
+
+Mock data dan local persistence menjadi runtime data source resmi untuk frontend pada fase sebelum Backend tersedia.
+
+Current backend-integrated runtime:
+
+- Backend REST API dan MySQL menjadi runtime data source resmi untuk scope yang sudah dimigrasikan.
+- Mock data dan local persistence dipertahankan sebagai historical baseline, seed/reference development, dan compatibility reference.
+- Mock password dan local token hanya berlaku untuk development simulation lama; runtime backend-integrated menggunakan backend credential store dan password hashing.
 
 IndexedDB database: `edms-file-storage`, version `10`.
 
@@ -2221,7 +2236,7 @@ Object store runtime:
 - `passwordResetTokens`
 - `mockEmails`
 
-Seed JSON yang dipakai Service Layer harus memuat users, Authorization Catalog untuk roles/permissions, projects, memberships, departments, documents, notifications, dan audit baseline yang konsisten dengan ACCESS-CONTROL.md dan BUSINESS-WORKFLOW.md.
+Seed JSON yang dipakai Service Layer pada legacy/mock mode harus memuat users, Authorization Catalog untuk roles/permissions, projects, memberships, departments, documents, notifications, dan audit baseline yang konsisten dengan ACCESS-CONTROL.md dan BUSINESS-WORKFLOW.md.
 
-Mock password dan local token hanya berlaku untuk development simulation. Production wajib menggunakan backend credential store dan password hashing.
+Production dan backend-integrated runtime wajib menggunakan backend credential store dan password hashing.
 

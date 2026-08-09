@@ -832,6 +832,9 @@ Workflow Status resmi yang harus didukung API Document Register adalah:
 | Audit Trail | /api/v1/audit-trails |
 | Storage NAS | /api/v1/storage (DEFERRED / NOT IMPLEMENTED as Storage NAS listing in current runtime) |
 | Temporary Upload | /api/v1/storage/temporary-uploads |
+| Realtime Events | /api/v1/events |
+| System Time | /api/v1/system/time |
+| SLA Notification Evaluation Job | /api/v1/system/sla-notifications/evaluate |
 
 ---
 
@@ -2205,6 +2208,9 @@ Candidate route dari audit atau dokumen historis yang berbeda dari dokumen ini d
 | `GET /api/v1/dashboard/summary` | active project query/context | summary cards | active project membership | `dashboard.view` | Read only | None |
 | `GET /api/v1/dashboard/statistics` | active project query/context | chart/statistics data | active project membership | `dashboard.view` | Read only | None |
 | `GET /api/v1/dashboard/recent-activities` | pagination/filter | recent activities | active project membership | `dashboard.view` | Read only | None |
+| `GET /api/v1/events` | active authentication context | Server-Sent Events stream | authenticated user and active project context | Authenticated | Realtime event stream | SSE heartbeat and project/user scoped event delivery |
+| `GET /api/v1/system/time` | none | canonical server time | public/read-only | Public | Read only | None |
+| `POST /api/v1/system/sla-notifications/evaluate` | internal job token | SLA notification evaluation result | internal token validation | Internal Job | SLA notification evaluation | May create idempotent SLA Warning/Overdue notifications |
 | `GET /api/v1/documents` | pagination, filter, sorting, project, search | document collection | project ownership | `document-register.view` | Read only | None |
 | `POST /api/v1/documents` | document metadata, `temporaryFileId` | document, revision, file metadata | form rules, temporary file rules, active project | `document-register.create` | Create Document | Audit, notification |
 | `GET /api/v1/documents/{id}` | document id | document detail | project ownership | `document-register.view` | Read only | None |
@@ -2265,6 +2271,13 @@ Historical / superseded blueprint routes:
 - `escalationSummary`
 - `currentAssigneeSummary`
 
+Runtime implementation note:
+
+- Dashboard API contract tetap stabil untuk frontend.
+- Backend dapat menggunakan dashboard-specific aggregate/query path untuk menghitung database-native metric secara SQL-side.
+- Shared legacy method seperti `listProjectDocumentRegister()` tidak boleh diubah destruktif hanya untuk optimasi Dashboard karena masih menjadi dependency SLA Monitoring dan Escalation Alert.
+- SLA dan Escalation metric yang bersifat business-derived harus tetap mengikuti semantics SLA/Escalation runtime yang berlaku.
+
 ### Unified Temporary Upload Contract
 
 Seluruh file yang dipilih user tetapi masih menunggu aksi Save atau Submit wajib melewati temporary upload terlebih dahulu.
@@ -2289,6 +2302,15 @@ Endpoint final berikut tidak menerima raw multipart file:
 | `POST /api/v1/documents/{id}/workflow-attachments` | `commentId`, `temporaryFileId` |
 
 Reuse `temporaryFileId`, penggunaan oleh user berbeda, file temporary yang sudah expired, atau storage temporary yang hilang wajib ditolak dan tidak boleh membuat permanent metadata.
+
+Runtime upload size configuration:
+
+- Backend default `UPLOAD_MAX_FILE_SIZE_BYTES` adalah `25 * 1024 * 1024` bytes apabila env tidak diisi.
+- Batas tersebut dapat dioverride melalui environment variable `UPLOAD_MAX_FILE_SIZE_BYTES`.
+- Frontend UI saat ini menampilkan batas upload `100 MB`.
+- Railway development saat ini meng-override backend upload limit menjadi `100 MB` agar sinkron dengan UI.
+- Environment lain wajib memastikan `UPLOAD_MAX_FILE_SIZE_BYTES` diset sesuai batas upload yang ditampilkan frontend.
+- `UPLOAD_TEMPORARY_TTL_HOURS` mengatur masa berlaku temporary upload; default backend adalah `24` jam dan dapat dioverride melalui env.
 
 ### Canonical Storage Contract
 
