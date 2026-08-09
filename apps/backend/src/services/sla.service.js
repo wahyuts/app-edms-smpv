@@ -72,7 +72,7 @@ const listSlaDocuments = async ({ activeProject, query = {}, userId }) => {
     userId,
   });
   const statusFilter = normalizeText(query.slaStatus);
-  const documents = await documentRepository.listProjectDocumentRegister(projectId, { userId });
+  const documents = await documentRepository.listSlaMonitoringDocumentsByProject(projectId, { userId });
   const filteredDocuments = statusFilter && Object.values(SLA_STATUS).includes(statusFilter)
     ? documents.filter((document) => document.slaStatus === statusFilter)
     : documents;

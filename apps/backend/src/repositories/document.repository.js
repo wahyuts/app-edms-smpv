@@ -192,6 +192,54 @@ const mapDocumentRegisterRow = (row) => row && ({
   ...evaluateSla(row),
 });
 
+const mapSlaMonitoringDocumentRow = (row) => row && ({
+  id: row.id,
+  projectId: row.project_id,
+  projectCode: row.project_code,
+  projectName: row.project_name,
+  documentTypeId: row.document_type_id,
+  documentTypeCode: row.document_type_code,
+  documentTypeName: row.document_type_name,
+  documentNumber: row.document_number,
+  description: row.description,
+  drawing: row.drawing,
+  area: row.area,
+  revision: row.revision_label,
+  revisionLabel: row.revision_label,
+  status: row.workflow_status,
+  workflowStatus: row.workflow_status,
+  lifecycle: row.lifecycle_status,
+  lifecycleStatus: row.lifecycle_status,
+  responsibleRole: row.responsible_role,
+  currentAssigneeUserId: row.current_assignee_user_id,
+  currentAssignee: row.current_assignee_name,
+  currentAssigneeName: row.current_assignee_name,
+  daysUntilValidation: Number(row.days_until_validation),
+  slaStartedAt: row.sla_started_at,
+  slaStoppedAt: row.sla_stopped_at,
+  slaAssigneeNameSnapshot: row.sla_assignee_name_snapshot,
+  createdDate: row.created_at,
+  createdAt: row.created_at,
+  createdByUserId: row.created_by_user_id,
+  createdBy: row.created_by_name,
+  lastUpdated: row.updated_at,
+  updatedAt: row.updated_at,
+  updatedByUserId: row.updated_by_user_id,
+  lastUpdatedBy: row.updated_by_name,
+  archivedAt: row.archived_at,
+  archivedByUserId: row.archived_by_user_id,
+  archiveReason: row.archive_reason,
+  restoredAt: row.restored_at,
+  restoredByUserId: row.restored_by_user_id,
+  activeRevisionId: row.active_revision_id,
+  activeFileId: row.active_file_id,
+  fileMetadata: null,
+  activeFile: null,
+  hasUnreadComments: Number(row.unread_comment_count || 0) > 0,
+  unreadCommentCount: Number(row.unread_comment_count || 0),
+  ...evaluateSla(row),
+});
+
 const mapDocumentHistoryRow = (row) => row && ({
   id: row.id,
   projectId: row.project_id,
@@ -539,6 +587,70 @@ const listProjectDocumentRegister = async (projectId, { userId = 0 } = {}) => {
   );
 
   return rows.map(mapDocumentRegisterRow);
+};
+
+const listSlaMonitoringDocumentsByProject = async (projectId, { userId = 0 } = {}) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        documents.id,
+        documents.project_id,
+        documents.document_type_id,
+        documents.document_number,
+        documents.description,
+        documents.drawing,
+        documents.area,
+        documents.days_until_validation,
+        documents.workflow_status,
+        documents.lifecycle_status,
+        documents.revision_label,
+        documents.responsible_role,
+        documents.current_assignee_user_id,
+        documents.active_revision_id,
+        documents.active_file_id,
+        documents.created_by_user_id,
+        documents.created_at,
+        documents.updated_at,
+        documents.updated_by_user_id,
+        documents.archived_at,
+        documents.archived_by_user_id,
+        documents.archive_reason,
+        documents.restored_at,
+        documents.restored_by_user_id,
+        documents.sla_started_at,
+        documents.sla_stopped_at,
+        documents.sla_assignee_name_snapshot,
+        projects.project_code,
+        projects.project_name,
+        document_types.document_type_code,
+        document_types.document_type_name,
+        current_assignee.full_name AS current_assignee_name,
+        created_by.full_name AS created_by_name,
+        updated_by.full_name AS updated_by_name,
+        (
+          SELECT COUNT(*)
+          FROM workflow_comments unread_comments
+          LEFT JOIN comment_read_receipts read_receipts
+            ON read_receipts.comment_id = unread_comments.id
+           AND read_receipts.user_id = ?
+          WHERE unread_comments.project_id = documents.project_id
+            AND unread_comments.document_id = documents.id
+            AND unread_comments.created_by_user_id <> ?
+            AND read_receipts.id IS NULL
+        ) AS unread_comment_count
+      FROM engineering_documents documents
+      INNER JOIN projects ON projects.id = documents.project_id
+      LEFT JOIN document_types ON document_types.id = documents.document_type_id
+      LEFT JOIN users current_assignee ON current_assignee.id = documents.current_assignee_user_id
+      LEFT JOIN users created_by ON created_by.id = documents.created_by_user_id
+      LEFT JOIN users updated_by ON updated_by.id = documents.updated_by_user_id
+      WHERE documents.project_id = ?
+      ORDER BY documents.updated_at DESC, documents.id ASC
+    `,
+    [userId || 0, userId || 0, projectId]
+  );
+
+  return rows.map(mapSlaMonitoringDocumentRow);
 };
 
 const getDashboardKpiSummaryByProject = async (projectId) => {
@@ -1231,6 +1343,7 @@ module.exports = {
   listDocumentRevisions,
   listDashboardSlaCandidateDocumentsByProject,
   listSlaNotificationCandidateDocuments,
+  listSlaMonitoringDocumentsByProject,
   listProjectDocumentRegister,
   listWorkflowComments,
   markWorkflowCommentsReadForUser,
