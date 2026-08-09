@@ -24,6 +24,83 @@ const mapNotificationRow = (row) => row && ({
   metadata: normalizeJsonMetadata(row.metadata),
 });
 
+const notificationSelectColumns = `
+  id, identity_key, project_id, recipient_user_id, recipient_project_membership_id,
+  event_type, title, message, priority, official_role, recipient_role,
+  related_resource_type, related_resource_id, related_document_number,
+  action_target, is_read, read_at, created_at, metadata
+`;
+
+const notificationSortColumns = Object.freeze({
+  createdAt: 'created_at',
+  eventType: 'event_type',
+  priority: 'priority',
+  readStatus: "CASE WHEN is_read = 1 THEN 'Read' ELSE 'Unread' END",
+  title: 'title',
+});
+
+const buildNotificationWhere = ({
+  eventType,
+  projectId,
+  readStatus,
+  recipientUserId,
+  search,
+}) => {
+  const conditions = [
+    'recipient_user_id = ?',
+    'project_id = ?',
+  ];
+  const params = [recipientUserId, projectId];
+
+  if (search) {
+    const searchPattern = `%${String(search).toLowerCase()}%`;
+    conditions.push(`(
+      LOWER(COALESCE(title, '')) LIKE ?
+      OR LOWER(COALESCE(message, '')) LIKE ?
+      OR LOWER(COALESCE(event_type, '')) LIKE ?
+      OR LOWER(COALESCE(related_document_number, '')) LIKE ?
+      OR LOWER(CASE WHEN is_read = 1 THEN 'Read' ELSE 'Unread' END) LIKE ?
+    )`);
+    params.push(
+      searchPattern,
+      searchPattern,
+      searchPattern,
+      searchPattern,
+      searchPattern
+    );
+  }
+  if (eventType) {
+    conditions.push('event_type = ?');
+    params.push(eventType);
+  }
+  if (readStatus) {
+    const normalizedReadStatus = String(readStatus).toLowerCase();
+    if (normalizedReadStatus === 'read') {
+      conditions.push('is_read = 1');
+    } else if (normalizedReadStatus === 'unread') {
+      conditions.push('is_read = 0');
+    } else {
+      conditions.push('1 = 0');
+    }
+  }
+
+  return {
+    clause: `WHERE ${conditions.join(' AND ')}`,
+    params,
+  };
+};
+
+const createNotificationOrderClause = ({ direction, sortBy }) => {
+  const sortColumn = notificationSortColumns[sortBy] || notificationSortColumns.createdAt;
+  const order = direction === 'asc' ? 'ASC' : 'DESC';
+
+  if (sortColumn === 'created_at') {
+    return `ORDER BY created_at ${order}, id DESC`;
+  }
+
+  return `ORDER BY ${sortColumn} ${order}, created_at DESC, id DESC`;
+};
+
 const createNotification = async (notification) => {
   const [result] = await pool.execute(
     `
@@ -57,6 +134,51 @@ const createNotification = async (notification) => {
   return result.affectedRows;
 };
 
+const listNotificationsPageByRecipient = async ({
+  direction,
+  eventType,
+  limit,
+  offset,
+  projectId,
+  readStatus,
+  recipientUserId,
+  search,
+  sortBy,
+}) => {
+  const where = buildNotificationWhere({
+    eventType,
+    projectId,
+    readStatus,
+    recipientUserId,
+    search,
+  });
+  const orderClause = createNotificationOrderClause({ direction, sortBy });
+
+  const [rows] = await pool.query(
+    `
+      SELECT ${notificationSelectColumns}
+      FROM notifications
+      ${where.clause}
+      ${orderClause}
+      LIMIT ? OFFSET ?
+    `,
+    [...where.params, limit, offset]
+  );
+  const [countRows] = await pool.query(
+    `
+      SELECT COUNT(*) AS total
+      FROM notifications
+      ${where.clause}
+    `,
+    where.params
+  );
+
+  return {
+    rows: rows.map(mapNotificationRow),
+    totalItems: Number(countRows[0]?.total || 0),
+  };
+};
+
 const findNotificationById = async (notificationId) => {
   const [rows] = await pool.execute(
     `
@@ -84,6 +206,42 @@ const listNotificationsByRecipient = async ({ projectId, recipientUserId }) => {
   );
 
   return rows.map(mapNotificationRow);
+};
+
+const getNotificationSummaryByRecipient = async ({ projectId, recipientUserId }) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unread,
+        SUM(CASE WHEN is_read = 1 THEN 1 ELSE 0 END) AS read_count
+      FROM notifications
+      WHERE recipient_user_id = ?
+        AND project_id = ?
+    `,
+    [recipientUserId, projectId]
+  );
+
+  return {
+    read: Number(rows[0]?.read_count || 0),
+    total: Number(rows[0]?.total || 0),
+    unread: Number(rows[0]?.unread || 0),
+  };
+};
+
+const countUnreadNotificationsByRecipient = async ({ projectId, recipientUserId }) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT COUNT(*) AS unread
+      FROM notifications
+      WHERE recipient_user_id = ?
+        AND project_id = ?
+        AND is_read = 0
+    `,
+    [recipientUserId, projectId]
+  );
+
+  return Number(rows[0]?.unread || 0);
 };
 
 const listSlaNotificationsByBusinessKey = async ({
@@ -168,11 +326,14 @@ const deleteNotifications = async ({ notificationIds, projectId, recipientUserId
 };
 
 module.exports = {
+  countUnreadNotificationsByRecipient,
   createNotification,
   deleteNotification,
   deleteNotifications,
   findNotificationById,
+  getNotificationSummaryByRecipient,
   listSlaNotificationsByBusinessKey,
+  listNotificationsPageByRecipient,
   listNotificationsByRecipient,
   markAllNotificationsRead,
   markNotificationRead,

@@ -482,46 +482,24 @@ const listCurrentUserNotifications = async ({ activeProject, query = {}, userId 
     allowedSortBy: ['createdAt', 'eventType', 'priority', 'readStatus', 'title'],
     defaultSortBy: 'createdAt',
   });
-  const search = listQuery.search.toLowerCase();
-  const eventType = normalizeText(query.eventType);
-  const readStatus = normalizeText(query.readStatus);
-  let notifications = await notificationRepository.listNotificationsByRecipient({
+  const result = await notificationRepository.listNotificationsPageByRecipient({
+    direction: listQuery.direction,
+    eventType: normalizeText(query.eventType),
+    limit: listQuery.limit,
+    offset: listQuery.offset,
     projectId,
+    readStatus: normalizeText(query.readStatus),
     recipientUserId: userId,
+    search: listQuery.search.toLowerCase(),
+    sortBy: listQuery.sortBy,
   });
-
-  if (search) {
-    notifications = notifications.filter((notification) => [
-      notification.title,
-      notification.message,
-      notification.eventType,
-      notification.relatedDocumentNumber,
-      notification.readStatus,
-    ].some((value) => normalizeText(value).toLowerCase().includes(search)));
-  }
-  if (eventType) {
-    notifications = notifications.filter((notification) => notification.eventType === eventType);
-  }
-  if (readStatus) {
-    notifications = notifications.filter((notification) => notification.readStatus === readStatus);
-  }
-
-  notifications.sort((first, second) => {
-    const firstValue = first[listQuery.sortBy] ?? first.createdAt;
-    const secondValue = second[listQuery.sortBy] ?? second.createdAt;
-    if (firstValue === secondValue) return 0;
-    const result = firstValue > secondValue ? 1 : -1;
-    return listQuery.direction === 'asc' ? result : -result;
-  });
-
-  const pagedNotifications = notifications.slice(listQuery.offset, listQuery.offset + listQuery.limit);
 
   return {
-    data: pagedNotifications,
+    data: result.rows,
     pagination: buildPagination({
       page: listQuery.page,
       pageSize: listQuery.pageSize,
-      totalItems: notifications.length,
+      totalItems: result.totalItems,
     }),
   };
 };
@@ -532,16 +510,24 @@ const getCurrentUserNotificationSummary = async ({ activeProject, query = {}, us
     queryProjectId: normalizeText(query.projectId),
     userId,
   });
-  const notifications = await notificationRepository.listNotificationsByRecipient({
+  return notificationRepository.getNotificationSummaryByRecipient({
     projectId,
     recipientUserId: userId,
   });
-  const unread = notifications.filter((notification) => !notification.read).length;
+};
+
+const getCurrentUserUnreadNotificationCount = async ({ activeProject, query = {}, userId }) => {
+  const projectId = await resolveProjectId({
+    activeProject,
+    queryProjectId: normalizeText(query.projectId),
+    userId,
+  });
 
   return {
-    read: notifications.length - unread,
-    total: notifications.length,
-    unread,
+    unread: await notificationRepository.countUnreadNotificationsByRecipient({
+      projectId,
+      recipientUserId: userId,
+    }),
   };
 };
 
@@ -623,6 +609,7 @@ module.exports = {
   createDocumentNotificationsForOfficialRoles,
   createSlaStateNotifications,
   deleteNotifications,
+  getCurrentUserUnreadNotificationCount,
   getCurrentUserNotificationSummary,
   listCurrentUserNotifications,
   markAllAsRead,

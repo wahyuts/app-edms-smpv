@@ -33,15 +33,13 @@ const getSummary = async (req, res, next) => {
 
 const getUnreadCount = async (req, res, next) => {
   try {
-    const summary = await notificationService.getCurrentUserNotificationSummary({
-      activeProject: req.activeProject,
-      query: req.query,
-      userId: req.user.id,
-    });
-
     return successResponse(res, {
       message: 'Unread Notification Berhasil Dimuat',
-      data: { unread: summary.unread },
+      data: await notificationService.getCurrentUserUnreadNotificationCount({
+        activeProject: req.activeProject,
+        query: req.query,
+        userId: req.user.id,
+      }),
     });
   } catch (error) {
     next(error);
