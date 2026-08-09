@@ -4,6 +4,8 @@ Document status: Technical Audit Artifact
 Phase: Phase 1 - Database Readiness Audit  
 Date: 2026-07-21  
 Scope boundary: Audit and analysis only. This document is not a new Source of Truth.
+Current status: Historical / Legacy Readiness Audit  
+Runtime alignment: Source code saat ini sudah memiliki backend Express, MySQL schema/runtime, repository/service/controller layer, storage metadata, temporary upload lifecycle, notification/audit/SLA support, dan realtime SSE. Pernyataan seperti backend absent, IndexedDB sebagai runtime utama, atau endpoint candidate lama pada dokumen ini dipertahankan sebagai historical context dan tidak menggantikan `DATABASE-SCHEMA.md`, `API-CONTRACT.md`, `BACKEND-FOUNDATION.md`, atau source code runtime terbaru.
 
 ## 1. Executive Summary
 

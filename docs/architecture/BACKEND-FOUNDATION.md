@@ -50,8 +50,13 @@ Jika terjadi konflik, urutan di atas menjadi prioritas.
   Authentication   JWT
   Password Hash    bcrypt
   Token Storage    HttpOnly Cookie
-  File Upload      Multer
-  Storage          Backend Managed Local Storage
+  File Upload      Busboy Streaming Upload
+  Storage          Backend Managed Local Storage / Cloudflare R2
+
+Historical Note:
+
+- `Multer` adalah konsep upload lama pada fase awal backend.
+- Runtime saat ini menggunakan Busboy-based streaming upload agar penggunaan memory lebih terkendali saat file besar diproses.
 
 ## Environment Convention
 
@@ -91,7 +96,36 @@ REFRESH_TOKEN_EXPIRES_IN=
 CORS_ALLOWED_ORIGINS=
 STORAGE_PATH=
 BCRYPT_ROUNDS=
+MYSQL_CONNECTION_LIMIT=
+UPLOAD_MAX_FILE_SIZE_BYTES=
+UPLOAD_TEMPORARY_TTL_HOURS=
+STORAGE_DRIVER=
+R2_ACCOUNT_ID=
+R2_BUCKET_NAME=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_ENDPOINT=
+R2_REGION=
+R2_PUBLIC_BASE_URL=
+SLA_NOTIFICATION_SCHEDULER_ENABLED=
+SLA_NOTIFICATION_SCHEDULER_INTERVAL_MS=
+SLA_NOTIFICATION_BATCH_SIZE=
+SLA_NOTIFICATION_JOB_TOKEN=
+TEMPORARY_UPLOAD_CLEANUP_SCHEDULER_ENABLED=
+TEMPORARY_UPLOAD_CLEANUP_INTERVAL_MS=
+TEMPORARY_UPLOAD_CLEANUP_BATCH_SIZE=
 ```
+
+Runtime env notes:
+
+- `APP_ENV` menerima `development`, `test`, `staging`, atau `production`.
+- `MYSQL_CONNECTION_LIMIT` bersifat optional dan default backend adalah `10`.
+- `UPLOAD_MAX_FILE_SIZE_BYTES` bersifat optional dan default backend adalah `25 * 1024 * 1024` bytes.
+- Railway development saat ini dapat meng-override `UPLOAD_MAX_FILE_SIZE_BYTES` menjadi `100 MB` agar selaras dengan batas upload yang ditampilkan frontend.
+- `UPLOAD_TEMPORARY_TTL_HOURS` bersifat optional dan default backend adalah `24` jam.
+- `STORAGE_DRIVER` menerima `local` atau `r2`.
+- Env `R2_*` wajib tersedia apabila `STORAGE_DRIVER=r2`.
+- Scheduler SLA Notification dan Temporary Upload Cleanup dikendalikan melalui env masing-masing dan tidak mengubah Business Workflow.
 
 ------------------------------------------------------------------------
 

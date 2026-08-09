@@ -624,3 +624,18 @@ Keputusan Stage 6.2 sebelum implementasi Realtime Workflow:
 - Jika expected state tidak lagi cocok dengan canonical database state, backend mengembalikan HTTP `409 Conflict` dengan code `WORKFLOW_CONFLICT` atau `REVISION_CONFLICT`.
 - Frontend wajib menutup modal stale, melakukan refetch data terkait, dan menampilkan pesan bahwa dokumen telah diperbarui oleh pengguna lain.
 - Optimistic Concurrency menjadi prasyarat resmi sebelum Workflow Realtime/SSE diaktifkan.
+
+---
+
+# CURRENT RUNTIME DOCUMENTATION ALIGNMENT DECISION
+
+Keputusan setelah backend integration, storage hardening, realtime implementation, dan Priority 3 SQL optimization:
+
+- Backend REST API, MySQL, HttpOnly Cookie/auth token flow, Local Storage driver, Cloudflare R2 driver, temporary upload pipeline, scheduler backend, dan SSE realtime adalah current runtime untuk scope yang sudah dimigrasikan.
+- Fake API, mock JSON, IndexedDB business persistence, browser file storage, local workflow engine, local revision engine, dan local history builder tetap dipertahankan sebagai historical/frontend baseline dan tidak boleh dihapus dari dokumentasi lama tanpa alasan, tetapi harus diberi label Legacy / Historical Reference.
+- `UPLOAD_MAX_FILE_SIZE_BYTES` default backend adalah `25 * 1024 * 1024` bytes dan dapat dioverride melalui env.
+- Railway development saat ini meng-override `UPLOAD_MAX_FILE_SIZE_BYTES` menjadi `100 MB` agar selaras dengan UI upload.
+- `UPLOAD_TEMPORARY_TTL_HOURS` default backend adalah `24` jam dan dapat dioverride melalui env.
+- `STORAGE_DRIVER` mendukung `local` dan `r2`; R2 env wajib hanya ketika `STORAGE_DRIVER=r2`.
+- Dashboard Priority 3C menggunakan dashboard-specific SQL aggregate/query path tanpa mengubah destructive shared method `listProjectDocumentRegister()` yang masih dipakai SLA Monitoring dan Escalation Alert legacy path.
+- Realtime event names `history.changed`, `sla.changed`, dan `escalation.changed` saat ini berstatus reserved apabila constant sudah tersedia tetapi producer runtime belum aktif.

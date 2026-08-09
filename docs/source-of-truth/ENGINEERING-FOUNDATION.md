@@ -123,6 +123,8 @@ Business -\> PRD -\> Engineering Documents -\> Codex -\> Source Code
 
 ## Current Implementation
 
+Legacy / historical frontend baseline:
+
 Foundation runtime saat ini:
 
 - React + Vite sebagai frontend.
@@ -133,6 +135,16 @@ Foundation runtime saat ini:
 - Service Layer sebagai boundary data access.
 - Fake API, mock JSON, IndexedDB, dan localStorage sebagai runtime persistence development.
 
+Current backend-integrated runtime:
+
+- React + Vite tetap menjadi frontend.
+- React Router tetap menjadi routing frontend.
+- TanStack Query menjadi server-state manager untuk Backend REST API, invalidation, refetch, realtime recovery, dan cache.
+- Zustand tetap menjadi global UI/project context state.
+- Service Layer frontend tetap menjadi boundary data access, tetapi untuk scope backend-integrated service tersebut memanggil Backend REST API.
+- Backend REST API, MySQL, HttpOnly Cookie/auth token flow, Local Storage driver, Cloudflare R2 driver, temporary upload pipeline, and realtime SSE menjadi runtime aktif untuk scope yang sudah dimigrasikan.
+- Fake API, mock JSON, IndexedDB business persistence, local workflow engine, local revision engine, dan local history builder dinyatakan **Legacy / Historical Frontend Baseline**.
+
 ## Target Architecture
 
 Target produksi tetap:
@@ -140,10 +152,10 @@ Target produksi tetap:
 - Frontend tidak memanggil database atau storage production langsung.
 - Backend REST API menjadi owner business enforcement production.
 - Authentication production menggunakan secure backend session dan HttpOnly Cookie.
-- Database production mengikuti DATABASE-SCHEMA.md setelah backend tersedia.
-- File storage production mengikuti STORAGE-STRATEGY.md setelah backend tersedia.
+- Database production mengikuti DATABASE-SCHEMA.md dan saat ini sudah direpresentasikan oleh MySQL runtime.
+- File storage production mengikuti STORAGE-STRATEGY.md dan saat ini didukung oleh Local Storage driver serta Cloudflare R2 driver.
 
-Selama backend belum tersedia, Service Layer frontend menjadi executable reference untuk behaviour yang harus dipertahankan oleh backend.
+Selama fase backend belum tersedia, Service Layer frontend menjadi executable reference untuk behaviour yang harus dipertahankan oleh backend. Pernyataan tersebut sekarang berstatus **Legacy / Historical Context** untuk scope yang sudah backend-integrated.
 
 ---
 
