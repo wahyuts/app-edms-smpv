@@ -302,6 +302,68 @@ class LocalStorageDriver {
 
     return summary;
   }
+
+  async cleanupDevelopmentStorage() {
+    const roots = [
+      { label: STORAGE_DIRECTORIES.PROJECTS, path: getProjectsRootPath() },
+      { label: STORAGE_DIRECTORIES.TEMPORARY, path: getTemporaryRootPath() },
+    ];
+    const summary = {
+      deletedEntries: 0,
+      driver: this.name,
+      failed: 0,
+      roots: roots.map((root) => root.label),
+      scannedEntries: 0,
+      supported: true,
+    };
+
+    await this.initialize();
+
+    for (const root of roots) {
+      let entries;
+
+      try {
+        entries = await fs.readdir(root.path, { withFileTypes: true });
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          await fs.mkdir(root.path, { recursive: true });
+          continue;
+        }
+
+        throw normalizeStorageError(error, `list local ${root.label} storage`);
+      }
+
+      for (const entry of entries) {
+        summary.scannedEntries += 1;
+
+        const targetPath = path.join(root.path, entry.name);
+        const relativePath = path.relative(root.path, path.resolve(targetPath));
+        const isOutsideRoot = relativePath.startsWith('..') || path.isAbsolute(relativePath);
+
+        if (!relativePath || isOutsideRoot) {
+          summary.failed += 1;
+          continue;
+        }
+
+        try {
+          await fs.rm(targetPath, { force: true, recursive: true });
+          summary.deletedEntries += 1;
+        } catch (error) {
+          summary.failed += 1;
+          logger.error(
+            '[STORAGE]',
+            'event=development_storage_cleanup_item_failed',
+            `root=${root.label}`,
+            `errorCode=${error.code || error.name || 'StorageCleanupError'}`
+          );
+        }
+      }
+
+      await fs.mkdir(root.path, { recursive: true });
+    }
+
+    return summary;
+  }
 }
 
 module.exports = LocalStorageDriver;

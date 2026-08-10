@@ -85,3 +85,90 @@ Frontend Integration
 
 Phase 8
 Final Validation
+
+
+Saya sudah baca hasil implementasi Codex-nya. Secara keseluruhan arah implementasinya sudah benar dan safety guard-nya bekerja, tetapi statusnya memang belum boleh kita anggap selesai karena Local E2E berhenti pada masalah database lokal yang sudah ada sebelumnya, bukan pada logic reset itu sendiri.
+
+Yang paling penting, Codex tidak melakukan tindakan berbahaya saat menemukan masalah tersebut. Ia tidak menjalankan DROP TABLE, tidak rebuild schema, tidak mencoba memperbaiki database diam-diam, dan data utama tetap utuh setelah transaction gagal. Itu sesuai hard rule prompt kita.
+
+Masalah aktualnya sangat spesifik:
+
+password_reset_tokens
+
+masih terdaftar pada metadata MySQL, tetapi ketika engine mencoba mengakses tabel tersebut muncul:
+
+Table 'edms_smpv_dev.password_reset_tokens'
+doesn't exist in engine
+
+Ini biasanya berarti kita punya kondisi ghost/broken table metadata: dari sisi information_schema tabel terlihat ada, tetapi storage engine MySQL tidak bisa membuka physical table-nya. Karena implementation reset sekarang melakukan preflight semua base table sebelum mutasi, reset sengaja dihentikan sebelum data lain dibersihkan.
+
+Status yang menurut saya paling tepat sekarang adalah:
+
+Development Environment Reset
+Implementation          = COMPLETE
+Static Validation       = PASS
+Security Guards         = PASS
+Seed Runtime Sync       = PASS
+
+Local Destructive E2E   = BLOCKED
+Reason                  = Broken local MySQL table:
+                          password_reset_tokens
+
+Online UAT              = NOT STARTED
+Final Status            = NOT CLOSED
+
+Beberapa bagian implementasinya juga terlihat sehat. Endpoint baru sudah berada di /api/v1/development/reset, backend menggunakan explicit APP_ENV === development, reset feature flag default false, endpoint membutuhkan auth/Admin/permission, canonical seed tetap database/seed/seed-base.sql, runtime copy punya checksum, seed-demo.sql tidak dipakai, dan storage cleanup dibatasi ke scope configured storage.
+
+Jadi jangan revert implementation ini hanya karena E2E gagal.
+
+Yang harus kita selesaikan berikutnya bukan lagi coding fitur Reset Demo Data, tetapi database maintenance lokal untuk password_reset_tokens.
+
+Dan saya sarankan itu dipisahkan menjadi task kecil tersendiri, karena kita harus menjawab tiga hal sebelum menyentuh tabel:
+
+1. Apakah password_reset_tokens seharusnya memang ada
+   menurut DATABASE-SCHEMA / migration saat ini?
+
+2. Apakah tabel hanya rusak di XAMPP/local database,
+   atau definition/migration project juga bermasalah?
+
+3. Jika tabel memang canonical:
+   bagaimana repair paling minimal dan aman
+   tanpa mempengaruhi tabel lain?
+
+Kita jangan langsung menyuruh Codex:
+
+DROP TABLE password_reset_tokens;
+CREATE TABLE ...
+
+meskipun kemungkinan ujungnya memang perlu recreate tabel tersebut. Pertama audit definition authoritative-nya.
+
+Urutan aman menurut saya:
+
+Current local DB
+↓
+Audit password_reset_tokens canonical definition
+↓
+Compare migration/schema vs MySQL metadata
+↓
+Confirm ghost/broken-table condition
+↓
+Repair ONLY password_reset_tokens
+↓
+Verify table accessible
+↓
+Rerun Development Reset Local E2E
+↓
+If PASS
+→ Manual Railway/R2 UAT
+
+Ada satu poin penting lagi: masalah ini tidak berarti Railway MySQL juga rusak. Evidence yang diberikan Codex hanya membuktikan masalah pada database lokal edms_smpv_dev. Jadi jangan melakukan apa pun ke Railway berdasarkan hasil ini.
+
+Kesimpulan saya:
+
+Implementation Development Reset kita tetap dipertahankan.
+
+Blocker sekarang adalah local database health, bukan reset implementation.
+
+Saya juga setuju dengan keputusan Codex menambahkan table-access preflight. Itu malah membuat reset lebih aman ke depannya: jika ada tabel lain yang corrupt, endpoint berhenti sebelum melakukan destructive mutation.
+
+Langkah berikutnya yang paling tepat adalah kita buat prompt audit + repair khusus password_reset_tokens local MySQL, dengan scope sangat ketat: hanya tabel itu, Local Development saja, no Railway, no unrelated schema changes. Setelah repair PASS, baru kita ulang Local E2E reset.

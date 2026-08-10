@@ -637,5 +637,7 @@ Keputusan setelah backend integration, storage hardening, realtime implementatio
 - Railway development saat ini meng-override `UPLOAD_MAX_FILE_SIZE_BYTES` menjadi `100 MB` agar selaras dengan UI upload.
 - `UPLOAD_TEMPORARY_TTL_HOURS` default backend adalah `24` jam dan dapat dioverride melalui env.
 - `STORAGE_DRIVER` mendukung `local` dan `r2`; R2 env wajib hanya ketika `STORAGE_DRIVER=r2`.
-- Dashboard Priority 3C menggunakan dashboard-specific SQL aggregate/query path tanpa mengubah destructive shared method `listProjectDocumentRegister()` yang masih dipakai SLA Monitoring dan Escalation Alert legacy path.
+- Dashboard Priority 3C menggunakan dashboard-specific SQL aggregate/query path.
+- SLA Monitoring Priority 3D menggunakan SLA-specific query path dan tidak lagi bergantung pada `listProjectDocumentRegister()`.
+- Shared legacy method `listProjectDocumentRegister()` tetap tidak boleh diubah destruktif karena masih menjadi dependency Escalation Alert legacy path sampai Priority 3E diputuskan/diimplementasikan.
 - Realtime event names `history.changed`, `sla.changed`, dan `escalation.changed` saat ini berstatus reserved apabila constant sudah tersedia tetapi producer runtime belum aktif.

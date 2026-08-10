@@ -5,6 +5,8 @@ const {
   HeadObjectCommand,
   CopyObjectCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
+  ListObjectsV2Command,
 } = require('@aws-sdk/client-s3');
 const { Upload } = require('@aws-sdk/lib-storage');
 const logger = require('../../config/logger');
@@ -269,6 +271,54 @@ class R2StorageDriver {
     }
 
     return this.delete(storageKey);
+  }
+
+  async cleanupDevelopmentStorage() {
+    const prefixes = [
+      `${STORAGE_DIRECTORIES.PROJECTS}/`,
+      `${STORAGE_DIRECTORIES.TEMPORARY}/`,
+    ];
+    const summary = {
+      deletedObjects: 0,
+      driver: this.name,
+      failed: 0,
+      prefixes,
+      scannedObjects: 0,
+      supported: true,
+    };
+
+    for (const prefix of prefixes) {
+      let continuationToken;
+
+      do {
+        const response = await this.client.send(
+          new ListObjectsV2Command({
+            Bucket: this.config.bucketName,
+            ContinuationToken: continuationToken,
+            Prefix: prefix,
+          })
+        );
+        const objects = response.Contents || [];
+        summary.scannedObjects += objects.length;
+
+        if (objects.length > 0) {
+          await this.client.send(
+            new DeleteObjectsCommand({
+              Bucket: this.config.bucketName,
+              Delete: {
+                Objects: objects.map((object) => ({ Key: object.Key })),
+                Quiet: true,
+              },
+            })
+          );
+          summary.deletedObjects += objects.length;
+        }
+
+        continuationToken = response.IsTruncated ? response.NextContinuationToken : null;
+      } while (continuationToken);
+    }
+
+    return summary;
   }
 }
 
