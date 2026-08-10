@@ -10,10 +10,15 @@ import {
   useRealtimeNotificationSync,
 } from "@/features/notification";
 import ActiveProjectSelector from "@/features/project/components/ActiveProjectSelector";
+import { queryClient } from "@/shared/api/query-client";
 import { useToast } from "@/shared/components/toast";
 import { usePermission } from "@/shared/hooks/usePermission";
 import { useOutsideClick } from "@/shared/hooks/useOutsideClick";
-import { useRealtimeClient } from "@/shared/realtime";
+import {
+  REALTIME_EVENT_TYPE,
+  useRealtimeClient,
+  useRealtimeEvent,
+} from "@/shared/realtime";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "edms.sidebar.collapsed";
@@ -55,6 +60,7 @@ const AppShell = ({ children }) => {
     activeOfficialRole,
     clearProjectContext,
     setProjectContext,
+    setProjectContextError,
     setProjectContextLoading,
   } = useProjectContextStore();
   const { data: unreadNotificationCount = 0 } =
@@ -65,6 +71,36 @@ const AppShell = ({ children }) => {
   const closeUserMenu = useCallback(() => {
     setIsUserMenuOpen(false);
   }, []);
+
+  const refreshProjectContextFromRealtime = useCallback(async (event) => {
+    if (event.type !== REALTIME_EVENT_TYPE.PROJECT_MEMBERSHIP_CHANGED) return;
+    if (String(event.recipientUserId ?? "") !== String(currentUser?.id ?? "")) return;
+
+    try {
+      setProjectContextLoading(true);
+      const response = await AuthService.completeProjectSelection();
+      const context = response.data;
+
+      setProjectContext(context);
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["audit-trail"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      queryClient.invalidateQueries({ queryKey: ["sla-monitoring"] });
+      queryClient.invalidateQueries({ queryKey: ["escalation"] });
+    } catch (error) {
+      setProjectContextError(
+        error instanceof Error ? error.message : "Project context refresh failed.",
+      );
+    }
+  }, [
+    currentUser?.id,
+    setProjectContext,
+    setProjectContextError,
+    setProjectContextLoading,
+  ]);
+
+  useRealtimeEvent(refreshProjectContextFromRealtime);
 
   useOutsideClick({
     enabled: isUserMenuVisible,
@@ -99,25 +135,21 @@ const AppShell = ({ children }) => {
     setProjectContextLoading,
   ]);
 
-  const authorizedNavigation = useMemo(
-    () =>
-      navigation
-        .map((item) => {
-          const authorizedChildren = item.children?.filter((childItem) =>
-            hasPermission(childItem.permission),
-          );
+  const authorizedNavigation = navigation
+    .map((item) => {
+      const authorizedChildren = item.children?.filter((childItem) =>
+        hasPermission(childItem.permission),
+      );
 
-          if (item.children) {
-            return hasPermission(item.permission) && authorizedChildren.length > 0
-              ? { ...item, children: authorizedChildren }
-              : null;
-          }
+      if (item.children) {
+        return hasPermission(item.permission) && authorizedChildren.length > 0
+          ? { ...item, children: authorizedChildren }
+          : null;
+      }
 
-          return hasPermission(item.permission) ? item : null;
-        })
-        .filter(Boolean),
-    [hasPermission],
-  );
+      return hasPermission(item.permission) ? item : null;
+    })
+    .filter(Boolean);
   const collapsedFlyoutItem = useMemo(
     () =>
       authorizedNavigation.find(
