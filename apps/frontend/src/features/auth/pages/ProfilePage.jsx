@@ -14,7 +14,7 @@ const actionButtonClassName =
 const primaryButtonClassName =
   "inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0F7BFF] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] disabled:cursor-not-allowed disabled:bg-[#123A5A] disabled:text-[#94A3B8]";
 
-const NO_ACTIVE_PROJECT_OFFICIAL_ROLE = "Tidak Ada Official Role Pada Active Project";
+const NO_ACTIVE_PROJECT_OFFICIAL_ROLE = "Tidak Ada Role Pada Active Project";
 const NO_ACTIVE_PROJECT_ACCESS = "Tidak Ada Project Access";
 
 const getDisplayOfficialRole = ({ activeOfficialRole }) => {
@@ -138,7 +138,7 @@ const EditProfileModal = ({
             value={form.username}
           />
           <TextField
-            label="Official Role"
+            label="Project Active Role"
             name="officialRole"
             readOnly
             value={officialRole}
@@ -210,7 +210,7 @@ const ProfilePage = () => {
       value: currentUser?.department ?? "-",
     },
     {
-      label: "Official Role",
+      label: "Project Active Role",
       value: displayOfficialRole,
     },
     {
