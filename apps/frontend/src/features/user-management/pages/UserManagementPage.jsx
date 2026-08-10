@@ -614,7 +614,7 @@ const UserManagementPage = () => {
   const currentRole = AuthorizationService.getCurrentRole();
   const canResetDemoData =
     DemoDataResetService.isFeatureEnabled() &&
-    currentRole?.roleName === ADMIN_ROLE_NAME &&
+    currentRole?.name === ADMIN_ROLE_NAME &&
     AuthorizationService.hasPermission(USER_MANAGEMENT_PERMISSION);
   const canManageDepartments = AuthorizationService.hasPermission(
     USER_MANAGEMENT_PERMISSION,

@@ -323,6 +323,9 @@ const env = {
       min: 60 * 1000,
     }),
   },
+  developmentReset: {
+    enabled: getBooleanEnv('ENABLE_DEVELOPMENT_RESET', false),
+  },
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS),
   cookie: {
     secure: getBooleanEnv('COOKIE_SECURE', false),
