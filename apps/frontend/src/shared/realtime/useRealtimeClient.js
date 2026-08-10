@@ -14,12 +14,16 @@ export const useRealtimeClient = () => {
   const projectId = activeProject?.id ?? null;
   const canConnect = Boolean(
     userId &&
-    projectId &&
-    activeProject?.status === "Active" &&
-    activeMembership?.id &&
-    activeMembership?.status === "Active" &&
     isProjectContextInitialized &&
-    !AuthService.isProjectSelectionRequired(),
+    (
+      !projectId ||
+      (
+        activeProject?.status === "Active" &&
+        activeMembership?.id &&
+        activeMembership?.status === "Active" &&
+        !AuthService.isProjectSelectionRequired()
+      )
+    ),
   );
 
   useEffect(() => {

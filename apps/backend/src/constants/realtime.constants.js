@@ -19,6 +19,7 @@ const REALTIME_EVENT_TYPE = Object.freeze({
   NOTIFICATION_DELETED: 'notification.deleted',
   NOTIFICATION_READ: 'notification.read',
   NOTIFICATION_READ_ALL: 'notification.read_all',
+  PROJECT_MEMBERSHIP_CHANGED: 'project_membership.changed',
   REVISION_UPLOADED: 'revision.uploaded',
   SLA_CHANGED: 'sla.changed',
   WORKFLOW_CHANGED: 'workflow.changed',
@@ -27,6 +28,7 @@ const REALTIME_EVENT_TYPE = Object.freeze({
 const REALTIME_RESOURCE_TYPE = Object.freeze({
   DOCUMENT: 'Document',
   NOTIFICATION: 'Notification',
+  PROJECT_MEMBERSHIP: 'Project Membership',
   REALTIME: 'Realtime',
   REVISION: 'Revision',
   WORKFLOW_COMMENT: 'Workflow Comment',

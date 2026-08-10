@@ -64,7 +64,7 @@ export class RealtimeClient {
   }
 
   start() {
-    if (!this.userId || !this.projectId || typeof EventSource === "undefined") {
+    if (!this.userId || typeof EventSource === "undefined") {
       this.stop();
       return;
     }
@@ -131,7 +131,11 @@ export class RealtimeClient {
     const event = parseRealtimeEvent(rawData);
 
     if (!event) return;
-    if (event.projectId && String(event.projectId) !== String(this.projectId)) {
+    if (
+      this.projectId &&
+      event.projectId &&
+      String(event.projectId) !== String(this.projectId)
+    ) {
       return;
     }
 
