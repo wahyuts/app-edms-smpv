@@ -51,7 +51,9 @@ const register = ({
 
   connections.set(connectionId, connection);
   addIndex(connectionIdsByUserId, userId, connectionId);
-  addIndex(connectionIdsByProjectId, projectId, connectionId);
+  if (projectId) {
+    addIndex(connectionIdsByProjectId, projectId, connectionId);
+  }
 
   logger.log(
     '[REALTIME_CONNECTION]',
@@ -75,7 +77,9 @@ const unregister = (connectionId, { reason = 'disconnect' } = {}) => {
 
   connections.delete(connectionId);
   removeIndex(connectionIdsByUserId, connection.userId, connectionId);
-  removeIndex(connectionIdsByProjectId, connection.projectId, connectionId);
+  if (connection.projectId) {
+    removeIndex(connectionIdsByProjectId, connection.projectId, connectionId);
+  }
 
   logger.log(
     '[REALTIME_CONNECTION]',

@@ -80,17 +80,15 @@ const openConnection = async ({ req, res }) => {
   if (!req.user) {
     throw createHttpError('Unauthenticated', 401);
   }
-  if (!req.activeProject?.id || !req.activeMembership?.id) {
-    throw createHttpError('Active Project Wajib Dipilih', 422);
+  if (req.activeProject?.id) {
+    await projectContextService.requireActiveProjectMembership({
+      projectId: req.activeProject.id,
+      userId: req.user.id,
+    });
   }
 
-  await projectContextService.requireActiveProjectMembership({
-    projectId: req.activeProject.id,
-    userId: req.user.id,
-  });
-
   const connectionId = createEntityId('RT-CONN');
-  const projectId = req.activeProject.id;
+  const projectId = req.activeProject?.id ?? null;
   const userId = req.user.id;
   const requestId = req.id || req.headers['x-request-id'] || null;
 
@@ -152,7 +150,7 @@ const openConnection = async ({ req, res }) => {
     recipientUserId: userId,
     resourceId: connectionId,
     resourceType: REALTIME_RESOURCE_TYPE.REALTIME,
-    scope: REALTIME_EVENT_SCOPE.USER_PROJECT,
+    scope: projectId ? REALTIME_EVENT_SCOPE.USER_PROJECT : REALTIME_EVENT_SCOPE.USER,
     type: REALTIME_EVENT_TYPE.CONNECTED,
   });
 
@@ -164,12 +162,14 @@ const openConnection = async ({ req, res }) => {
 
   heartbeatTimer = setInterval(async () => {
     if (closed) return;
-    try {
-      await projectContextService.requireActiveProjectMembership({ projectId, userId });
-    } catch (error) {
-      cleanup({ reason: 'membership_invalid' });
-      closeResponse(res);
-      return;
+    if (projectId) {
+      try {
+        await projectContextService.requireActiveProjectMembership({ projectId, userId });
+      } catch (error) {
+        cleanup({ reason: 'membership_invalid' });
+        closeResponse(res);
+        return;
+      }
     }
 
     const ok = safeWrite({

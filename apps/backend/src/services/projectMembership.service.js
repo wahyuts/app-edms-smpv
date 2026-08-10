@@ -3,8 +3,14 @@ const {
   ENTITY_STATUS,
   PROJECT_STATUS,
 } = require('../constants/administration.constants');
+const {
+  REALTIME_EVENT_SCOPE,
+  REALTIME_EVENT_TYPE,
+  REALTIME_RESOURCE_TYPE,
+} = require('../constants/realtime.constants');
 const projectMembershipRepository = require('../repositories/projectMembership.repository');
 const projectRepository = require('../repositories/project.repository');
+const realtimePublisher = require('./realtimePublisher.service');
 const userRepository = require('../repositories/user.repository');
 const {
   buildPagination,
@@ -23,6 +29,21 @@ const parseMembershipListQuery = (query) => ({
   projectId: query?.projectId || null,
   status: Object.values(ENTITY_STATUS).includes(query?.status) ? query.status : null,
 });
+
+const publishMembershipContextChanged = ({ actorUserId = null, membership, reason }) => {
+  if (!membership?.id || !membership?.userId || !reason) return;
+
+  realtimePublisher.publishSafely({
+    actorUserId,
+    projectId: null,
+    reason,
+    recipientUserId: membership.userId,
+    resourceId: membership.id,
+    resourceType: REALTIME_RESOURCE_TYPE.PROJECT_MEMBERSHIP,
+    scope: REALTIME_EVENT_SCOPE.USER,
+    type: REALTIME_EVENT_TYPE.PROJECT_MEMBERSHIP_CHANGED,
+  });
+};
 
 const assertMembershipExists = async (membershipId) => {
   const membership = await projectMembershipRepository.findMembershipById(membershipId);
@@ -107,7 +128,7 @@ const createMembership = async ({ actorUserId, payload }) => {
   }
 
   try {
-    return await projectMembershipRepository.createMembership({
+    const membership = await projectMembershipRepository.createMembership({
       membership: {
         id: createEntityId('PMB'),
         assignedByUserId: actorUserId,
@@ -117,6 +138,12 @@ const createMembership = async ({ actorUserId, payload }) => {
         userId: payload.userId,
       },
     });
+    publishMembershipContextChanged({
+      actorUserId,
+      membership,
+      reason: 'project_membership_created',
+    });
+    return membership;
   } catch (error) {
     const duplicateError = mapDuplicateError(error, 'Membership Sudah Ada', 'userId');
     throw duplicateError || error;
@@ -134,7 +161,7 @@ const updateMembership = async ({ actorUserId, membershipId, payload }) => {
     await assertActiveUser(membership.userId);
   }
 
-  return projectMembershipRepository.updateMembership({
+  const updatedMembership = await projectMembershipRepository.updateMembership({
     membership: {
       officialRole: payload.officialRole,
       status: payload.status,
@@ -142,6 +169,12 @@ const updateMembership = async ({ actorUserId, membershipId, payload }) => {
     },
     membershipId,
   });
+  publishMembershipContextChanged({
+    actorUserId,
+    membership: updatedMembership,
+    reason: 'project_membership_updated',
+  });
+  return updatedMembership;
 };
 
 const setMembershipStatus = async ({ actorUserId, membershipId, status }) => {
@@ -158,11 +191,19 @@ const setMembershipStatus = async ({ actorUserId, membershipId, status }) => {
     return membership;
   }
 
-  return projectMembershipRepository.updateMembershipStatus({
+  const updatedMembership = await projectMembershipRepository.updateMembershipStatus({
     membershipId,
     status,
     userId: actorUserId,
   });
+  publishMembershipContextChanged({
+    actorUserId,
+    membership: updatedMembership,
+    reason: status === ENTITY_STATUS.ACTIVE
+      ? 'project_membership_activated'
+      : 'project_membership_deactivated',
+  });
+  return updatedMembership;
 };
 
 module.exports = {
