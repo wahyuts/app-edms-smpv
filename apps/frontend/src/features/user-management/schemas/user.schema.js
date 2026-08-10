@@ -2,33 +2,33 @@ import { z } from "zod";
 
 import { USER_STATUS_OPTIONS } from "../constants/user.constants";
 
-const requiredText = (fieldName) =>
+const requiredText = (fieldName, message = `${fieldName} is required.`) =>
   z.string({
-    error: `${fieldName} is required.`,
-  }).trim().min(1, `${fieldName} is required.`);
+    error: message,
+  }).trim().min(1, message);
 
 const requiredConfirmPassword = z.string({
   error: "Konfirmasi password wajib diisi",
 }).trim().min(1, "Konfirmasi password wajib diisi");
 
-const emailSchema = requiredText("Email").email("Email is not valid.");
+const emailSchema = requiredText("Email", "Email wajib di isi.").email("Email tidak valid.");
 
 export const userIdentitySchema = z.object({
-  department: requiredText("Department"),
+  department: requiredText("Department", "Department wajib di isi."),
   email: emailSchema,
-  name: requiredText("Name"),
-  username: requiredText("Username"),
+  name: requiredText("Name", "Name wajib di isi."),
+  username: requiredText("Username", "Username wajib di isi."),
 });
 
 export const updateUserIdentitySchema = z.object({
-  department: requiredText("Department"),
+  department: requiredText("Department", "Department wajib di isi."),
   email: emailSchema,
-  name: requiredText("Name"),
+  name: requiredText("Name", "Name wajib di isi."),
 });
 
 export const createUserSchema = userIdentitySchema.extend({
   confirmPassword: requiredConfirmPassword,
-  initialPassword: requiredText("Initial Password"),
+  initialPassword: requiredText("Initial Password", "Password wajib di isi."),
 }).refine(
   (value) => value.initialPassword === value.confirmPassword,
   {

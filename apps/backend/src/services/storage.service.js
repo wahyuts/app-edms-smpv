@@ -208,6 +208,17 @@ const cleanupEmptyTemporaryDirectories = async ({ limit = 100 } = {}) => {
   return activeDriver.cleanupEmptyTemporaryDirectories({ limit });
 };
 
+const cleanupDevelopmentStorage = async () => {
+  if (typeof activeDriver.cleanupDevelopmentStorage !== 'function') {
+    return {
+      driver: activeDriver.name,
+      supported: false,
+    };
+  }
+
+  return activeDriver.cleanupDevelopmentStorage();
+};
+
 const getActiveStorageDriver = () => {
   return {
     driver: activeDriver.name,
@@ -233,5 +244,6 @@ module.exports = {
   delete: deleteObject,
   deleteTemporary,
   cleanupEmptyTemporaryDirectories,
+  cleanupDevelopmentStorage,
   getActiveStorageDriver,
 };

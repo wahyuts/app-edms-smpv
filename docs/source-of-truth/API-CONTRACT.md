@@ -2275,7 +2275,8 @@ Runtime implementation note:
 
 - Dashboard API contract tetap stabil untuk frontend.
 - Backend dapat menggunakan dashboard-specific aggregate/query path untuk menghitung database-native metric secara SQL-side.
-- Shared legacy method seperti `listProjectDocumentRegister()` tidak boleh diubah destruktif hanya untuk optimasi Dashboard karena masih menjadi dependency SLA Monitoring dan Escalation Alert.
+- Dashboard dan SLA Monitoring sudah menggunakan domain-specific query path setelah Priority 3C dan Priority 3D.
+- Shared legacy method seperti `listProjectDocumentRegister()` tidak boleh diubah destruktif hanya untuk optimasi Dashboard atau SLA Monitoring karena masih menjadi dependency Escalation Alert legacy path.
 - SLA dan Escalation metric yang bersifat business-derived harus tetap mengikuti semantics SLA/Escalation runtime yang berlaku.
 
 ### Unified Temporary Upload Contract

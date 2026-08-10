@@ -61,6 +61,7 @@ const initialCreateForm = {
 const USER_MANAGEMENT_PERMISSION = "user-management.view";
 const RESET_CONFIRMATION_TEXT = DemoDataResetService.CONFIRMATION_TEXT;
 const ADMIN_ROLE_NAME = "Admin";
+const NO_DEPARTMENT_NAME = "No Department";
 const PROJECT_MEMBERSHIP_QUERY_KEY = ["project-membership-management", "memberships"];
 
 const sortOptions = [
@@ -78,6 +79,14 @@ const statusStyles = {
 };
 
 const normalizeKey = (value) => String(value ?? "").trim().toLowerCase();
+const prioritizeNoDepartment = (departments) =>
+  [...departments].sort((firstDepartment, secondDepartment) => {
+    const firstIsNoDepartment = normalizeKey(firstDepartment.name) === normalizeKey(NO_DEPARTMENT_NAME);
+    const secondIsNoDepartment = normalizeKey(secondDepartment.name) === normalizeKey(NO_DEPARTMENT_NAME);
+
+    if (firstIsNoDepartment === secondIsNoDepartment) return 0;
+    return firstIsNoDepartment ? -1 : 1;
+  });
 
 const getPaginationItems = (totalPages, currentPage) => {
   if (totalPages <= 7) {
@@ -614,7 +623,7 @@ const UserManagementPage = () => {
   const currentRole = AuthorizationService.getCurrentRole();
   const canResetDemoData =
     DemoDataResetService.isFeatureEnabled() &&
-    currentRole?.roleName === ADMIN_ROLE_NAME &&
+    currentRole?.name === ADMIN_ROLE_NAME &&
     AuthorizationService.hasPermission(USER_MANAGEMENT_PERMISSION);
   const canManageDepartments = AuthorizationService.hasPermission(
     USER_MANAGEMENT_PERMISSION,
@@ -642,8 +651,10 @@ const UserManagementPage = () => {
   const errorMessage = loadError ? getErrorMessage(loadError) : "";
 
   const activeDepartments = useMemo(
-    () => allDepartments.filter(
-      (department) => department.status === DEPARTMENT_STATUSES.ACTIVE,
+    () => prioritizeNoDepartment(
+      allDepartments.filter(
+        (department) => department.status === DEPARTMENT_STATUSES.ACTIVE,
+      ),
     ),
     [allDepartments],
   );
