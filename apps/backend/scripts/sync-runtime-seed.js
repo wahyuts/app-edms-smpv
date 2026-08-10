@@ -9,7 +9,16 @@ const runtimeSeedPath = path.join(backendRoot, 'src', 'database', 'seed', 'seed-
 const runtimeChecksumPath = `${runtimeSeedPath}.sha256`;
 const args = new Set(process.argv.slice(2));
 
-const sha256 = (content) => crypto.createHash('sha256').update(content).digest('hex');
+const normalizeTextForHash = (content) =>
+  Buffer.from(content)
+    .toString('utf8')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+
+const sha256 = (content) => crypto
+  .createHash('sha256')
+  .update(normalizeTextForHash(content), 'utf8')
+  .digest('hex');
 
 const exists = async (targetPath) => {
   try {
@@ -34,10 +43,11 @@ const readRuntimeSeed = async () => {
 
 const syncRuntimeSeed = async () => {
   const content = await fs.readFile(canonicalSeedPath);
-  const checksum = sha256(content);
+  const normalizedContent = normalizeTextForHash(content);
+  const checksum = sha256(normalizedContent);
 
   await fs.mkdir(path.dirname(runtimeSeedPath), { recursive: true });
-  await fs.writeFile(runtimeSeedPath, content);
+  await fs.writeFile(runtimeSeedPath, normalizedContent, 'utf8');
   await fs.writeFile(runtimeChecksumPath, `${checksum}\n`);
 
   return checksum;

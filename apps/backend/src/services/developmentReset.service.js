@@ -17,7 +17,16 @@ const createResetHttpError = (message, statusCode = 422) => createHttpError(mess
   { field: 'developmentReset', message },
 ]);
 
-const sha256 = (content) => crypto.createHash('sha256').update(content).digest('hex');
+const normalizeTextForHash = (content) =>
+  Buffer.from(content)
+    .toString('utf8')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+
+const sha256 = (content) => crypto
+  .createHash('sha256')
+  .update(normalizeTextForHash(content), 'utf8')
+  .digest('hex');
 
 const readRuntimeSeed = async () => {
   const content = await fs.readFile(RUNTIME_SEED_PATH, 'utf8');
