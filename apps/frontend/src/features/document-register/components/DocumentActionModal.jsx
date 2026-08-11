@@ -58,6 +58,27 @@ const formatDateTime = (value) => {
   }).format(new Date(value));
 };
 
+const formatCommentDateTime = (value) => {
+  if (!value) {
+    return "-";
+  }
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "short",
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+  }).format(parsedDate);
+};
+
 const formatCommentActor = (comment) => {
   const actorName = comment?.createdBy ?? "-";
   const actorRole =
@@ -601,7 +622,7 @@ export const CommentViewerModal = ({
                     {comment.workflowAction}
                   </p>
                   <p className="text-xs text-[#94A3B8]">
-                    {formatDateTime(comment.createdDate)}
+                    {formatCommentDateTime(comment.createdDate)}
                   </p>
                 </div>
                 <p className="mt-3 text-sm text-[#CBD5E1]">

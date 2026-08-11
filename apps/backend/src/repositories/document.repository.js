@@ -1,6 +1,29 @@
 const { pool } = require('../config/database');
 const logger = require('../config/logger');
 
+const toExplicitUtcIsoString = (value) => {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+
+  const normalizedValue = String(value).trim();
+  if (!normalizedValue) return null;
+
+  const mysqlDateTimeMatch = normalizedValue.match(
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?$/
+  );
+
+  if (mysqlDateTimeMatch) {
+    const milliseconds = String(mysqlDateTimeMatch[3] || '0').padEnd(3, '0').slice(0, 3);
+    return `${mysqlDateTimeMatch[1]}T${mysqlDateTimeMatch[2]}.${milliseconds}Z`;
+  }
+
+  const parsedDate = new Date(normalizedValue);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate.toISOString();
+};
+
 const mapFileMetadata = (row) => row.file_id ? ({
   fileId: row.file_id,
   originalFileName: row.original_file_name,
@@ -271,8 +294,8 @@ const mapWorkflowCommentRow = (row) => row && ({
   createdByUserId: row.created_by_user_id,
   createdBy: row.created_by_name_snapshot,
   createdByOfficialRole: row.created_by_official_role_snapshot,
-  createdDate: row.created_at,
-  createdAt: row.created_at,
+  createdDate: toExplicitUtcIsoString(row.workflow_comment_created_at_utc || row.created_at),
+  createdAt: toExplicitUtcIsoString(row.workflow_comment_created_at_utc || row.created_at),
   attachment: row.attachment_id ? {
     attachmentId: row.attachment_id,
     fileId: row.attachment_file_id,
@@ -1112,9 +1135,10 @@ const insertWorkflowComment = async (connection, comment) => {
     `
       INSERT INTO workflow_comments (
         id, project_id, document_id, revision_id, workflow_action, workflow_comment,
-        created_by_user_id, created_by_name_snapshot, created_by_official_role_snapshot
+        created_by_user_id, created_by_name_snapshot, created_by_official_role_snapshot,
+        created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))
     `,
     [
       comment.id,
@@ -1271,6 +1295,7 @@ const listWorkflowComments = async ({ documentId, projectId }) => {
     `
       SELECT
         workflow_comments.*,
+        DATE_FORMAT(workflow_comments.created_at, '%Y-%m-%d %H:%i:%s.%f') AS workflow_comment_created_at_utc,
         workflow_attachments.attachment_id,
         workflow_attachments.file_id AS attachment_file_id,
         workflow_attachments.uploaded_at AS attachment_uploaded_at,
