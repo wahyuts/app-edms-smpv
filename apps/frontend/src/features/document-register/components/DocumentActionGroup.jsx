@@ -85,6 +85,11 @@ const actionLoadingType = {
   VIEW: "view",
 };
 
+const attachmentActionType = {
+  DOWNLOAD: "download",
+  VIEW: "view",
+};
+
 const createExpectedWorkflowState = (document = {}) => ({
   activeRevisionId: document.activeRevisionId ?? null,
   currentAssigneeUserId: document.currentAssigneeUserId ?? null,
@@ -167,6 +172,7 @@ export const DocumentActionGroup = ({
   const [activeModal, setActiveModal] = useState(null);
   const [localActiveAction, setLocalActiveAction] = useState(null);
   const [attachmentErrors, setAttachmentErrors] = useState({});
+  const [activeAttachmentAction, setActiveAttachmentAction] = useState(null);
   const [attachmentViewerFile, setAttachmentViewerFile] = useState(null);
   const [comments, setComments] = useState([]);
   const [detailDocument, setDetailDocument] = useState(documentItem);
@@ -195,6 +201,7 @@ export const DocumentActionGroup = ({
     ? controlledActiveAction
     : localActiveAction;
   const activeActionRef = useRef(activeAction);
+  const activeAttachmentActionRef = useRef(null);
   const commentRefetchCoalescerRef = useRef(null);
   const detailRefetchCoalescerRef = useRef(null);
 
@@ -329,6 +336,18 @@ export const DocumentActionGroup = ({
     setActiveModal(nextModal);
   }, []);
 
+  const clearActionIfCurrent = useCallback((actionType) => {
+    const latestAction = activeActionRef.current;
+
+    if (
+      latestAction?.documentId === documentItem.id &&
+      String(latestAction?.projectId ?? "") === String(activeProjectId ?? "") &&
+      latestAction?.type === actionType
+    ) {
+      setActiveActionState(null);
+    }
+  }, [activeProjectId, documentItem.id, setActiveActionState]);
+
   const closeModal = useCallback(() => {
     if (documentFile?.objectUrl) {
       window.URL.revokeObjectURL(documentFile.objectUrl);
@@ -339,6 +358,8 @@ export const DocumentActionGroup = ({
 
     setActiveModalState(null);
     setAttachmentErrors({});
+    activeAttachmentActionRef.current = null;
+    setActiveAttachmentAction(null);
     setAttachmentViewerFile(null);
     setComments([]);
     setDocumentFile(null);
@@ -579,6 +600,7 @@ export const DocumentActionGroup = ({
       setComments(documentComments);
       setAttachmentErrors({});
       setActiveModalState(modalType.COMMENT);
+      clearActionIfCurrent(actionLoadingType.COMMENT);
       await DocumentApiService.markWorkflowCommentsRead(documentItem.id);
       setLocalReadState({
         documentId: documentItem.id,
@@ -621,12 +643,36 @@ export const DocumentActionGroup = ({
     });
   };
 
+  const clearAttachmentActionIfCurrent = useCallback((commentId, actionType) => {
+    const latestAction = activeAttachmentActionRef.current;
+
+    if (
+      latestAction?.commentId === commentId &&
+      latestAction?.type === actionType
+    ) {
+      activeAttachmentActionRef.current = null;
+      setActiveAttachmentAction(null);
+    }
+  }, []);
+
   const openAttachmentViewer = async (comment) => {
     const attachment = comment?.attachment ?? null;
 
     if (!attachment) {
       return;
     }
+
+    if (activeAttachmentActionRef.current) {
+      return;
+    }
+
+    const nextAction = {
+      commentId: comment.id,
+      type: attachmentActionType.VIEW,
+    };
+
+    activeAttachmentActionRef.current = nextAction;
+    setActiveAttachmentAction(nextAction);
 
     if (attachmentViewerFile?.objectUrl) {
       window.URL.revokeObjectURL(attachmentViewerFile.objectUrl);
@@ -648,6 +694,7 @@ export const DocumentActionGroup = ({
         objectUrl,
       });
       setActiveModalState(modalType.ATTACHMENT_VIEWER);
+      clearAttachmentActionIfCurrent(comment.id, attachmentActionType.VIEW);
     } catch (error) {
       const errorMessage =
         error instanceof Error
@@ -660,10 +707,13 @@ export const DocumentActionGroup = ({
         metadata: attachment,
       });
       setActiveModalState(modalType.ATTACHMENT_VIEWER);
+      clearAttachmentActionIfCurrent(comment.id, attachmentActionType.VIEW);
       showToast({
         message: errorMessage,
         variant: "error",
       });
+    } finally {
+      clearAttachmentActionIfCurrent(comment.id, attachmentActionType.VIEW);
     }
   };
 
@@ -674,11 +724,24 @@ export const DocumentActionGroup = ({
       return;
     }
 
+    if (activeAttachmentActionRef.current) {
+      return;
+    }
+
+    const nextAction = {
+      commentId: comment.id,
+      type: attachmentActionType.DOWNLOAD,
+    };
+
+    activeAttachmentActionRef.current = nextAction;
+    setActiveAttachmentAction(nextAction);
+
     try {
       await DocumentApiService.downloadWorkflowAttachment({
         attachment,
         documentId: documentItem.id,
       });
+      clearAttachmentActionIfCurrent(comment.id, attachmentActionType.DOWNLOAD);
       clearAttachmentError(comment.id);
       showToast({
         message: "Workflow Attachment downloaded.",
@@ -695,6 +758,8 @@ export const DocumentActionGroup = ({
         message: errorMessage,
         variant: "error",
       });
+    } finally {
+      clearAttachmentActionIfCurrent(comment.id, attachmentActionType.DOWNLOAD);
     }
   };
 
@@ -1147,6 +1212,7 @@ export const DocumentActionGroup = ({
       {activeModal === modalType.COMMENT ? (
         <CommentViewerModal
           attachmentErrors={attachmentErrors}
+          activeAttachmentAction={activeAttachmentAction}
           comments={comments}
           documentItem={documentItem}
           onAttachmentDownload={downloadWorkflowAttachment}
