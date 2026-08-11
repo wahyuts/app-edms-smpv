@@ -533,7 +533,9 @@ export const ViewDocumentModal = ({
 };
 
 export const WorkflowAttachmentCard = ({
+  activeAction = null,
   attachment,
+  disabled = false,
   errorMessage = "",
   onDownload,
   onView,
@@ -562,19 +564,33 @@ export const WorkflowAttachmentCard = ({
         <div className="flex shrink-0 gap-2">
           <button
             className={secondaryButtonClassName}
+            disabled={disabled}
             onClick={onView}
             type="button"
           >
-            <Eye className="mr-2 h-4 w-4" />
-            View
+            {activeAction === "view" ? (
+              renderLoadingButtonContent("View")
+            ) : (
+              <>
+                <Eye className="mr-2 h-4 w-4" />
+                View
+              </>
+            )}
           </button>
           <button
             className={secondaryButtonClassName}
+            disabled={disabled}
             onClick={onDownload}
             type="button"
           >
-            <Download className="mr-2 h-4 w-4" />
-            Download
+            {activeAction === "download" ? (
+              renderLoadingButtonContent("Download")
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                Download
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -588,6 +604,7 @@ export const WorkflowAttachmentCard = ({
 };
 
 export const CommentViewerModal = ({
+  activeAttachmentAction = null,
   attachmentErrors = {},
   comments = [],
   documentItem,
@@ -632,7 +649,13 @@ export const CommentViewerModal = ({
                   By {formatCommentActor(comment)}
                 </p>
                 <WorkflowAttachmentCard
+                  activeAction={
+                    activeAttachmentAction?.commentId === comment.id
+                      ? activeAttachmentAction.type
+                      : null
+                  }
                   attachment={comment.attachment}
+                  disabled={Boolean(activeAttachmentAction)}
                   errorMessage={attachmentErrors[comment.id] ?? ""}
                   onDownload={() => onAttachmentDownload(comment)}
                   onView={() => onAttachmentView(comment)}
