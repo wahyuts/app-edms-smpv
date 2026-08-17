@@ -6,6 +6,7 @@ const { STORAGE_DIRECTORIES } = require('../constants/storage.constants');
 const temporaryUploadRepository = require('../repositories/temporaryUpload.repository');
 const storageService = require('./storage.service');
 const { sanitizeFileName } = require('../utils/fileName');
+const { toStorageSafeSegment } = require('../utils/storageKeyBuilder');
 const { UploadInspectionStream } = require('../utils/uploadStream');
 const { validateUploadedFileMetadata } = require('../validators/upload.validator');
 
@@ -13,7 +14,7 @@ const buildPhysicalFileName = (temporaryFileId, originalFileName) => {
   const safeOriginalFileName = sanitizeFileName(originalFileName);
   const extension = path.extname(safeOriginalFileName);
   const baseName = path.basename(safeOriginalFileName, extension).replace(/\s+/g, '_');
-  const physicalFileName = sanitizeFileName(`${temporaryFileId}_${baseName}${extension}`).replace(/\s+/g, '_');
+  const physicalFileName = toStorageSafeSegment(`${temporaryFileId}_${baseName}${extension}`);
 
   return physicalFileName;
 };
