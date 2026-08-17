@@ -335,7 +335,7 @@ export const DocumentRegisterTable = ({
             <tr>
               <th className="sticky top-0 z-20 w-16 bg-[#08233B] px-4 py-3 font-bold">No</th>
               <th className="sticky top-0 z-20 min-w-44 bg-[#08233B] px-4 py-3 font-bold">Document Number</th>
-              <th className="sticky top-0 z-20 min-w-72 bg-[#08233B] px-4 py-3 font-bold">Description</th>
+              <th className="sticky top-0 z-20 w-72 min-w-72 max-w-72 bg-[#08233B] px-4 py-3 font-bold">Description</th>
               {isDashboard ? (
                 <th className="sticky top-0 z-20 min-w-24 bg-[#08233B] px-4 py-3 font-bold">Drawing</th>
               ) : null}
@@ -402,8 +402,10 @@ export const DocumentRegisterTable = ({
                         <LifecycleBadge lifecycle={documentItem.lifecycle} />
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-[#CBD5E1]">
-                      {documentItem.description}
+                    <td className="w-72 min-w-72 max-w-72 px-4 py-3 text-[#CBD5E1]">
+                      <span className="block whitespace-normal break-words [overflow-wrap:anywhere]">
+                        {documentItem.description}
+                      </span>
                     </td>
                     {isDashboard ? (
                       <td className="px-4 py-3 text-[#CBD5E1]">
