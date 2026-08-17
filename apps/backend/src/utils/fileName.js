@@ -2,6 +2,14 @@ const path = require('node:path');
 
 const MAX_FILENAME_LENGTH = 255;
 
+const preserveOriginalFileName = (fileName) => {
+  if (typeof fileName !== 'string') {
+    throw new Error('[STORAGE] fileName must be a string');
+  }
+
+  return fileName.replace(/\0/g, '').trim() || 'file';
+};
+
 const sanitizeFileName = (fileName) => {
   if (typeof fileName !== 'string') {
     throw new Error('[STORAGE] fileName must be a string');
@@ -38,5 +46,6 @@ const getFileExtension = (fileName) => {
 
 module.exports = {
   getFileExtension,
+  preserveOriginalFileName,
   sanitizeFileName,
 };

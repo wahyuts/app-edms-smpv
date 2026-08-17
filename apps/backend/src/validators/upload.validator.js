@@ -1,5 +1,5 @@
 const { UPLOAD_ALLOWED_MIME_TYPES } = require('../constants/storage.constants');
-const { getFileExtension, sanitizeFileName } = require('../utils/fileName');
+const { getFileExtension, preserveOriginalFileName } = require('../utils/fileName');
 
 const UPLOAD_SIGNATURE_PREFIX_BYTES = 8;
 
@@ -58,7 +58,7 @@ const buildUploadValidationError = (errors) => {
 const validateUploadedFileMetadata = ({ mimetype, originalname, size } = {}) => {
   const errors = [];
 
-  const originalFileName = sanitizeFileName(originalname || '');
+  const originalFileName = preserveOriginalFileName(originalname || '');
   const extension = getFileExtension(originalFileName);
   const allowedMimeTypes = UPLOAD_ALLOWED_MIME_TYPES[extension];
 
