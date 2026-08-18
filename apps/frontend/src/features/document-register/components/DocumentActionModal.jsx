@@ -43,6 +43,7 @@ const fieldLabelClassName = "text-xs font-semibold uppercase text-[#94A3B8]";
 const valueClassName = "mt-1 text-sm font-semibold text-[#F8FAFC]";
 const fileInputClassName =
   "mt-2 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#123A5A] bg-[#031528] px-4 py-5 text-center text-sm text-[#94A3B8] transition-colors hover:border-[#0F7BFF] hover:bg-[#08233B]";
+const fileInputDragActiveClassName = "border-[#0F7BFF] bg-[#08233B]";
 
 const formatDateTime = (value) => {
   if (!value) {
@@ -111,16 +112,88 @@ const FileUploadField = ({
   filePreview,
   isDisabled = false,
   onFileChange,
+  onFileSelectionError = () => {},
   required = false,
 }) => {
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+
+  const handleDragEvent = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleDragEnter = (event) => {
+    handleDragEvent(event);
+    if (!isDisabled) {
+      setIsDraggingFile(true);
+    }
+  };
+
+  const handleDragOver = (event) => {
+    handleDragEvent(event);
+    if (!isDisabled) {
+      setIsDraggingFile(true);
+    }
+  };
+
+  const handleDragLeave = (event) => {
+    handleDragEvent(event);
+    if (
+      event.relatedTarget &&
+      event.currentTarget.contains(event.relatedTarget)
+    ) {
+      return;
+    }
+    setIsDraggingFile(false);
+  };
+
+  const handleSelectedFiles = (fileList) => {
+    if (isDisabled) {
+      return;
+    }
+
+    const files = Array.from(fileList ?? []);
+
+    if (files.length === 0) {
+      return;
+    }
+
+    if (files.length > 1) {
+      onFileSelectionError("Hanya satu file yang dapat dipilih.");
+      return;
+    }
+
+    onFileChange(files[0]);
+  };
+
+  const handleFileInputChange = (event) => {
+    handleSelectedFiles(event.target.files);
+    event.target.value = "";
+  };
+
+  const handleDrop = (event) => {
+    handleDragEvent(event);
+    setIsDraggingFile(false);
+    handleSelectedFiles(event.dataTransfer?.files);
+  };
+
   return (
     <div>
       <p className={fieldLabelClassName}>
         Upload File {required ? "(Required)" : "(Optional)"}
       </p>
-      <label className={fileInputClassName}>
+      <label
+        className={[
+          fileInputClassName,
+          isDraggingFile && !isDisabled ? fileInputDragActiveClassName : "",
+        ].filter(Boolean).join(" ")}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
         <FileUp className="mb-2 h-6 w-6 text-[#00C8FF]" />
-        <span className="font-semibold text-[#F8FAFC]">Choose file</span>
+        <span className="font-semibold text-[#F8FAFC]">Choose file or Drag file here</span>
         <span className="mt-1 text-xs">
           PDF, DOCX, XLS, XLSX, JPG, or PNG. Maximum {MAX_UPLOAD_FILE_SIZE_MB} MB.
         </span>
@@ -128,7 +201,7 @@ const FileUploadField = ({
           accept={FILE_VALIDATION_CONFIG.acceptedInputTypes}
           className="sr-only"
           disabled={isDisabled}
-          onChange={onFileChange}
+          onChange={handleFileInputChange}
           type="file"
         />
       </label>
@@ -1000,9 +1073,14 @@ export const CreateDocumentModal = ({
     }));
   };
 
-  const handleFileChange = async (event) => {
-    const file = event.target.files?.[0] ?? null;
+  const handleFileSelectionError = (message) => {
+    setSelectedFile(null);
+    setFilePreview(null);
+    setFileErrorMessage(message);
+    onValidationFailed(message);
+  };
 
+  const handleFileChange = async (file) => {
     try {
       const nextFilePreview = await FileService.getUploadPreview(file);
 
@@ -1017,11 +1095,7 @@ export const CreateDocumentModal = ({
       const message =
         error instanceof Error ? error.message : "Validasi file gagal.";
 
-      event.target.value = "";
-      setSelectedFile(null);
-      setFilePreview(null);
-      setFileErrorMessage(message);
-      onValidationFailed(message);
+      handleFileSelectionError(message);
     }
   };
 
@@ -1097,6 +1171,7 @@ export const CreateDocumentModal = ({
           filePreview={filePreview}
           isDisabled={isSubmitting}
           onFileChange={handleFileChange}
+          onFileSelectionError={handleFileSelectionError}
           required
         />
         <label className="block">
@@ -1202,9 +1277,14 @@ export const EditDocumentModal = ({
     }));
   };
 
-  const handleFileChange = async (event) => {
-    const file = event.target.files?.[0] ?? null;
+  const handleFileSelectionError = (message) => {
+    setSelectedFile(null);
+    setFilePreview(null);
+    setFileErrorMessage(message);
+    onValidationFailed(message);
+  };
 
+  const handleFileChange = async (file) => {
     try {
       const nextFilePreview = await FileService.getUploadPreview(file);
 
@@ -1219,11 +1299,7 @@ export const EditDocumentModal = ({
       const message =
         error instanceof Error ? error.message : "Validasi file gagal.";
 
-      event.target.value = "";
-      setSelectedFile(null);
-      setFilePreview(null);
-      setFileErrorMessage(message);
-      onValidationFailed(message);
+      handleFileSelectionError(message);
     }
   };
 
@@ -1322,6 +1398,7 @@ export const EditDocumentModal = ({
               filePreview={filePreview}
               isDisabled={isSubmitting}
               onFileChange={handleFileChange}
+              onFileSelectionError={handleFileSelectionError}
               required
             />
           ) : null}
