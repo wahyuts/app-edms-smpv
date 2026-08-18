@@ -7,6 +7,7 @@ const temporaryUploadRepository = require('../repositories/temporaryUpload.repos
 const storageService = require('./storage.service');
 const { sanitizeFileName } = require('../utils/fileName');
 const { toStorageSafeSegment } = require('../utils/storageKeyBuilder');
+const { validateTemporaryUploadCapacity } = require('../utils/storageMetadataCapacity');
 const { UploadInspectionStream } = require('../utils/uploadStream');
 const { validateUploadedFileMetadata } = require('../validators/upload.validator');
 
@@ -37,6 +38,11 @@ const uploadTemporaryFileStream = async ({
   const temporaryFileId = crypto.randomUUID();
   const physicalFileName = buildPhysicalFileName(temporaryFileId, validatedFile.originalFileName);
   const storageKey = buildTemporaryStorageKey({ temporaryFileId, physicalFileName });
+  validateTemporaryUploadCapacity({
+    originalFileName: validatedFile.originalFileName,
+    physicalFileName,
+    storageKey,
+  });
   const inspectionStream = new UploadInspectionStream({
     extension: validatedFile.extension,
   });

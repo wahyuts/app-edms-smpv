@@ -19,6 +19,7 @@ const {
   buildCanonicalPhysicalFileName,
   buildRevisionStorageKey,
 } = require('../utils/storageKeyBuilder');
+const { validateStoredFileCapacity } = require('../utils/storageMetadataCapacity');
 
 const uploadRevisionTransitionMatrix = Object.freeze({
   [DOCUMENT_WORKFLOW_STATUS.PROCESS_COMMENT]: DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW,
@@ -176,6 +177,12 @@ const uploadRevision = async ({ actorOfficialRole, actorUserFullName, actorUserI
       physicalFileName,
       projectCode: document.projectCode,
       revisionLabel,
+    });
+    validateStoredFileCapacity({
+      originalFileName: temporaryMetadata.originalFileName,
+      physicalFileName,
+      relativePath: storageKey,
+      storageKey,
     });
 
     await documentRepository.runInTransaction(async (connection) => {

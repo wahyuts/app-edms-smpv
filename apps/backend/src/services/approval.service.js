@@ -15,6 +15,7 @@ const {
   buildAttachmentPhysicalFileName,
   buildAttachmentStorageKey,
 } = require('../utils/storageKeyBuilder');
+const { validateStoredFileCapacity } = require('../utils/storageMetadataCapacity');
 
 const approvalConfig = Object.freeze({
   approve: Object.freeze({
@@ -102,6 +103,12 @@ const processApproval = async ({
       physicalFileName,
       projectCode: document.projectCode,
       workflowStatus: document.status,
+    });
+    validateStoredFileCapacity({
+      originalFileName: temporaryMetadata.originalFileName,
+      physicalFileName,
+      relativePath: storageKey,
+      storageKey,
     });
 
     workflowAttachment = {

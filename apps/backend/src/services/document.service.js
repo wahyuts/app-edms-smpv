@@ -29,6 +29,7 @@ const {
   buildCanonicalPhysicalFileName,
   buildRevisionStorageKey,
 } = require('../utils/storageKeyBuilder');
+const { validateStoredFileCapacity } = require('../utils/storageMetadataCapacity');
 
 const parseDocumentRegisterQuery = (query = {}) => {
   const lifecycle = normalizeText(query.lifecycle);
@@ -172,6 +173,12 @@ const createDocument = async ({ activeProject, actorOfficialRole, actorUserFullN
     physicalFileName,
     projectCode: project.projectCode,
     revisionLabel,
+  });
+  validateStoredFileCapacity({
+    originalFileName: temporaryMetadata.originalFileName,
+    physicalFileName,
+    relativePath: permanentStorageKey,
+    storageKey: permanentStorageKey,
   });
 
   let finalized = false;

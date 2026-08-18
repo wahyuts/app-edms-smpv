@@ -2,6 +2,9 @@ import { apiClient } from "@/shared/api";
 
 import { FileService } from "./file.service";
 
+const FILE_NAME_TOO_LONG_MESSAGE =
+  "Nama file terlalu panjang untuk diproses. Silakan gunakan nama file yang lebih pendek.";
+
 const formatFileSize = (fileSize) => {
   const numericSize = Number(fileSize);
   if (!Number.isFinite(numericSize)) return "-";
@@ -12,6 +15,9 @@ const formatFileSize = (fileSize) => {
 };
 
 const getErrorMessage = (error, fallback = "Request Document gagal.") => {
+  if (error?.response?.data?.code === "FILE_NAME_TOO_LONG") {
+    return FILE_NAME_TOO_LONG_MESSAGE;
+  }
   if (error?.response?.data?.errors?.length) {
     return error.response.data.errors[0].message ?? fallback;
   }
