@@ -15,6 +15,7 @@ const {
   buildCanonicalPhysicalFileName,
   buildRevisionStorageKey,
 } = require('../utils/storageKeyBuilder');
+const { validateStoredFileCapacity } = require('../utils/storageMetadataCapacity');
 
 const workflowTransitionMatrix = Object.freeze({
   [DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW]: Object.freeze({
@@ -235,6 +236,12 @@ const applyWorkflowTransition = async ({
           physicalFileName,
           projectCode: document.projectCode,
           revisionLabel: nextRevision,
+        });
+        validateStoredFileCapacity({
+          originalFileName: activeDocumentFile.storedFile.originalFileName,
+          physicalFileName,
+          relativePath: storageKey,
+          storageKey,
         });
 
         if (storageKey === activeDocumentFile.storedFile.storageKey) {

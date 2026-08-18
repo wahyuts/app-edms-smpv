@@ -11,6 +11,7 @@ const {
   buildAttachmentPhysicalFileName,
   buildAttachmentStorageKey,
 } = require('../utils/storageKeyBuilder');
+const { validateStoredFileCapacity } = require('../utils/storageMetadataCapacity');
 
 const getAttachmentDownload = async ({ attachmentId, documentId, userId }) => {
   const attachment = await fileAccessRepository.findWorkflowAttachmentById({ attachmentId, documentId });
@@ -82,6 +83,12 @@ const uploadWorkflowAttachment = async ({ actorUserId, documentId, payload }) =>
     physicalFileName,
     projectCode: documentFile.document.projectCode,
     workflowStatus: documentFile.document.workflowStatus,
+  });
+  validateStoredFileCapacity({
+    originalFileName: temporaryMetadata.originalFileName,
+    physicalFileName,
+    relativePath: storageKey,
+    storageKey,
   });
 
   let finalized = false;
