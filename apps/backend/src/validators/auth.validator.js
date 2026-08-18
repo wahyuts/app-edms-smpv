@@ -1,8 +1,3 @@
-const {
-  getPasswordPolicyMessage,
-  isPasswordPolicyValid,
-} = require('./password.validator');
-
 const validateLoginRequest = (body) => {
   const errors = [];
 
@@ -44,11 +39,6 @@ const validateChangePasswordRequest = (body) => {
     errors.push({
       field: 'newPassword',
       message: 'New password is required',
-    });
-  } else if (!isPasswordPolicyValid(body.newPassword)) {
-    errors.push({
-      field: 'newPassword',
-      message: getPasswordPolicyMessage(body.newPassword),
     });
   }
 
