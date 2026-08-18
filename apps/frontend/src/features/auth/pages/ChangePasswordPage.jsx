@@ -2,7 +2,6 @@ import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
-  getPasswordPolicyMessage,
   PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
 } from "@/features/auth/schemas/password-recovery.schema";
 import { AuthService } from "@/features/auth/services/auth.service";
@@ -71,19 +70,6 @@ const ChangePasswordPage = () => {
       showChangePasswordToast({
         message: PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
         title: "Konfirmasi Password Tidak Sesuai",
-      });
-      return;
-    }
-
-    const passwordPolicyMessage = getPasswordPolicyMessage(newPassword);
-
-    if (passwordPolicyMessage) {
-      setErrors({
-        newPassword: passwordPolicyMessage,
-      });
-      showChangePasswordToast({
-        message: passwordPolicyMessage,
-        title: "Password Baru Tidak Valid",
       });
       return;
     }

@@ -1,4 +1,3 @@
-const { isPasswordPolicyValid, getPasswordPolicyMessage } = require('./password.validator');
 const {
   ENTITY_STATUS,
   OFFICIAL_ROLES,
@@ -63,8 +62,6 @@ const validateUserCreate = (body) => {
   }
   if (!initialPassword) {
     errors.push({ field: 'initialPassword', message: 'Password Wajib Diisi' });
-  } else if (!isPasswordPolicyValid(initialPassword)) {
-    errors.push({ field: 'initialPassword', message: getPasswordPolicyMessage(initialPassword) });
   }
 
   return {
