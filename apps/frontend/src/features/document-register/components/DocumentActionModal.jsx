@@ -231,9 +231,29 @@ const WorkflowAttachmentField = ({
   onAttachmentChange,
   onAttachmentRemove,
 }) => {
-  const handleFileChange = (event) => {
-    const file = event.target.files?.[0] ?? null;
+  const [isDraggingAttachment, setIsDraggingAttachment] = useState(false);
 
+  const handleAttachmentSelectionError = (message) => {
+    onAttachmentChange({
+      errorMessage: message,
+      file: null,
+      preview: null,
+    });
+  };
+
+  const handleSelectedAttachmentFiles = (fileList) => {
+    const files = Array.from(fileList ?? []);
+
+    if (files.length === 0) {
+      return;
+    }
+
+    if (files.length > 1) {
+      handleAttachmentSelectionError("Hanya satu file yang dapat dipilih.");
+      return;
+    }
+
+    const file = files[0];
     if (!file) {
       return;
     }
@@ -254,15 +274,59 @@ const WorkflowAttachmentField = ({
         file: null,
         preview: null,
       });
-    } finally {
-      event.target.value = "";
     }
+  };
+
+  const handleFileChange = (event) => {
+    handleSelectedAttachmentFiles(event.target.files);
+    event.target.value = "";
+  };
+
+  const handleDragEvent = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleDragEnter = (event) => {
+    handleDragEvent(event);
+    setIsDraggingAttachment(true);
+  };
+
+  const handleDragOver = (event) => {
+    handleDragEvent(event);
+    setIsDraggingAttachment(true);
+  };
+
+  const handleDragLeave = (event) => {
+    handleDragEvent(event);
+    if (
+      event.relatedTarget &&
+      event.currentTarget.contains(event.relatedTarget)
+    ) {
+      return;
+    }
+    setIsDraggingAttachment(false);
+  };
+
+  const handleDrop = (event) => {
+    handleDragEvent(event);
+    setIsDraggingAttachment(false);
+    handleSelectedAttachmentFiles(event.dataTransfer?.files);
   };
 
   return (
     <div>
       <p className={fieldLabelClassName}>Workflow Attachment (Optional)</p>
-      <label className={fileInputClassName}>
+      <label
+        className={[
+          fileInputClassName,
+          isDraggingAttachment ? fileInputDragActiveClassName : "",
+        ].filter(Boolean).join(" ")}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
         <FileUp className="mb-2 h-6 w-6 text-[#00C8FF]" />
         <span className="font-semibold text-[#F8FAFC]">Upload Attachment</span>
         <span className="mt-1 text-xs">
