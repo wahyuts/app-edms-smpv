@@ -122,7 +122,7 @@ const ChangePasswordPage = () => {
         </p>
         <h1 className="mt-2 text-3xl font-bold">Change Password</h1>
         <p className="mt-2 text-sm text-[#CBD5E1]">
-          Ubah password untuk akun yang sedang Login.
+          Change the password for the currently logged-in account.
         </p>
       </header>
 

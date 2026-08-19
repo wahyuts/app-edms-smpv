@@ -124,9 +124,9 @@ export const SlaMonitoringTable = ({
     <section className="overflow-hidden rounded-lg border border-[#123A5A] bg-[#061B2F]">
       <div className="flex flex-col gap-4 border-b border-[#123A5A] px-4 py-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h2 className="text-xl font-bold">SLA Monitoring Table</h2>
+          <h2 className="text-xl font-bold">Review Time Monitoring Table</h2>
           <p className="mt-1 text-sm text-[#94A3B8]">
-            Daftar Engineering Document berdasarkan hasil evaluasi SLA.
+            List of engineering documents based on the Review Time evaluation results.
           </p>
         </div>
 
@@ -143,7 +143,7 @@ export const SlaMonitoringTable = ({
             onChange={(event) => setSlaStatusFilter(event.target.value)}
             value={slaStatusFilter}
           >
-            <option value="">All SLA State</option>
+            <option value="">All Review Status</option>
             {slaStatusOptions.map((slaStatus) => (
               <option key={slaStatus} value={slaStatus}>
                 {slaStatus}
@@ -168,7 +168,7 @@ export const SlaMonitoringTable = ({
             value={sortBy}
           >
             <option value="updatedAt">Newest First</option>
-            <option value="slaTimer">SLA Timer</option>
+            <option value="slaTimer">Review Timer</option>
             <option value="documentNumber">Document Number</option>
           </SelectDropdown>
           <SelectDropdown
@@ -191,9 +191,9 @@ export const SlaMonitoringTable = ({
               <th className="sticky top-0 z-20 min-w-44 bg-[#08233B] px-4 py-3 font-bold">Document Number</th>
               <th className="sticky top-0 z-20 w-72 min-w-72 max-w-72 bg-[#08233B] px-4 py-3 font-bold">Description</th>
               <th className="sticky top-0 z-20 min-w-40 bg-[#08233B] px-4 py-3 font-bold">Status</th>
-              <th className="sticky top-0 z-20 min-w-52 bg-[#08233B] px-4 py-3 font-bold">SLA Timer</th>
-              <th className="sticky top-0 z-20 min-w-40 bg-[#08233B] px-4 py-3 font-bold">Time for Review</th>
-              <th className="sticky top-0 z-20 min-w-40 bg-[#08233B] px-4 py-3 font-bold">SLA State</th>
+              <th className="sticky top-0 z-20 min-w-52 bg-[#08233B] px-4 py-3 font-bold">Review Timer</th>
+              <th className="sticky top-0 z-20 min-w-40 bg-[#08233B] px-4 py-3 font-bold">Day Times for Review</th>
+              <th className="sticky top-0 z-20 min-w-40 bg-[#08233B] px-4 py-3 font-bold">Review Status</th>
               <th className="sticky top-0 z-20 min-w-52 bg-[#08233B] px-4 py-3 font-bold">Current Assignee</th>
               <th className="sticky right-0 top-0 z-30 min-w-60 bg-[#08233B] px-4 py-3 font-bold shadow-[-8px_0_16px_rgba(2,11,22,0.35)]">
                 Actions

@@ -244,7 +244,7 @@ export const NotificationPage = () => {
         </p> */}
         <h1 className="mt-2 text-3xl font-bold">Notifications</h1>
         <p className="mt-2 max-w-3xl text-sm text-[#CBD5E1]">
-          Informasi tindakan yang memerlukan perhatian dari akun pengguna saat ini.
+          Information regarding actions requiring attention from the current user account.
         </p>
       </header>
 
