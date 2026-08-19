@@ -1575,6 +1575,8 @@ APP ENGINEERING
 Dashboard
 
 Monitoring utama seluruh dokumen engineering berdasarkan alur review Code A/B/C.
+dalam bahasa inggris kalimatnya menjadi:
+Primary monitoring of all engineering documents based on the Code A/B/C review workflow.
 ```
 
 Page Header bersifat **dinamis**.
@@ -1809,6 +1811,8 @@ BIM ENGINEERING
 Dashboard
 
 Monitoring utama seluruh dokumen engineering berdasarkan alur review Code A/B/C.
+dalam bahasa inggris kalimatnya menjadi:
+Primary monitoring of all engineering documents based on the Code A/B/C review workflow.
 ```
 
 Page Header bersifat **dinamis**.
@@ -2567,6 +2571,8 @@ Contoh pada Dashboard.
 
 ```text
 Monitoring utama seluruh dokumen engineering berdasarkan alur review Code A/B/C.
+dalam bahasa inggris kalimatnya menjadi:
+Primary monitoring of all engineering documents based on the Code A/B/C review workflow.
 ```
 
 Setiap Product Module wajib memiliki Page Description yang berbeda sesuai fungsi bisnisnya.
@@ -5471,7 +5477,7 @@ Document Register
 
 PFD
 
-Kelola seluruh Engineering Document berdasarkan Drawing PFD.
+Manage all engineering documents based on PFD drawings.
 
                                                                                                ┌───────────────┐
                                                                                                │ Create PFD    │
@@ -5749,7 +5755,7 @@ Document Register
 
 PFD
 
-Kelola seluruh Engineering Document berdasarkan Drawing PFD.
+Manage all engineering documents based on PFD drawings.
 ```
 
 Drawing Context mengikuti halaman yang sedang aktif.
@@ -6351,7 +6357,7 @@ Document Register
 
 PFD
 
-Kelola seluruh Engineering Document berdasarkan Drawing PFD.
+Manage all engineering documents based on PFD drawings.
 ```
 
 Page Header selalu berada pada bagian paling atas Main Content Area.
@@ -6407,7 +6413,7 @@ Document Register
 
 PFD
 
-Kelola seluruh Engineering Document berdasarkan Drawing PFD.
+Manage all engineering documents based on PFD drawings.
 ```
 
 ---
@@ -6421,7 +6427,7 @@ Document Register
 
 P&ID
 
-Kelola seluruh Engineering Document berdasarkan Drawing P&ID.
+Manage all engineering documents based on P&ID drawings.
 ```
 
 ---
@@ -6569,7 +6575,7 @@ Action Area berada pada bagian kanan atas Main Content Area dan sejajar dengan P
 ```text
 PFD
 
-Kelola seluruh Engineering Document berdasarkan Drawing PFD.
+Manage all engineering documents based on PFD drawings.
 
 
                                                            ┌─────────────────┐
@@ -6582,7 +6588,7 @@ atau
 ```text
 P&ID
 
-Kelola seluruh Engineering Document berdasarkan Drawing P&ID.
+Manage all engineering documents based on P&ID drawings.
 
 
                                                           ┌──────────────────┐
@@ -8392,7 +8398,7 @@ Enter area
 ### Days Until Validation
 
 - Number Field.
-- Label UI: `TIMES FOR REVIEW`.
+- Label UI: `DAY TIMES FOR REVIEW`.
 - API/backend property: `daysUntilValidation`.
 - Placeholder:
 
@@ -8771,7 +8777,7 @@ Nilai Days Until Validation digunakan sebagai dasar:
 - Inisialisasi SLA Timer.
 - Penentuan Target Validation Date.
 
-Pada UI runtime, field ini ditampilkan sebagai `TIMES FOR REVIEW`; API/backend tetap menggunakan property `daysUntilValidation`. Nilai `0` berarti `Today`.
+Pada UI runtime, field ini ditampilkan sebagai `DAY TIMES FOR REVIEW`; API/backend tetap menggunakan property `daysUntilValidation`. Nilai `0` berarti `Today`.
 
 Perubahan nilai ini tidak mempengaruhi field lain selama modal masih terbuka.
 
@@ -16179,7 +16185,7 @@ Acceptance Directory dinyatakan memenuhi spesifikasi apabila:
 
 
 # ==============================================================================
-# PART 6 — SLA Monitoring
+# PART 6 — SLA Monitoring (Review Time Monitoring)
 # 6.1 Overview
 # ==============================================================================
 
@@ -18851,7 +18857,7 @@ Setiap Business Event hanya menghasilkan Notification apabila terdapat pengguna 
 
 Business Event yang tidak menghasilkan Need Action tidak menghasilkan Notification.
 
-Untuk Business Event SLA At Risk dan SLA Overdue, Notification dibuat berdasarkan **SLA State Transition**, bukan hanya berdasarkan SLA State saat ini.
+Untuk Business Event SLA At Risk dan SLA Overdue, Notification dibuat berdasarkan **SLA State Transition**, bukan hanya berdasarkan SLA State (untuk label frontend namanya Review Status) saat ini.
 
 SLA Warning hanya dibuat ketika SLA State dokumen berubah dari state selain **At Risk** menjadi **At Risk**.
 

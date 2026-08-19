@@ -51,7 +51,7 @@ const kpiCards = [
   },
   {
     cardTone: "border-[#A16207]/80 from-[#29230B] via-[#101C1A] to-[#061B2F]",
-    description: "Dokumen dalam review",
+    description: "Document under review",
     icon: UsersRound,
     iconTone: "bg-gradient-to-br from-[#FACC15] to-[#F59E0B] text-white",
     key: "processReview",
@@ -60,7 +60,7 @@ const kpiCards = [
   },
   {
     cardTone: "border-[#C2410C]/80 from-[#331A10] via-[#161518] to-[#061B2F]",
-    description: "Menunggu komentar proses",
+    description: "Awaiting process comments",
     icon: MessageCircle,
     iconTone: "bg-gradient-to-br from-[#F97316] to-[#C2410C] text-white",
     key: "processCommentReject",
@@ -76,7 +76,7 @@ const kpiCards = [
   },
   {
     cardTone: "border-[#854D0E]/80 from-[#24240D] via-[#101C1A] to-[#061B2F]",
-    description: "Dokumen dalam review",
+    description: "Document under review",
     icon: Folder,
     iconTone: "bg-gradient-to-br from-[#B39208] to-[#854D0E] text-white",
     key: "projectReview",
@@ -85,7 +85,7 @@ const kpiCards = [
   },
   {
     cardTone: "border-[#BE3455]/70 from-[#281526] via-[#151628] to-[#061B2F]",
-    description: "Menunggu komentar proyek",
+    description: "Awaiting project comments",
     icon: MessagesSquare,
     iconTone: "bg-gradient-to-br from-[#E0526B] to-[#BE3455] text-white",
     key: "projectCommentReject",
@@ -101,7 +101,7 @@ const kpiCards = [
   },
   {
     cardTone: "border-[#047857]/80 from-[#053D33] via-[#062D2C] to-[#061B2F]",
-    description: "Dokumen disetujui",
+    description: "Document approved",
     icon: CheckCircle2,
     iconTone: "bg-gradient-to-br from-[#86EFAC] to-[#16A34A] text-white",
     key: "approved",
@@ -345,7 +345,7 @@ const DashboardPage = () => {
         </p> */}
         <h1 className="mt-1 text-3xl font-bold">Dashboard</h1>
         <p className="mt-3 text-sm text-[#CBD5E1]">
-          Monitoring utama seluruh dokumen engineering berdasarkan alur review Code A/B/C.
+          Primary monitoring of all engineering documents based on the Code A/B/C review workflow.
         </p>
       </header>
 
@@ -379,7 +379,7 @@ const DashboardPage = () => {
             isCollapsed={isRightPanelCollapsed}
             onCollapse={() => setRightPanelCollapsed(true)}
           >
-            <DashboardInfoWidget icon={Clock3} title="SLA Overview" to="/sla-monitoring">
+            <DashboardInfoWidget icon={Clock3} title="Review Time Overview" to="/sla-monitoring">
               <div className="px-4 pb-4">
                 <div className="overflow-hidden rounded-lg border border-[#123A5A] bg-[#08233B]/70">
                   {slaRows.map((item) => (

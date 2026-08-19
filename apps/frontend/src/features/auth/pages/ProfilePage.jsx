@@ -295,7 +295,7 @@ const ProfilePage = () => {
           </p>
           <h1 className="mt-2 text-3xl font-bold">My Profile</h1>
           <p className="mt-2 text-sm text-[#CBD5E1]">
-            Informasi akun untuk User yang sedang Login.
+            Account information for the currently logged-in user.
           </p>
         </div>
         <button

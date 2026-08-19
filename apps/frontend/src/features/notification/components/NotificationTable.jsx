@@ -156,7 +156,7 @@ export const NotificationTable = ({
         <div>
           <h2 className="text-xl font-bold">Notification List</h2>
           <p className="mt-1 text-sm text-[#94A3B8]">
-            Daftar personal notification berdasarkan tindakan yang perlu ditinjau.
+            List of personal notifications based on actions requiring review.
           </p>
         </div>
 
