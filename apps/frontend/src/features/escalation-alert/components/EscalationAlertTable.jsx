@@ -117,7 +117,7 @@ export const EscalationAlertTable = ({
         <div>
           <h2 className="text-xl font-bold">Escalation Table</h2>
           <p className="mt-1 text-sm text-[#94A3B8]">
-            Dokumen Overdue berdasarkan hasil evaluasi SLA Monitoring.
+            Overdue documents based on the results of the review time monitoring evaluation.
           </p>
         </div>
 
@@ -161,7 +161,7 @@ export const EscalationAlertTable = ({
             <option value="escalationLevel">Highest Level</option>
             <option value="daysOverdue">Days Overdue</option>
             <option value="documentNumber">Document Number</option>
-            <option value="slaTimer">SLA Timer</option>
+            <option value="slaTimer">Review Timer</option>
           </SelectDropdown>
           <SelectDropdown
             className={controlClassName}
@@ -185,8 +185,8 @@ export const EscalationAlertTable = ({
               <th className="sticky top-0 z-20 w-72 min-w-72 max-w-72 bg-[#08233B] px-4 py-3 font-bold">Description</th>
               <th className="sticky top-0 z-20 min-w-40 bg-[#08233B] px-4 py-3 font-bold">Status</th>
               <th className="sticky top-0 z-20 min-w-36 bg-[#08233B] px-4 py-3 font-bold">Days Overdue</th>
-              <th className="sticky top-0 z-20 min-w-52 bg-[#08233B] px-4 py-3 font-bold">SLA Timer</th>
-              <th className="sticky top-0 z-20 min-w-40 bg-[#08233B] px-4 py-3 font-bold">Time for Review</th>
+              <th className="sticky top-0 z-20 min-w-52 bg-[#08233B] px-4 py-3 font-bold">Review Timer</th>
+              <th className="sticky top-0 z-20 min-w-40 bg-[#08233B] px-4 py-3 font-bold">Day Times for Review</th>
               <th className="sticky top-0 z-20 min-w-52 bg-[#08233B] px-4 py-3 font-bold">Current Assignee</th>
               <th className="sticky right-0 top-0 z-30 min-w-40 bg-[#08233B] px-4 py-3 font-bold shadow-[-8px_0_16px_rgba(2,11,22,0.35)]">
                 Actions

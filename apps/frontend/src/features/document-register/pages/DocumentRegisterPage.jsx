@@ -19,9 +19,9 @@ import { getDrawingContextFromPathname } from "../utils/drawingContext";
 
 const pageDescriptions = {
   [DRAWING_CONTEXT.PFD]:
-    "Kelola seluruh Engineering Document berdasarkan Drawing PFD.",
+    "Manage all engineering documents based on PFD drawings.",
   [DRAWING_CONTEXT.PID]:
-    "Kelola seluruh Engineering Document berdasarkan Drawing P&ID.",
+    "Manage all engineering documents based on P&ID drawings.",
 };
 
 const DocumentRegisterPage = () => {

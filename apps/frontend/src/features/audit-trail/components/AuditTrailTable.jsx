@@ -157,7 +157,7 @@ export const AuditTrailTable = ({
         <div>
           <h2 className="text-xl font-bold">Audit Trail List</h2>
           <p className="mt-1 text-sm text-[#94A3B8]">
-            Daftar read-only seluruh aktivitas signifikan yang telah dicatat sistem.
+            A read-only list of all significant activities recorded by the system.
           </p>
         </div>
 

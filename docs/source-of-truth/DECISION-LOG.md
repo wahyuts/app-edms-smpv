@@ -537,7 +537,7 @@ Keputusan sebelum Manual UAT:
 
 Keputusan sebelum Manual UAT lanjutan:
 
-- Label frontend tetap `TIMES FOR REVIEW`.
+- Label frontend tetap `DAY TIMES FOR REVIEW`.
 - Business term resmi tetap `Days Until Validation`.
 - Backend field/API field tetap `daysUntilValidation`.
 - Display read-only memakai formatter `0 -> Today`, `1 -> 1 Day`, dan `N -> N Days`.
@@ -583,8 +583,8 @@ Keputusan saat Manual UAT Authentication dan Administration:
 Keputusan setelah PART 8 Notification menjadi Source of Truth:
 
 - Notification SLA tidak lagi menggunakan SLA Cycle sebagai business suppression utama.
-- `SLA Warning` hanya dibuat ketika SLA State berubah dari state selain `At Risk` menjadi `At Risk`.
-- `SLA Overdue` hanya dibuat ketika SLA State berubah dari state selain `Overdue` menjadi `Overdue`.
+- `SLA Warning` hanya dibuat ketika SLA State (untuk label frontend namanya Review Status) berubah dari state selain `At Risk` menjadi `At Risk`.
+- `SLA Overdue` hanya dibuat ketika SLA State (untuk label frontend namanya Review Status) berubah dari state selain `Overdue` menjadi `Overdue`.
 - Evaluasi ulang pada state yang sama, termasuk setelah Upload Revision, Approval B/C, Workflow Restart, SLA Reset, scheduler tick, refresh, login ulang, dan page load, tidak membuat Notification SLA tambahan.
 - SLA Cycle tetap dipertahankan untuk audit, tracing, reporting, metadata notification, dan concurrency guard.
 - `identity_key` dan `INSERT IGNORE` tetap dipertahankan sebagai race-condition protection, tetapi bukan business suppression utama.

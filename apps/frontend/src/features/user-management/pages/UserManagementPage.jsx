@@ -951,7 +951,7 @@ const UserManagementPage = () => {
           </p>
           <h1 className="mt-2 text-3xl font-bold">User Management</h1>
           <p className="mt-2 max-w-3xl text-sm text-[#CBD5E1]">
-            Kelola identitas akun, department, dan lifecycle Active / Inactive.
+            Manage account identities, departments, and the active/inactive lifecycle.
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -1022,7 +1022,7 @@ const UserManagementPage = () => {
           <div>
             <h2 className="text-xl font-bold">User List</h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
-              Daftar akun pengguna yang tersimpan pada sumber data Authentication.
+              List of user accounts stored in the Authentication data source.
             </p>
           </div>
 

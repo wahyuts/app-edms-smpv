@@ -606,7 +606,7 @@ const ProjectMembershipManagementPage = () => {
           </p>
           <h1 className="mt-2 text-3xl font-bold">Project Membership</h1>
           <p className="mt-2 max-w-3xl text-sm text-[#CBD5E1]">
-            Kelola hubungan User, Project, Official Role, dan Membership Status.
+            Manage relationships between Users, Projects, Official Roles, and Membership Statuses.
           </p>
         </div>
         <button
@@ -631,7 +631,7 @@ const ProjectMembershipManagementPage = () => {
           <div>
             <h2 className="text-xl font-bold">Membership List</h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
-              Daftar Project Membership yang menjadi dasar Project Selector dan Workflow.
+              List of project memberships that serve as the basis for the Project Selector and Workflow.
             </p>
           </div>
 

@@ -782,12 +782,12 @@ Contoh Field pada Form Upload Document.
 | Drawing Type | SelectField | Mandatory | drawingType |
 | Area | TextField | Mandatory | area |
 | Revision | TextField | Mandatory | revision |
-| Times For Review | NumberField | Mandatory | daysUntilValidation |
+| Day Times For Review | NumberField | Mandatory | daysUntilValidation |
 | Upload File | FileUploader + Temporary Upload | Mandatory | temporaryFileId |
 
 Field mengikuti API-CONTRACT.md.
 
-Terminologi UI untuk field SLA adalah `TIMES FOR REVIEW`. Terminologi bisnis tetap `Days Until Validation`, sedangkan property API/backend yang digunakan adalah `daysUntilValidation`.
+Terminologi UI untuk field SLA adalah `DAY TIMES FOR REVIEW`. Terminologi bisnis tetap `Days Until Validation`, sedangkan property API/backend yang digunakan adalah `daysUntilValidation`.
 
 Display rule:
 

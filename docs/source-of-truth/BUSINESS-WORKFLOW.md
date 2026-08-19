@@ -48,7 +48,7 @@ Dokumen ini mencakup seluruh proses bisnis yang berkaitan dengan Engineering Doc
 - Revision Management
 - Approval Workflow
 - Document Lifecycle
-- SLA Monitoring
+- SLA Monitoring (Review Time Monitoring)
 - Dashboard Read Model
 - Workflow Notification
 - Escalation
@@ -3617,7 +3617,7 @@ User dengan Official Role yang sama pada Project lain tidak menerima Notificatio
 
 Setiap Notification wajib memiliki Project ID.
 
-Notification SLA At Risk dan SLA Overdue wajib dibuat berdasarkan transisi SLA State yang valid. Evaluasi ulang pada state yang sama tidak membuat Notification baru.
+Notification SLA At Risk dan SLA Overdue wajib dibuat berdasarkan transisi SLA State (untuk label frontend namanya Review Status) yang valid. Evaluasi ulang pada state yang sama tidak membuat Notification baru.
 
 Duplicate prevention SLA berlaku per Project, Document, recipient, dan SLA State. Workflow Approval A, Approval B, Approval C, Upload Revision, atau status transition lain tidak boleh membuat ulang SLA Warning atau SLA Overdue untuk dokumen dan recipient yang sama apabila Notification SLA tersebut sudah pernah dibuat.
 
@@ -3760,7 +3760,7 @@ Perilaku ini merupakan implementasi resmi dari **CR-003**.
 
 # 6.8 SLA Overview
 
-SLA Overview merupakan Dashboard Read Model yang mengelompokkan dokumen berdasarkan kondisi SLA.
+SLA Overview (Label di frontend adalah Review Time Overview) merupakan Dashboard Read Model yang mengelompokkan dokumen berdasarkan kondisi SLA.
 
 Kategori:
 

@@ -94,7 +94,7 @@ const LoginPage = () => {
         </p>
         <h1 className="mt-3 text-3xl font-bold text-[#F8FAFC]">Login</h1>
         <p className="mt-2 text-sm text-[#CBD5E1]">
-          Masuk untuk mengakses APP Engineering EDMS.
+          Log in to access the APP Engineering EDMS.
         </p>
       </div>
 
@@ -125,7 +125,7 @@ const LoginPage = () => {
               name="rememberMe"
               type="checkbox"
             />
-            <span>Ingat Login</span>
+            <span>Remember me</span>
           </label>
 
           <Link

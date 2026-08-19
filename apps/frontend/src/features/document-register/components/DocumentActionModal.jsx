@@ -1285,7 +1285,7 @@ export const CreateDocumentModal = ({
           ) : null}
         </label>
         <label className="block">
-          <span className={fieldLabelClassName}>Times For Review</span>
+          <span className={fieldLabelClassName}>Day Times For Review</span>
           <input
             className={inputClassName}
             min={0}
@@ -1491,7 +1491,7 @@ export const EditDocumentModal = ({
           ) : null}
         </label>
         <label className="block">
-          <span className={fieldLabelClassName}>Times For Review</span>
+          <span className={fieldLabelClassName}>Day Times For Review</span>
           <input
             className={inputClassName}
             min={0}

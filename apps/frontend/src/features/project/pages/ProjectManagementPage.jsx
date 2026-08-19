@@ -943,7 +943,7 @@ const ProjectManagementPage = () => {
           </p>
           <h1 className="mt-2 text-3xl font-bold">Project Management</h1>
           <p className="mt-2 max-w-3xl text-sm text-[#CBD5E1]">
-            Kelola Project Master Data dan lifecycle Active / Inactive / Closed untuk Multi Project EDMS.
+            Manage Project Master Data and Active / Inactive / Closed lifecycle for Multi Project EDMS.
           </p>
         </div>
         <button
@@ -969,7 +969,7 @@ const ProjectManagementPage = () => {
           <div>
             <h2 className="text-xl font-bold">Project List</h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
-              Daftar Project Master Data yang digunakan oleh Project Context.
+              List of Master Data projects used by the Project Context.
             </p>
           </div>
 

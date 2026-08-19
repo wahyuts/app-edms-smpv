@@ -346,7 +346,7 @@ export const DocumentRegisterTable = ({
               ) : null}
               <th className="sticky top-0 z-20 min-w-40 bg-[#08233B] px-4 py-3 font-bold">Status</th>
               {isDashboard ? (
-                <th className="sticky top-0 z-20 min-w-44 bg-[#08233B] px-4 py-3 font-bold">SLA Timer</th>
+                <th className="sticky top-0 z-20 min-w-44 bg-[#08233B] px-4 py-3 font-bold">Review Timer</th>
               ) : null}
               <th className="sticky right-0 top-0 z-30 min-w-60 bg-[#08233B] px-4 py-3 font-bold shadow-[-8px_0_16px_rgba(2,11,22,0.35)]">
                 Actions
