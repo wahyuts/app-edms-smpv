@@ -143,8 +143,8 @@ INSERT INTO users (
 ) VALUES (
   1,
   'USR-000001',
-  'deny',
-  'Deny Budiarso',
+  'admin',
+  'Admin 1',
   'wahyu.trisna100@gmail.com',
   1,
   'No Department',
