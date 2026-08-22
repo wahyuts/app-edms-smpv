@@ -10,14 +10,14 @@ import {
 const PASSWORD_RESET_GENERIC_MESSAGE =
   "Jika data akun valid, instruksi Reset Password telah dikirim.";
 const LOGIN_MESSAGES = {
-  invalidCredentials: "Username atau Password tidak benar.",
-  passwordRequired: "Silakan masukkan Password Anda.",
-  serverUnavailable: "Tidak dapat terhubung ke server.",
-  sessionExpired: "Session telah berakhir.",
-  usernameRequired: "Silakan masukkan Username Anda.",
+  invalidCredentials: "Username or Password is incorrect.",
+  passwordRequired: "Please enter your password.",
+  serverUnavailable: "Unable to connect to the server.",
+  sessionExpired: "Your session has expired.",
+  usernameRequired: "Please enter your username.",
 };
 const CHANGE_PASSWORD_MESSAGES = {
-  currentPasswordIncorrect: "Current Password tidak benar.",
+  currentPasswordIncorrect: "Current password is incorrect.",
 };
 
 let initializationPromise = null;

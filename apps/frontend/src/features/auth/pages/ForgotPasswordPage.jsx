@@ -34,8 +34,8 @@ const ForgotPasswordPage = () => {
         setError(issue.field, { message: issue.message, type: "validate" });
       });
       showToast({
-        message: "Username dan Registered Email wajib diisi.",
-        title: "Data Belum Lengkap",
+        message: "Username and Registered Email fields are required.",
+        title: "Data Still Incomplete",
         variant: "error",
       });
       return;
@@ -44,16 +44,16 @@ const ForgotPasswordPage = () => {
     const response = await AuthService.forgotPassword(validationResult.data);
     if (!response.success) {
       showToast({
-        message: "Gagal mengirim email.",
-        title: "Terjadi Kesalahan",
+        message: "Failed to send email.",
+        title: "An Error Occurred",
         variant: "error",
       });
       return;
     }
 
     showToast({
-      message: "Silakan periksa email Anda.",
-      title: "Email Berhasil Dikirim",
+      message: "Please check your email.",
+      title: "Email Successfully Sent",
       variant: "success",
     });
     const requestId = response.data?.requestId;
