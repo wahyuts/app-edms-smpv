@@ -1,0 +1,123 @@
+Keputusan resmi yang saya sarankan sebelum Milestone 3
+
+1. Backend menggunakan Storage Driver abstraction.
+
+2. Provider dipilih hanya melalui STORAGE_DRIVER.
+
+3. Localhost dan Railway Volume menggunakan driver local/filesystem.
+
+4. Perbedaan localhost dan Railway Volume hanya STORAGE_PATH.
+
+5. Cloudflare R2 menggunakan driver r2.
+
+6. R2 dapat diuji dari backend localhost.
+
+7. Bucket local-test, staging, dan production terpisah.
+
+8. Business service tidak mengetahui provider storage.
+
+9. Database menyimpan metadata dan storage key relatif, bukan absolute path.
+
+10. Pergantian provider tidak memerlukan perubahan source code.
+
+
+Target akhirnya
+Localhost
+APP_ENV=development
+
+STORAGE_DRIVER=local
+STORAGE_PATH=./storage
+
+Hasil fisik:
+
+apps/backend/storage/
+├── temporary/
+└── projects/
+
+---------------------------------
+
+Railway Development dengan Volume
+APP_ENV=development
+
+STORAGE_DRIVER=local
+STORAGE_PATH=/data/edms-storage
+
+Hasil fisik pada volume:
+
+/data/edms-storage/
+├── temporary/
+└── projects/
+
+Kodenya sama dengan localhost. Hanya root path yang berbeda.
+
+
+--------------------------------------------------
+
+Localhost untuk menguji R2
+APP_ENV=development
+
+STORAGE_DRIVER=r2
+
+R2_ACCOUNT_ID=...
+R2_BUCKET_NAME=edms-local-test
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+R2_REGION=auto
+
+Backend tetap dijalankan dengan:
+
+npm run dev
+
+tetapi file masuk ke R2 test bucket.
+
+---------------------------------------------------------
+
+Staging
+APP_ENV=staging
+
+STORAGE_DRIVER=r2
+R2_BUCKET_NAME=edms-staging
+
+-------------------------------------------------------------
+
+
+Production
+APP_ENV=production
+
+STORAGE_DRIVER=r2
+R2_BUCKET_NAME=edms-production
+
+Jadi benar-benar cukup mengganti variables pada Railway atau .env lokal.
+
+Backend harus bekerja seperti ini
+
+Saat aplikasi start:
+
+Baca STORAGE_DRIVER
+        │
+        ├── local
+        │      └── gunakan LocalStorageDriver
+        │
+        └── r2
+               └── gunakan R2StorageDriver
+
+Business service tidak boleh memiliki kondisi seperti ini berulang-ulang:
+
+if (process.env.STORAGE_DRIVER === 'r2') {
+  // upload R2
+} else {
+  // simpan lokal
+}
+
+di setiap Document Service, Revision Service, atau Comment Service.
+
+Yang benar:
+
+const storage = createStorageDriver(config);
+
+await storage.put(...);
+await storage.get(...);
+await storage.exists(...);
+
+Pemilihan driver hanya terjadi sekali pada saat aplikasi diinisialisasi.

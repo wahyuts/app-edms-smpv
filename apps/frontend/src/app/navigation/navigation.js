@@ -81,7 +81,7 @@ const navigation = [
   },
   {
     id: "sla-monitoring",
-    title: "SLA Monitoring",
+    title: "Review Time Monitoring",
     path: "/sla-monitoring",
     icon: Gauge,
     permission: "sla-monitoring.view",

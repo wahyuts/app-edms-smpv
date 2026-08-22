@@ -1327,7 +1327,7 @@ Menampilkan informasi pendukung yang tidak berbentuk tabel.
 
 ### Example Usage
 
-- SLA Overview
+- SLA Overview (Label di frontend adalah Review Time Overview)
 - Escalation Alert
 - Document Summary
 - Activity Information

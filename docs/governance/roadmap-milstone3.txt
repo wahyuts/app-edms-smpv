@@ -1,0 +1,26 @@
+MILESTONE 3 — CORE EDMS
+
+PART A — FOUNDATION
+
+3.1 Storage Foundation
+3.2 File Metadata and Upload Pipeline
+3.3 Document and Revision Foundation
+3.4 Viewer, Download, and Workflow Attachment
+
+PART B — CORE BACKEND
+
+3.5–3.14 Core EDMS Backend Implementation
+- Document Register Backend
+- Process Review Workflow
+- Project Review Workflow
+- Workflow History and Comment
+- SLA Engine
+- Escalation Alert
+- Notification
+- Audit Trail
+- Archive, Restore, and Project Close
+- Dashboard and Monitoring APIs
+
+PART C — FRONTEND INTEGRATION
+
+3.15 Core EDMS Frontend Integration

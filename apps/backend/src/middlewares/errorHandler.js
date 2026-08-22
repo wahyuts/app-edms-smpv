@@ -16,6 +16,16 @@ const errorHandler = (err, req, res, next) => {
     message,
   };
 
+  if (err.errors !== undefined && statusCode < 500) {
+    body.errors = err.errors;
+  }
+  if (err.code !== undefined && statusCode < 500) {
+    body.code = err.code;
+  }
+  if (err.data !== undefined && statusCode < 500) {
+    body.data = err.data;
+  }
+
   if (env.appEnv === 'development' && statusCode >= 500 && err.stack) {
     body.stack = err.stack;
   }

@@ -1,4 +1,4 @@
-import { Activity, CalendarDays, Users } from "lucide-react";
+import { Activity, CalendarDays, Loader2, Users } from "lucide-react";
 
 const summaryCards = [
   {
@@ -21,7 +21,15 @@ const summaryCards = [
   },
 ];
 
-export const AuditTrailSummary = ({ summary }) => (
+const LoadingValue = () => (
+  <Loader2
+    aria-label="Loading audit trail summary value"
+    className="inline-block h-7 w-7 animate-spin"
+    role="status"
+  />
+);
+
+export const AuditTrailSummary = ({ isLoading = false, summary }) => (
   <section className="grid gap-4 md:grid-cols-3">
     {summaryCards.map(({ icon: Icon, key, label, valueClassName }) => (
       <article
@@ -34,7 +42,7 @@ export const AuditTrailSummary = ({ summary }) => (
               {label}
             </p>
             <p className={`mt-3 text-3xl font-bold ${valueClassName}`}>
-              {summary?.[key] ?? 0}
+              {isLoading ? <LoadingValue /> : summary?.[key] ?? 0}
             </p>
           </div>
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-[#123A5A] bg-[#08233B] text-[#00C8FF]">

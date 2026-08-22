@@ -782,10 +782,40 @@ Contoh Field pada Form Upload Document.
 | Drawing Type | SelectField | Mandatory | drawingType |
 | Area | TextField | Mandatory | area |
 | Revision | TextField | Mandatory | revision |
-| Validation Days | NumberField | Mandatory | validationDays |
-| Attachment | FileUploader | Mandatory | attachment |
+| Day Times For Review | NumberField | Mandatory | daysUntilValidation |
+| Upload File | FileUploader + Temporary Upload | Mandatory | temporaryFileId |
 
 Field mengikuti API-CONTRACT.md.
+
+Terminologi UI untuk field SLA adalah `DAY TIMES FOR REVIEW`. Terminologi bisnis tetap `Days Until Validation`, sedangkan property API/backend yang digunakan adalah `daysUntilValidation`.
+
+Display rule:
+
+| API Value | Frontend Display |
+|-----------|------------------|
+| 0 | Today |
+| 1 | 1 Day |
+| N | N Days |
+
+Lifecycle file upload pada form Create Document:
+
+File Selection
+
+↓
+
+`POST /api/v1/storage/temporary-uploads`
+
+↓
+
+Frontend menerima `temporaryFileId`
+
+↓
+
+Form Submit mengirim `temporaryFileId`
+
+↓
+
+Backend melakukan permanent file promotion setelah dokumen berhasil dibuat.
 
 ---
 
@@ -1031,7 +1061,7 @@ Contoh.
 | Document Title | Required |
 | Drawing Type | Required |
 | Revision | Required |
-| Validation Days | Required |
+| Times For Review / Days Until Validation | Required |
 
 Field Mandatory tidak boleh dikirim dalam keadaan kosong.
 
@@ -1315,7 +1345,7 @@ Upload Document wajib memenuhi aturan berikut.
 - File berhasil dipilih.
 - Format File sesuai aturan sistem.
 - Revision valid.
-- Validation Days wajib diisi.
+- Times For Review wajib diisi sebagai Days Until Validation.
 
 Detail validasi teknis mengikuti PART 5.
 
@@ -2174,6 +2204,7 @@ Form operasional resmi:
 - User Create/Update/Activate/Deactivate.
 - Department Create/Update/Activate/Deactivate.
 - Profile dan Change Password.
+- Create User wajib menampilkan confirmation setelah validasi form PASS untuk menegaskan bahwa Username tidak dapat diubah setelah akun dibuat.
 
 ## Validation Baseline
 
@@ -2185,5 +2216,6 @@ Form operasional resmi:
 - File utama menerima `pdf`, `docx`, `xls`, `xlsx`, `jpg`, `jpeg`, dan `png` maksimum 100 MB.
 - Workflow attachment menerima `pdf`, `jpg`, `jpeg`, dan `png` maksimum 100 MB.
 - User email dan username wajib unik.
+- Username hanya ditentukan pada Create User dan menjadi immutable setelah akun berhasil dibuat.
 - Department name key wajib unik.
 - Close Project membutuhkan validasi Active Project, Role Admin, project code confirmation, checkbox confirmation, dan tidak ada workflow aktif.

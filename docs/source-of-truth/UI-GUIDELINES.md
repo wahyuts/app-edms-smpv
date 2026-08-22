@@ -639,7 +639,7 @@ Urutan prioritas informasi adalah sebagai berikut.
 1. Dashboard Header
 2. Summary Cards
 3. Document Register
-4. SLA Overview
+4. SLA Overview (Label di frontend adalah Review Time Overview)
 5. Escalation Alert
 
 Urutan tersebut harus dipertahankan pada seluruh ukuran layar.

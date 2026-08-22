@@ -122,16 +122,19 @@ export const useAuditTrailPage = () => {
   ]);
 
   const activityQuery = useQuery({
+    enabled: Boolean(activeProjectId),
     queryFn: () => AuditTrailService.getActivityList(query),
     queryKey: ["audit-trail", "list", activeProjectId ?? null, query],
   });
 
   const summaryQuery = useQuery({
+    enabled: Boolean(activeProjectId),
     queryFn: AuditTrailService.getActivitySummary,
     queryKey: ["audit-trail", "summary", activeProjectId ?? null],
   });
 
   const filterOptionsQuery = useQuery({
+    enabled: Boolean(activeProjectId),
     queryFn: AuditTrailService.getActivityFilterOptions,
     queryKey: ["audit-trail", "filter-options", activeProjectId ?? null],
   });
@@ -277,7 +280,10 @@ export const useAuditTrailPage = () => {
       resourceTypes: [],
       users: [],
     },
-    isError: activityQuery.isError,
+    isError:
+      activityQuery.isError ||
+      summaryQuery.isError ||
+      filterOptionsQuery.isError,
     isBulkDeletePending: softDeleteMutation.isPending,
     isCurrentPageSelected,
     isCurrentPageSelectionIndeterminate,
@@ -286,6 +292,7 @@ export const useAuditTrailPage = () => {
       activityQuery.isLoading ||
       summaryQuery.isLoading ||
       filterOptionsQuery.isLoading,
+    isSummaryLoading: summaryQuery.isLoading,
     officialRoleFilter,
     pageNumber: normalizedPageNumber,
     pageSize: normalizedPageSize,

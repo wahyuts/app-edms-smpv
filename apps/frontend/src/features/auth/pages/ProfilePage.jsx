@@ -14,7 +14,7 @@ const actionButtonClassName =
 const primaryButtonClassName =
   "inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0F7BFF] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] disabled:cursor-not-allowed disabled:bg-[#123A5A] disabled:text-[#94A3B8]";
 
-const NO_ACTIVE_PROJECT_OFFICIAL_ROLE = "Tidak Ada Official Role pada Active Project";
+const NO_ACTIVE_PROJECT_OFFICIAL_ROLE = "Tidak Ada Role Pada Active Project";
 const NO_ACTIVE_PROJECT_ACCESS = "Tidak Ada Project Access";
 
 const getDisplayOfficialRole = ({ activeOfficialRole }) => {
@@ -33,11 +33,10 @@ const getEditableOfficialRole = (displayOfficialRole) => {
   return displayOfficialRole;
 };
 
-const getProfileForm = (currentUser, displayOfficialRole) => ({
+const getProfileForm = (currentUser) => ({
   department: currentUser?.department ?? "",
   email: currentUser?.email ?? "",
   fullName: currentUser?.fullName ?? currentUser?.name ?? "",
-  officialRole: getEditableOfficialRole(displayOfficialRole),
   status: currentUser?.status ?? (currentUser?.isActive ? "Active" : "Inactive"),
   username: currentUser?.username ?? "",
 });
@@ -49,6 +48,29 @@ const getErrorMap = (errors = []) =>
       item.message,
     ]),
   );
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const validateProfileForm = (form = {}) => {
+  const errors = {};
+  const fullName = String(form.fullName ?? "").trim();
+  const email = String(form.email ?? "").trim();
+
+  if (!fullName) {
+    errors.fullName = "Nama wajib diisi";
+  }
+  if (!email) {
+    errors.email = "Email wajib diisi";
+  } else if (!emailPattern.test(email)) {
+    errors.email = "Format email tidak valid";
+  }
+
+  return {
+    errors,
+    isValid: Object.keys(errors).length === 0,
+    value: { email, fullName },
+  };
+};
 
 const FieldError = ({ message }) =>
   message ? <p className="text-xs font-medium text-[#FCA5A5]">{message}</p> : null;
@@ -116,7 +138,7 @@ const EditProfileModal = ({
             value={form.username}
           />
           <TextField
-            label="Official Role"
+            label="Project Active Role"
             name="officialRole"
             readOnly
             value={officialRole}
@@ -188,7 +210,7 @@ const ProfilePage = () => {
       value: currentUser?.department ?? "-",
     },
     {
-      label: "Official Role",
+      label: "Project Active Role",
       value: displayOfficialRole,
     },
     {
@@ -207,7 +229,7 @@ const ProfilePage = () => {
 
   const openEditProfile = () => {
     setFormErrors({});
-    setFormState(getProfileForm(currentUser, displayOfficialRole));
+    setFormState(getProfileForm(currentUser));
   };
 
   const closeEditProfile = () => {
@@ -230,12 +252,20 @@ const ProfilePage = () => {
 
   const handleFormSubmit = async (event) => {
     event.preventDefault();
-    setIsSubmitting(true);
     setFormErrors({});
 
+    const validation = validateProfileForm(formState);
+
+    if (!validation.isValid) {
+      setFormErrors(validation.errors);
+      return;
+    }
+
+    setIsSubmitting(true);
+
     const response = await AuthService.updateCurrentProfile({
-      email: formState?.email,
-      fullName: formState?.fullName,
+      email: validation.value.email,
+      fullName: validation.value.fullName,
     });
 
     if (response.success) {
@@ -265,7 +295,7 @@ const ProfilePage = () => {
           </p>
           <h1 className="mt-2 text-3xl font-bold">My Profile</h1>
           <p className="mt-2 text-sm text-[#CBD5E1]">
-            Informasi akun untuk User yang sedang Login.
+            Account information for the currently logged-in user.
           </p>
         </div>
         <button

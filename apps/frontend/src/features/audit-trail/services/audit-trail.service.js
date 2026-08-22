@@ -1,290 +1,197 @@
-import {
-  AUDIT_RESOURCE_TYPE,
-  AUDIT_TRAIL_DICTIONARY,
-} from "../constants/audit-trail.constants";
-import { AuditTrailRepository } from "../repositories/audit-trail.repository";
+import { apiClient } from "@/shared/api";
 import { queryClient } from "@/shared/api/query-client";
-import {
-  getActiveOfficialRole,
-  getActiveProjectId,
-} from "@/shared/stores/project-context.store";
+import { getActiveProjectId } from "@/shared/stores/project-context.store";
 
-const CURRENT_USER_STORAGE_KEY = "edms.currentUser";
-const ADMIN_OFFICIAL_ROLE = "Admin";
-
-const cloneValue = (value) => JSON.parse(JSON.stringify(value));
-const normalizeText = (value) => String(value ?? "").trim();
-const normalizeKey = (value) => normalizeText(value).toLowerCase();
-const getRecordProjectId = (record) => record?.projectId ?? null;
-const isVisibleRecord = (record) => record?.isDeleted !== true;
-const PROJECT_SCOPED_ACTOR_RESOURCE_TYPES = new Set([
-  AUDIT_RESOURCE_TYPE.DOCUMENT,
-  AUDIT_RESOURCE_TYPE.ESCALATION,
-  AUDIT_RESOURCE_TYPE.NOTIFICATION,
-  AUDIT_RESOURCE_TYPE.WORKFLOW_ATTACHMENT,
-]);
 const getRequiredActiveProjectId = () => {
   const activeProjectId = getActiveProjectId();
   if (!activeProjectId) {
-    throw new Error("Active Project is required.");
+    throw new Error("Project aktif wajib dipilih.");
   }
 
   return activeProjectId;
 };
 
-const createAuditId = () => {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return `AUD-${crypto.randomUUID()}`;
+const getErrorMessage = (error, fallback = "Gagal memuat Audit Trail.") => {
+  if (error?.response?.data?.errors?.length) {
+    return error.response.data.errors[0].message ?? fallback;
   }
-  return `AUD-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  return error?.response?.data?.message ?? error?.message ?? fallback;
 };
 
-const getCurrentUserSnapshot = () => {
-  if (typeof window === "undefined" || !window.localStorage) return null;
-  const storedCurrentUser = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY);
-  if (!storedCurrentUser) return null;
-
-  try {
-    return JSON.parse(storedCurrentUser);
-  } catch {
-    return null;
-  }
+const throwAuditApiError = (error, fallback) => {
+  throw new Error(getErrorMessage(error, fallback));
 };
 
 const notifyAuditTrailQueries = () => {
   queryClient.invalidateQueries({ queryKey: ["audit-trail"] });
 };
 
-const normalizeActor = (actor, { useActiveOfficialRole = false } = {}) => {
-  const currentUser = actor ?? getCurrentUserSnapshot();
-  const activeOfficialRole = useActiveOfficialRole ? getActiveOfficialRole() : null;
+const normalizeAuditRecord = (record = {}) => ({
+  ...record,
+  createdAt: record.createdAt ?? record.occurredAt ?? record.timestamp ?? null,
+  isDeleted: Boolean(record.isDeleted ?? record.isHidden),
+  isHidden: Boolean(record.isHidden ?? record.isDeleted),
+  metadata: record.metadata ?? {},
+  reference: record.reference ?? "-",
+  timestamp: record.timestamp ?? record.createdAt ?? record.occurredAt ?? null,
+});
+
+const unwrapActivityList = (response, query = {}) => {
+  const payload = response.data?.data ?? {};
 
   return {
-    actorName: currentUser?.fullName ?? currentUser?.name ?? currentUser?.username ?? "System",
-    actorUserId: currentUser?.id ?? null,
-    department: currentUser?.department ?? "-",
-    officialRole:
-      activeOfficialRole ?? currentUser?.officialRole ?? currentUser?.roleName ?? "-",
+    data: (payload.data ?? []).map(normalizeAuditRecord),
+    pagination: payload.pagination ?? {
+      page: Number(query.page) || 1,
+      pageSize: Number(query.pageSize) || 10,
+      totalItems: 0,
+      totalPages: 1,
+    },
   };
 };
 
-const createDefaultIdentityKey = ({
-  action,
-  actorUserId,
-  createdAt,
-  resourceId,
-  resourceType,
-}) => [
-  action,
-  actorUserId ?? "system",
-  resourceType ?? "-",
-  resourceId ?? "-",
-  createdAt,
-].map((value) => normalizeKey(value)).join(":");
-
-const normalizeRecord = ({
-  action,
-  actor,
-  createdAt = new Date().toISOString(),
-  identityKey,
-  metadata = {},
-  projectId = getActiveProjectId(),
-  reference = null,
-  resourceId = null,
-  resourceType = AUDIT_RESOURCE_TYPE.AUTHENTICATION,
-} = {}) => {
-  const dictionaryEntry = AUDIT_TRAIL_DICTIONARY[action];
-  if (!dictionaryEntry) {
-    throw new Error(`Audit Trail action is not defined: ${action}`);
-  }
-
-  const actorSnapshot = normalizeActor(actor, {
-    useActiveOfficialRole: PROJECT_SCOPED_ACTOR_RESOURCE_TYPES.has(resourceType),
-  });
+const unwrapSummary = (response) => {
+  const payload = response.data?.data ?? {};
 
   return {
-    id: createAuditId(),
-    action,
-    businessEvent: dictionaryEntry.businessEvent,
-    createdAt,
-    detail: dictionaryEntry.detail,
-    identityKey: identityKey ?? createDefaultIdentityKey({
-      action,
-      actorUserId: actorSnapshot.actorUserId,
-      createdAt,
-      resourceId,
-      resourceType,
-    }),
-    metadata,
-    projectId,
-    reference: reference ?? "-",
-    resourceId,
-    resourceType,
-    timestamp: createdAt,
-    ...actorSnapshot,
+    activeUsersToday: Number(payload.activeUsersToday ?? 0),
+    today: Number(payload.today ?? 0),
+    total: Number(payload.total ?? 0),
   };
 };
 
-const recordActivity = async (payload = {}) => {
-  const auditRecord = normalizeRecord(payload);
-  if (await AuditTrailRepository.hasDuplicate(auditRecord.identityKey)) {
-    return {
-      created: false,
-      duplicate: true,
-      record: null,
-    };
-  }
-
-  const createdRecord = await AuditTrailRepository.create(auditRecord);
+const unwrapFilterOptions = (response) => {
+  const payload = response.data?.data ?? {};
 
   return {
-    created: Boolean(createdRecord),
-    duplicate: !createdRecord,
-    record: createdRecord,
+    actions: payload.actions ?? [],
+    departments: payload.departments ?? [],
+    officialRoles: payload.officialRoles ?? [],
+    resourceTypes: payload.resourceTypes ?? [],
+    users: payload.users ?? [],
   };
 };
 
-const recordActivitySafely = async (payload = {}) => {
-  try {
-    return await recordActivity(payload);
-  } catch (error) {
-    console.warn("[AuditTrail] Activity could not be recorded.", error);
-    return {
-      created: false,
-      duplicate: false,
-      error,
-      record: null,
-    };
-  }
+const toActivityQuery = (query = {}) => {
+  const activeProjectId = getRequiredActiveProjectId();
+  const params = {
+    action: query.action || undefined,
+    actorName: query.actorName || undefined,
+    direction: query.direction || undefined,
+    fromDate: query.fromDate || undefined,
+    officialRole: query.officialRole || undefined,
+    page: query.page || undefined,
+    pageSize: query.pageSize || undefined,
+    projectId: activeProjectId,
+    resourceType: query.resourceType || undefined,
+    search: query.search || undefined,
+    sortBy: query.sortBy || undefined,
+    toDate: query.toDate || undefined,
+  };
+
+  return Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== ""),
+  );
 };
-
-const searchActivity = (records, search = "") =>
-  AuditTrailRepository.search(records, search);
-
-const filterActivity = (records, filters = {}) =>
-  AuditTrailRepository.filter(records, filters);
-
-const sortActivity = (records, { direction = "desc", sortBy = "createdAt" } = {}) =>
-  AuditTrailRepository.sort(records, { direction, sortBy });
-
-const paginateActivity = (records, { page = 1, pageSize = 10 } = {}) =>
-  AuditTrailRepository.paginate(records, { page, pageSize });
 
 const getActivityList = async (query = {}) => {
-  const records = (await AuditTrailRepository.getByProjectId(getRequiredActiveProjectId()))
-    .filter(isVisibleRecord);
-
-  return paginateActivity(
-    sortActivity(
-      filterActivity(searchActivity(records, query.search), query),
-      {
-        direction: query.direction ?? query.order ?? "desc",
-        sortBy: query.sortBy ?? query.sort ?? "createdAt",
-      },
-    ),
-    { page: query.page, pageSize: query.pageSize },
-  );
-};
-
-const getActivityDetail = async (auditId) => {
-  const activeProjectId = getRequiredActiveProjectId();
-  const record = await AuditTrailRepository.getById(auditId);
-  if (
-    record &&
-    (getRecordProjectId(record) !== activeProjectId || !isVisibleRecord(record))
-  ) {
-    return null;
+  try {
+    return unwrapActivityList(
+      await apiClient.get("/v1/audit-trails", {
+        params: toActivityQuery(query),
+      }),
+      query,
+    );
+  } catch (error) {
+    throwAuditApiError(error, "Gagal memuat Audit Trail.");
   }
-  return record ? cloneValue(record) : null;
-};
-
-const isSameLocalDate = (value, date = new Date()) => {
-  const sourceDate = new Date(value);
-  if (Number.isNaN(sourceDate.getTime())) return false;
-
-  return (
-    sourceDate.getFullYear() === date.getFullYear() &&
-    sourceDate.getMonth() === date.getMonth() &&
-    sourceDate.getDate() === date.getDate()
-  );
 };
 
 const getActivitySummary = async () => {
-  const records = (await AuditTrailRepository.getByProjectId(getRequiredActiveProjectId()))
-    .filter(isVisibleRecord);
-  const todayRecords = records.filter((record) => isSameLocalDate(record.createdAt));
-  const activeUserIds = new Set(
-    todayRecords
-      .map((record) => record.actorUserId ?? record.actorName)
-      .filter(Boolean),
-  );
-
-  return {
-    activeUsersToday: activeUserIds.size,
-    today: todayRecords.length,
-    total: records.length,
-  };
+  try {
+    return unwrapSummary(await apiClient.get("/v1/audit-trails/summary", {
+      params: { projectId: getRequiredActiveProjectId() },
+    }));
+  } catch (error) {
+    throwAuditApiError(error, "Gagal memuat ringkasan Audit Trail.");
+  }
 };
-
-const uniqueSortedOptions = (records, fieldName) => [
-  ...new Set(records.map((record) => normalizeText(record[fieldName])).filter(Boolean)),
-].sort((firstValue, secondValue) =>
-  normalizeKey(firstValue) > normalizeKey(secondValue) ? 1 : -1,
-);
 
 const getActivityFilterOptions = async () => {
-  const records = (await AuditTrailRepository.getByProjectId(getRequiredActiveProjectId()))
-    .filter(isVisibleRecord);
-
-  return {
-    actions: uniqueSortedOptions(records, "action"),
-    departments: uniqueSortedOptions(records, "department"),
-    officialRoles: uniqueSortedOptions(records, "officialRole"),
-    resourceTypes: uniqueSortedOptions(records, "resourceType"),
-    users: uniqueSortedOptions(records, "actorName"),
-  };
+  try {
+    return unwrapFilterOptions(await apiClient.get("/v1/audit-trails/filter-options", {
+      params: { projectId: getRequiredActiveProjectId() },
+    }));
+  } catch (error) {
+    throwAuditApiError(error, "Gagal memuat filter Audit Trail.");
+  }
 };
 
-const getVisibleActivityRecordsByIds = async (auditIds = []) => {
-  const activeProjectId = getRequiredActiveProjectId();
-  const uniqueAuditIds = [...new Set(auditIds.filter(Boolean))];
+const getActivityDetail = async (auditId) => {
+  const activityResponse = await getActivityList({
+    page: 1,
+    pageSize: 100,
+  });
 
-  const records = await Promise.all(
-    uniqueAuditIds.map((auditId) => AuditTrailRepository.getById(auditId)),
-  );
-
-  return records.filter((record) =>
-    record &&
-    getRecordProjectId(record) === activeProjectId &&
-    isVisibleRecord(record),
-  );
+  return activityResponse.data.find((record) =>
+    String(record.id) === String(auditId),
+  ) ?? null;
 };
 
 const softDeleteActivities = async (auditIds = []) => {
-  if (getActiveOfficialRole() !== ADMIN_OFFICIAL_ROLE) {
-    throw new Error("Only Admin can hide Audit Trail.");
-  }
-
-  const records = await getVisibleActivityRecordsByIds(auditIds);
-  if (records.length === 0) {
+  const uniqueAuditIds = [...new Set(auditIds.filter(Boolean))];
+  if (uniqueAuditIds.length === 0) {
     return {
       deletedCount: 0,
       deletedIds: [],
     };
   }
 
-  const deletedIds = records.map((record) => record.id);
-  const deletedByUserId = getCurrentUserSnapshot()?.id ?? null;
-  const updatedRecords = await AuditTrailRepository.softDeleteMany(deletedIds, {
-    deletedByUserId,
-  });
+  try {
+    const results = await Promise.all(
+      uniqueAuditIds.map(async (auditId) => {
+        const response = await apiClient.patch(`/v1/audit-trails/${auditId}/hide`);
+        return response.data?.data ?? { deletedCount: 0, deletedIds: [auditId] };
+      }),
+    );
 
-  notifyAuditTrailQueries();
-  return {
-    deletedCount: updatedRecords.length,
-    deletedIds,
-  };
+    notifyAuditTrailQueries();
+    return {
+      deletedCount: results.reduce(
+        (total, result) => total + Number(result.deletedCount ?? 0),
+        0,
+      ),
+      deletedIds: results.flatMap((result) => result.deletedIds ?? []),
+    };
+  } catch (error) {
+    throwAuditApiError(error, "Audit Trail tidak dapat disembunyikan.");
+  }
 };
+
+const createBackendOwnedAuditResult = () => ({
+  created: false,
+  duplicate: false,
+  record: null,
+  skipped: true,
+  reason: "Audit Trail runtime dikelola oleh backend.",
+});
+
+const recordActivity = async () => createBackendOwnedAuditResult();
+const recordActivitySafely = async () => createBackendOwnedAuditResult();
+
+const searchActivity = (records) => records;
+const filterActivity = (records) => records;
+const sortActivity = (records) => records;
+const paginateActivity = (records) => ({
+  data: records,
+  pagination: {
+    page: 1,
+    pageSize: records.length,
+    totalItems: records.length,
+    totalPages: 1,
+  },
+});
 
 export const AuditTrailService = {
   filterActivity,

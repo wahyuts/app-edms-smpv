@@ -514,3 +514,130 @@ Keputusan Product Owner berikut menjadi baseline resmi Core Business Source of T
 - Current Assignee hanya digunakan untuk monitoring, Dashboard, SLA, Escalation, dan Notification Display.
 - Current Product Scope terbaru menggantikan module inventory lama yang bertentangan.
 
+---
+
+# STORAGE ARCHITECTURE ALIGNMENT DECISION
+
+Keputusan sebelum Manual UAT:
+
+- `projects.id` tetap menjadi identity database, foreign key, permission, membership, dan API relation.
+- `projects.project_code` menjadi physical project directory untuk permanent storage.
+- Permanent revision file disimpan di `projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/revisions/{REVISION}/`.
+- Canonical revision directory memakai `IFR-Submitted`, `IFA-Submitted`, dan `AS-Built`.
+- Revision tidak boleh dicampur dengan Workflow Status.
+- Physical filename memakai `{DOCUMENT_NUMBER}_{REVISION}_{SUBMIT_DATE_YYYYMMDD}_{SHORT_FILE_ID}_{SANITIZED_ORIGINAL_FILE_NAME}`.
+- Download filename tetap memakai `original_file_name`.
+- Workflow attachment disimpan di `attachments/process-comments/` atau `attachments/project-comments/`, bukan di `revisions/`.
+- `stored_files.storage_key` harus berupa relative key yang portable untuk local storage, NAS, dan Object Storage/R2.
+- Development storage sedang bersih saat keputusan ini diterapkan, sehingga tidak diperlukan migration historical file.
+
+---
+
+# DAYS UNTIL VALIDATION SLA PATCH DECISION
+
+Keputusan sebelum Manual UAT lanjutan:
+
+- Label frontend tetap `DAY TIMES FOR REVIEW`.
+- Business term resmi tetap `Days Until Validation`.
+- Backend field/API field tetap `daysUntilValidation`.
+- Display read-only memakai formatter `0 -> Today`, `1 -> 1 Day`, dan `N -> N Days`.
+- `daysUntilValidation = 0` adalah value valid, bukan empty value.
+- Upload Revision boleh membawa metadata optional `description`, `area`, dan `daysUntilValidation` agar revision/update cycle memakai deadline terbaru.
+- SLA evaluator membandingkan komponen hari pada SLA Timer terhadap `daysUntilValidation`.
+- `At Risk` terjadi saat `slaTimer.days` sama dengan `daysUntilValidation`.
+- `Overdue` terjadi otomatis saat `slaTimer.days` lebih besar dari `daysUntilValidation`.
+- Untuk `daysUntilValidation = 0`, seluruh timer `0d ...` berada pada `At Risk`; status berubah menjadi `Overdue` saat timer memasuki hari berikutnya.
+- Escalation Level 1 berlaku saat dokumen sudah `Overdue` dengan selisih hari minimal 1, lalu Level 2/3/4 tetap mengikuti threshold existing.
+
+---
+
+# NOTIFICATION RECIPIENT MATRIX PATCH DECISION
+
+Keputusan sebelum Manual UAT lanjutan:
+
+- `Document Uploaded`, `Revision Uploaded`, dan `Approval A Completed` tetap dikirim kepada current assignee sesuai workflow transition.
+- `Document Approved` dikirim kepada seluruh Admin dan Document Owner aktif pada project terkait.
+- `Approval B Completed` dikirim kepada seluruh Admin dan Document Owner aktif pada project terkait.
+- `Approval C Completed` dikirim kepada seluruh Admin dan Document Owner aktif pada project terkait.
+- Title `Approval C Completed` dibedakan berdasarkan reviewer: `Document Not Approved By Team Process` atau `Document Not Approved By Team Project`.
+- `SLA At Risk` memakai title `SLA Warning`, priority `Medium`, dan tetap dikirim ke seluruh membership aktif role Admin, Document Owner, Team Process, dan Team Project pada project terkait.
+- `SLA Overdue` tetap memakai title `SLA Overdue`, priority `High`, dan tetap dikirim ke seluruh membership aktif role Admin, Document Owner, Team Process, dan Team Project pada project terkait.
+- Constraint priority notification menerima `Medium` untuk menyesuaikan PRD dan Message Dictionary.
+
+---
+
+# USERNAME IMMUTABILITY DECISION
+
+Keputusan saat Manual UAT Authentication dan Administration:
+
+- Username hanya ditentukan saat Create User.
+- Setelah akun berhasil dibuat, Username menjadi immutable.
+- Edit User tetap menampilkan Username sebagai referensi identitas akun, tetapi tidak dapat mengubah Username.
+- Backend User Update tidak menerima perubahan Username melalui normal UI maupun manipulated API payload.
+- Create User wajib menampilkan confirmation setelah form valid dan sebelum request create dikirim, dengan Username aktual yang akan dibuat.
+
+---
+
+# NOTIFICATION SUPPRESSION POLICY DECISION
+
+Keputusan setelah PART 8 Notification menjadi Source of Truth:
+
+- Notification SLA tidak lagi menggunakan SLA Cycle sebagai business suppression utama.
+- `SLA Warning` hanya dibuat ketika SLA State (untuk label frontend namanya Review Status) berubah dari state selain `At Risk` menjadi `At Risk`.
+- `SLA Overdue` hanya dibuat ketika SLA State (untuk label frontend namanya Review Status) berubah dari state selain `Overdue` menjadi `Overdue`.
+- Evaluasi ulang pada state yang sama, termasuk setelah Upload Revision, Approval B/C, Workflow Restart, SLA Reset, scheduler tick, refresh, login ulang, dan page load, tidak membuat Notification SLA tambahan.
+- SLA Cycle tetap dipertahankan untuk audit, tracing, reporting, metadata notification, dan concurrency guard.
+- `identity_key` dan `INSERT IGNORE` tetap dipertahankan sebagai race-condition protection, tetapi bukan business suppression utama.
+- Decision layer Notification wajib mengevaluasi Need Action, previous SLA state, current SLA state, dan suppression reason sebelum memanggil repository insert.
+
+---
+
+# REALTIME ARCHITECTURE DECISION
+
+Keputusan sebelum implementasi Realtime Infrastructure (Stage 6):
+
+- REST API tetap menjadi Command Channel dan sumber data final.
+- Realtime (Server-Sent Events) hanya digunakan sebagai Event Channel untuk sinkronisasi data.
+- Backend tetap menjadi Source of Truth untuk seluruh Business State.
+- Browser tidak boleh menetapkan Business State.
+- Browser hanya melakukan display projection seperti SLA Timer menggunakan Unified Time Authority.
+- Event realtime hanya menjadi sinyal perubahan data dan tidak menjalankan Business Mutation.
+- Frontend wajib melakukan Query Invalidation dan REST Refetch setelah menerima event realtime.
+- Event hanya boleh dipublikasikan setelah Business Transaction berhasil di-commit.
+- Kegagalan realtime tidak boleh membatalkan Business Transaction.
+- Notification tetap mengikuti Notification Domain dan Message Dictionary.
+- Workflow realtime wajib didahului oleh Optimistic Concurrency.
+- Active Project menjadi batas utama ruang lingkup event realtime.
+- In-memory Event Bus diperbolehkan selama deployment masih menggunakan satu backend instance.
+- REALTIME-SCOPE-BEHAVIOUR-DECISION.md menjadi Source of Truth resmi seluruh implementasi Realtime Infrastructure.
+
+---
+
+# WORKFLOW CONCURRENCY HARDENING DECISION
+
+Keputusan Stage 6.2 sebelum implementasi Realtime Workflow:
+
+- Approval A/B/C wajib membawa expected workflow state dari frontend.
+- Expected workflow state minimal terdiri dari `expectedWorkflowStatus` dan `expectedActiveRevisionId`.
+- Backend wajib melakukan atomic conditional update terhadap workflow status dan active revision sebelum mencatat history, audit, notification, atau SLA reset.
+- Current Assignee wajib menjadi bagian dari guard workflow agar action stale tidak menimpa hasil user lain.
+- Jika expected state tidak lagi cocok dengan canonical database state, backend mengembalikan HTTP `409 Conflict` dengan code `WORKFLOW_CONFLICT` atau `REVISION_CONFLICT`.
+- Frontend wajib menutup modal stale, melakukan refetch data terkait, dan menampilkan pesan bahwa dokumen telah diperbarui oleh pengguna lain.
+- Optimistic Concurrency menjadi prasyarat resmi sebelum Workflow Realtime/SSE diaktifkan.
+
+---
+
+# CURRENT RUNTIME DOCUMENTATION ALIGNMENT DECISION
+
+Keputusan setelah backend integration, storage hardening, realtime implementation, dan Priority 3 SQL optimization:
+
+- Backend REST API, MySQL, HttpOnly Cookie/auth token flow, Local Storage driver, Cloudflare R2 driver, temporary upload pipeline, scheduler backend, dan SSE realtime adalah current runtime untuk scope yang sudah dimigrasikan.
+- Fake API, mock JSON, IndexedDB business persistence, browser file storage, local workflow engine, local revision engine, dan local history builder tetap dipertahankan sebagai historical/frontend baseline dan tidak boleh dihapus dari dokumentasi lama tanpa alasan, tetapi harus diberi label Legacy / Historical Reference.
+- `UPLOAD_MAX_FILE_SIZE_BYTES` default backend adalah `25 * 1024 * 1024` bytes dan dapat dioverride melalui env.
+- Railway development saat ini meng-override `UPLOAD_MAX_FILE_SIZE_BYTES` menjadi `100 MB` agar selaras dengan UI upload.
+- `UPLOAD_TEMPORARY_TTL_HOURS` default backend adalah `24` jam dan dapat dioverride melalui env.
+- `STORAGE_DRIVER` mendukung `local` dan `r2`; R2 env wajib hanya ketika `STORAGE_DRIVER=r2`.
+- Dashboard Priority 3C menggunakan dashboard-specific SQL aggregate/query path.
+- SLA Monitoring Priority 3D menggunakan SLA-specific query path dan tidak lagi bergantung pada `listProjectDocumentRegister()`.
+- Shared legacy method `listProjectDocumentRegister()` tetap tidak boleh diubah destruktif karena masih menjadi dependency Escalation Alert legacy path sampai Priority 3E diputuskan/diimplementasikan.
+- Realtime event names `history.changed`, `sla.changed`, dan `escalation.changed` saat ini berstatus reserved apabila constant sudah tersedia tetapi producer runtime belum aktif.

@@ -48,7 +48,7 @@ Dokumen ini mencakup seluruh proses bisnis yang berkaitan dengan Engineering Doc
 - Revision Management
 - Approval Workflow
 - Document Lifecycle
-- SLA Monitoring
+- SLA Monitoring (Review Time Monitoring)
 - Dashboard Read Model
 - Workflow Notification
 - Escalation
@@ -984,6 +984,8 @@ Workflow Comment dapat berisi:
 Attachment digunakan untuk membantu menjelaskan hasil review, misalnya berupa PDF hasil markup, gambar, atau screenshot.
 
 Workflow Attachment merupakan bagian dari Workflow Comment dan bukan merupakan Document Revision, Active Document, maupun Upload Revision. Oleh karena itu, Attachment tidak mengubah Document Number, Revision History, maupun Workflow dokumen.
+
+Workflow Attachment yang dipilih user wajib masuk ke temporary upload terlebih dahulu. Attachment baru menjadi data permanen setelah Approval B, Approval C, atau submit Workflow Attachment berhasil diproses backend menggunakan `temporaryFileId`.
 
 Seluruh Workflow Comment beserta Attachment dapat dilihat kembali melalui Comment Viewer sebagai referensi bagi Document Owner selama proses revisi dokumen.
 
@@ -1994,6 +1996,7 @@ Workflow Processing Engine:
 - Tidak mengubah Document Number.
 - Menambahkan Revision History.
 - Menjadikan Attachment terbaru sebagai Active Version.
+- Menggunakan `temporaryFileId` dari temporary upload sebagai input file saat Save/Submit; frontend tidak mengirim raw file langsung ke endpoint Upload Revision final.
 
 Upload Revision dapat dijalankan oleh:
 
@@ -3460,6 +3463,8 @@ Workflow Status yang digunakan dalam EDMS terdiri dari:
 - Process Comment
 - Project Review
 - Project Comment
+- Process Reject
+- Project Reject
 - Approved
 
 Setiap kali Workflow Status berubah dari satu Status aktif ke Status aktif lainnya, SLA Timer di-reset menjadi:
@@ -3488,6 +3493,22 @@ SLA Timer = 0d 0h 0m
 
 ```text
 Project Comment
+↓
+Project Review
+↓
+SLA Timer = 0d 0h 0m
+```
+
+```text
+Process Reject
+↓
+Process Review
+↓
+SLA Timer = 0d 0h 0m
+```
+
+```text
+Project Reject
 ↓
 Project Review
 ↓
@@ -3582,7 +3603,8 @@ Selain Primary Recipient, Admin hanya menerima Personal Notification tambahan ap
 Admin Notification tersebut menggunakan Message Dictionary existing:
 
 - Approval B menggunakan Title `Revision Required` dan Message `Document requires revision. Review comment and attachment are available.`
-- Approval C menggunakan Title `Document Not Approved` dan Message `Document was not approved.`
+- Approval C dari Process Review menggunakan Title `Document Not Approved By Team Process` dan Message `Document was not approved.`
+- Approval C dari Project Review menggunakan Title `Document Not Approved By Team Project` dan Message `Document was not approved.`
 - Document Approved menggunakan Title `Document Approved` dan Message `The document has been approved.`
 - SLA At Risk menggunakan Title `SLA Warning` dan Message `Document is approaching its SLA limit.`
 - SLA Overdue menggunakan Title `SLA Overdue` dan Message `Document has exceeded the SLA limit.`
@@ -3595,7 +3617,7 @@ User dengan Official Role yang sama pada Project lain tidak menerima Notificatio
 
 Setiap Notification wajib memiliki Project ID.
 
-Notification SLA At Risk dan SLA Overdue wajib dibuat berdasarkan transisi SLA State yang valid. Evaluasi ulang pada state yang sama tidak membuat Notification baru.
+Notification SLA At Risk dan SLA Overdue wajib dibuat berdasarkan transisi SLA State (untuk label frontend namanya Review Status) yang valid. Evaluasi ulang pada state yang sama tidak membuat Notification baru.
 
 Duplicate prevention SLA berlaku per Project, Document, recipient, dan SLA State. Workflow Approval A, Approval B, Approval C, Upload Revision, atau status transition lain tidak boleh membuat ulang SLA Warning atau SLA Overdue untuk dokumen dan recipient yang sama apabila Notification SLA tersebut sudah pernah dibuat.
 
@@ -3738,7 +3760,7 @@ Perilaku ini merupakan implementasi resmi dari **CR-003**.
 
 # 6.8 SLA Overview
 
-SLA Overview merupakan Dashboard Read Model yang mengelompokkan dokumen berdasarkan kondisi SLA.
+SLA Overview (Label di frontend adalah Review Time Overview) merupakan Dashboard Read Model yang mengelompokkan dokumen berdasarkan kondisi SLA.
 
 Kategori:
 
@@ -5335,7 +5357,8 @@ Bagian ini menetapkan baseline Business Workflow resmi hasil rekonstruksi implem
 
 ## Current Implementation
 
-- Sistem runtime saat ini adalah aplikasi Frontend React dengan Fake API, mock JSON, IndexedDB, localStorage, Zustand, TanStack Query, React Hook Form, dan Zod.
+- Sistem runtime saat ini adalah aplikasi Frontend React yang mengonsumsi Backend REST API berbasis Node.js + Express.js dan MySQL sebagai Runtime Source of Truth.
+- Fake API, mock JSON, IndexedDB, localStorage workflow state, dan local history builder adalah historical development baseline dan bukan runtime authority untuk implementasi backend-integrated saat ini.
 - Product Module aktif adalah Dashboard, Document Register PFD, Document Register P&ID, SLA Monitoring, Escalation Alert, Audit Trail, Notification, User Management, Project Management, Project Membership, Profile, Change Password, serta Authentication Flow.
 - Transmittal Incoming, Transmittal Outgoing, dan Storage NAS sudah ada pada route dan navigation sebagai placeholder, tetapi belum menjadi workflow operasional penuh.
 - Multi Project sudah menjadi implementasi aktif. Active Project Context wajib tersedia untuk module project-scoped.
@@ -5412,5 +5435,5 @@ Aturan resmi:
 
 ## Target Architecture
 
-Database schema, REST API production, HttpOnly Cookie, dan NAS/Object Storage adalah target arsitektur produksi. Hingga backend tersedia, behaviour runtime resmi direpresentasikan oleh Service Layer Frontend, Fake API, IndexedDB, mock JSON, Zustand, TanStack Query, dan localStorage.
+Database schema, Backend REST API, HttpOnly Cookie, dan MySQL adalah current integrated runtime untuk scope backend-integrated saat ini. NAS/Object Storage production tetap menjadi target arsitektur storage produksi apabila belum aktif pada environment berjalan. Historical Fake API, IndexedDB, mock JSON, Zustand, TanStack Query, dan localStorage hanya menjadi konteks fase frontend awal, bukan Runtime Source of Truth.
 

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
@@ -8,6 +9,7 @@ import {
   Clock3,
   FileText,
   Folder,
+  Loader2,
   MessageCircle,
   MessagesSquare,
   UsersRound,
@@ -21,74 +23,20 @@ import {
   DOCUMENT_STATUS,
   SLA_STATUS,
 } from "@/features/document-register/constants/document.constants";
-import { DocumentService } from "@/features/document-register/services/document.service";
-import { EscalationService } from "@/features/escalation-alert/services/escalation.service";
-import { SlaMonitoringService } from "@/features/sla-monitoring/services/sla-monitoring.service";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
+import { DashboardApiService } from "../services/dashboard-api.service";
 
 const dashboardRefreshIntervalMs = 60 * 1000;
-let dashboardRightPanelCollapsed = false;
+const DASHBOARD_RIGHT_PANEL_COLLAPSED_STORAGE_KEY = "edms.dashboard.rightPanel.collapsed";
 
-const defaultSlaSummary = {
-  [SLA_STATUS.ON_TRACK]: 0,
-  [SLA_STATUS.AT_RISK]: 0,
-  [SLA_STATUS.OVERDUE]: 0,
-  [SLA_STATUS.FINAL_AS_BUILT]: 0,
-};
+const getInitialDashboardRightPanelCollapsed = () => {
+  if (typeof window === "undefined") return false;
 
-const defaultEscalationSummary = {
-  total: 0,
-  "Level 1": 0,
-  "Level 2": 0,
-  "Level 3": 0,
-  "Level 4": 0,
-};
-
-const countByStatus = (documents, status) =>
-  documents.filter((documentItem) => documentItem.status === status).length;
-
-const createKpiSummary = (documents) => {
-  const processComment = countByStatus(documents, DOCUMENT_STATUS.PROCESS_COMMENT);
-  const processReject = countByStatus(documents, DOCUMENT_STATUS.PROCESS_REJECT);
-  const projectComment = countByStatus(documents, DOCUMENT_STATUS.PROJECT_COMMENT);
-  const projectReject = countByStatus(documents, DOCUMENT_STATUS.PROJECT_REJECT);
-
-  return {
-    totalDocuments: documents.length,
-    processReview: countByStatus(documents, DOCUMENT_STATUS.PROCESS_REVIEW),
-    processComment,
-    processCommentReject: processComment + processReject,
-    processReject,
-    projectReview: countByStatus(documents, DOCUMENT_STATUS.PROJECT_REVIEW),
-    projectComment,
-    projectCommentReject: projectComment + projectReject,
-    projectReject,
-    approved: countByStatus(documents, DOCUMENT_STATUS.APPROVED),
-  };
-};
-
-const createEscalationSummary = (escalations) =>
-  escalations.reduce(
-    (summary, escalationItem) => ({
-      ...summary,
-      total: summary.total + 1,
-      [escalationItem.escalationLevel]:
-        (summary[escalationItem.escalationLevel] ?? 0) + 1,
-    }),
-    { ...defaultEscalationSummary },
-  );
-
-const getDashboardData = async () => {
-  const documents = await DocumentService.getDocuments();
-  const slaDocuments = await SlaMonitoringService.getDocuments({ documents });
-  const escalations = await EscalationService.getEscalations({ documents });
-
-  return {
-    escalationSummary: createEscalationSummary(escalations),
-    isLoading: false,
-    kpiSummary: createKpiSummary(documents),
-    slaSummary: SlaMonitoringService.createSummary(slaDocuments),
-  };
+  try {
+    return window.localStorage.getItem(DASHBOARD_RIGHT_PANEL_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
 };
 
 const kpiCards = [
@@ -103,7 +51,7 @@ const kpiCards = [
   },
   {
     cardTone: "border-[#A16207]/80 from-[#29230B] via-[#101C1A] to-[#061B2F]",
-    description: "Dokumen dalam review",
+    description: "Document under review",
     icon: UsersRound,
     iconTone: "bg-gradient-to-br from-[#FACC15] to-[#F59E0B] text-white",
     key: "processReview",
@@ -112,7 +60,7 @@ const kpiCards = [
   },
   {
     cardTone: "border-[#C2410C]/80 from-[#331A10] via-[#161518] to-[#061B2F]",
-    description: "Menunggu komentar proses",
+    description: "Awaiting process comments",
     icon: MessageCircle,
     iconTone: "bg-gradient-to-br from-[#F97316] to-[#C2410C] text-white",
     key: "processCommentReject",
@@ -128,7 +76,7 @@ const kpiCards = [
   },
   {
     cardTone: "border-[#854D0E]/80 from-[#24240D] via-[#101C1A] to-[#061B2F]",
-    description: "Dokumen dalam review",
+    description: "Document under review",
     icon: Folder,
     iconTone: "bg-gradient-to-br from-[#B39208] to-[#854D0E] text-white",
     key: "projectReview",
@@ -137,7 +85,7 @@ const kpiCards = [
   },
   {
     cardTone: "border-[#BE3455]/70 from-[#281526] via-[#151628] to-[#061B2F]",
-    description: "Menunggu komentar proyek",
+    description: "Awaiting project comments",
     icon: MessagesSquare,
     iconTone: "bg-gradient-to-br from-[#E0526B] to-[#BE3455] text-white",
     key: "projectCommentReject",
@@ -153,12 +101,15 @@ const kpiCards = [
   },
   {
     cardTone: "border-[#047857]/80 from-[#053D33] via-[#062D2C] to-[#061B2F]",
-    description: "Dokumen disetujui",
+    description: "Document approved",
     icon: CheckCircle2,
     iconTone: "bg-gradient-to-br from-[#86EFAC] to-[#16A34A] text-white",
     key: "approved",
     label: "Approved / Final As-Built",
     statusFilter: DOCUMENT_STATUS.APPROVED,
+    summaryRows: [
+      { key: "finalAsBuilt", label: "Final As-Built" },
+    ],
   },
 ];
 
@@ -213,7 +164,17 @@ const escalationRows = [
   },
 ];
 
-const DashboardKpiCard = ({ card, isActive, onSelect, summary, value }) => {
+const getSummaryValue = (summary, key) => Number(summary?.[key] ?? 0);
+
+const DashboardLoadingValue = ({ className = "h-5 w-5" }) => (
+  <Loader2
+    aria-label="Loading dashboard value"
+    className={["inline-block animate-spin", className].join(" ")}
+    role="status"
+  />
+);
+
+const DashboardKpiCard = ({ card, isActive, isError, isLoading, onSelect, summary, value }) => {
   const Icon = card.icon;
   const activeDescription = isActive ? "Active status filter" : "Apply status filter";
 
@@ -247,10 +208,10 @@ const DashboardKpiCard = ({ card, isActive, onSelect, summary, value }) => {
         </h2>
       </div>
       <p className="mt-4 text-center text-4xl font-extrabold text-[#F8FAFC]">
-        {value}
+        {isLoading ? <DashboardLoadingValue className="h-8 w-8" /> : value}
       </p>
       <p className="mt-2 text-center text-sm text-[#CBD5E1]">
-        {card.description}
+        {isError ? "Data gagal dimuat" : card.description}
       </p>
       {card.summaryRows ? (
         <div className="mt-3 flex items-center justify-center gap-6 text-center text-sm font-semibold text-[#CBD5E1]">
@@ -262,7 +223,11 @@ const DashboardKpiCard = ({ card, isActive, onSelect, summary, value }) => {
                   summaryRow.label === "Reject" ? "text-[#EF4444]" : ""
                 }
               >
-                {summary?.[summaryRow.key] ?? 0}
+                {isLoading ? (
+                  <DashboardLoadingValue className="h-4 w-4" />
+                ) : (
+                  getSummaryValue(summary, summaryRow.key)
+                )}
               </span>
             </p>
           ))}
@@ -328,60 +293,38 @@ const DashboardRightInformationPanel = ({
 
 const DashboardPage = () => {
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(
-    dashboardRightPanelCollapsed,
+    getInitialDashboardRightPanelCollapsed,
   );
-  const [dashboardState, setDashboardState] = useState({
-    escalationSummary: defaultEscalationSummary,
-    isLoading: true,
-    kpiSummary: createKpiSummary([]),
-    slaSummary: defaultSlaSummary,
-  });
+  const queryClient = useQueryClient();
   const tableState = useDocumentRegisterTable({
     defaultPageSize: 10,
     preserveStatusFilterOnProjectChange: true,
   });
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
-
-  const loadDashboardData = useCallback(async () => {
-    setDashboardState(await getDashboardData());
-  }, []);
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadData = async () => {
-      try {
-        if (isActive) {
-          setDashboardState((currentState) => ({
-            ...currentState,
-            isLoading: true,
-          }));
-        }
-        const nextDashboardState = await getDashboardData();
-        if (isActive) {
-          setDashboardState(nextDashboardState);
-        }
-      } catch {
-        if (isActive) {
-          setDashboardState((currentState) => ({
-            ...currentState,
-            isLoading: false,
-          }));
-        }
-      }
-    };
-
-    loadData();
-    const intervalId = window.setInterval(loadData, dashboardRefreshIntervalMs);
-
-    return () => {
-      isActive = false;
-      window.clearInterval(intervalId);
-    };
-  }, [activeProjectId, loadDashboardData]);
+  const summaryQuery = useQuery({
+    enabled: Boolean(activeProjectId),
+    queryFn: DashboardApiService.getSummary,
+    queryKey: ["dashboard", "summary", activeProjectId ?? null],
+    refetchInterval: dashboardRefreshIntervalMs,
+    refetchOnMount: "always",
+    staleTime: 0,
+  });
+  const dashboardSummary = summaryQuery.data ?? {};
+  const kpiSummary = dashboardSummary.kpiSummary ?? {};
+  const slaSummary = dashboardSummary.slaSummary ?? {};
+  const escalationSummary = dashboardSummary.escalationSummary ?? {};
+  const isDashboardLoading = summaryQuery.isLoading;
+  const isDashboardError = summaryQuery.isError;
 
   const setRightPanelCollapsed = (isCollapsed) => {
-    dashboardRightPanelCollapsed = isCollapsed;
+    try {
+      window.localStorage.setItem(
+        DASHBOARD_RIGHT_PANEL_COLLAPSED_STORAGE_KEY,
+        String(isCollapsed),
+      );
+    } catch {
+      // UI preference persistence is non-critical; keep the interaction working.
+    }
     setIsRightPanelCollapsed(isCollapsed);
   };
 
@@ -402,7 +345,7 @@ const DashboardPage = () => {
         </p> */}
         <h1 className="mt-1 text-3xl font-bold">Dashboard</h1>
         <p className="mt-3 text-sm text-[#CBD5E1]">
-          Monitoring utama seluruh dokumen engineering berdasarkan alur review Code A/B/C.
+          Primary monitoring of all engineering documents based on the Code A/B/C review workflow.
         </p>
       </header>
 
@@ -410,11 +353,13 @@ const DashboardPage = () => {
         {kpiCards.map((card) => (
           <DashboardKpiCard
             card={card}
+            isError={isDashboardError}
             isActive={isKpiCardActive(card.statusFilter)}
+            isLoading={isDashboardLoading}
             key={card.key}
             onSelect={() => tableState.setStatusFilter(card.statusFilter)}
-            summary={dashboardState.kpiSummary}
-            value={dashboardState.isLoading ? "-" : dashboardState.kpiSummary[card.key]}
+            summary={kpiSummary}
+            value={isDashboardError ? "-" : getSummaryValue(kpiSummary, card.key)}
           />
         ))}
       </section>
@@ -422,7 +367,9 @@ const DashboardPage = () => {
       <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0">
           <DashboardDocumentRegisterTable
-            onDataChanged={loadDashboardData}
+            onDataChanged={() => {
+              queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+            }}
             tableState={tableState}
           />
         </div>
@@ -432,7 +379,7 @@ const DashboardPage = () => {
             isCollapsed={isRightPanelCollapsed}
             onCollapse={() => setRightPanelCollapsed(true)}
           >
-            <DashboardInfoWidget icon={Clock3} title="SLA Overview" to="/sla-monitoring">
+            <DashboardInfoWidget icon={Clock3} title="Review Time Overview" to="/sla-monitoring">
               <div className="px-4 pb-4">
                 <div className="overflow-hidden rounded-lg border border-[#123A5A] bg-[#08233B]/70">
                   {slaRows.map((item) => (
@@ -449,7 +396,13 @@ const DashboardPage = () => {
                         {item.label}
                       </span>
                       <span className="text-2xl font-extrabold">
-                        {dashboardState.isLoading ? "-" : dashboardState.slaSummary[item.key] ?? 0}
+                        {isDashboardLoading ? (
+                          <DashboardLoadingValue className="h-5 w-5" />
+                        ) : isDashboardError ? (
+                          "-"
+                        ) : (
+                          getSummaryValue(slaSummary, item.key)
+                        )}
                       </span>
                     </div>
                   ))}
@@ -474,9 +427,13 @@ const DashboardPage = () => {
                         {item.label}
                       </span>
                       <span className={["text-lg font-extrabold", item.tone].join(" ")}>
-                        {dashboardState.isLoading
-                          ? "-"
-                          : dashboardState.escalationSummary[item.key] ?? 0}
+                        {isDashboardLoading ? (
+                          <DashboardLoadingValue className="h-4 w-4" />
+                        ) : isDashboardError ? (
+                          "-"
+                        ) : (
+                          getSummaryValue(escalationSummary, item.key)
+                        )}
                       </span>
                     </div>
                   ))}

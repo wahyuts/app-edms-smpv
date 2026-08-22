@@ -1,0 +1,325 @@
+const {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  CopyObjectCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  ListObjectsV2Command,
+} = require('@aws-sdk/client-s3');
+const { Upload } = require('@aws-sdk/lib-storage');
+const logger = require('../../config/logger');
+const { STORAGE_DIRECTORIES } = require('../../constants/storage.constants');
+const { StorageError, normalizeStorageError } = require('../storage.errors');
+
+const R2_STREAM_UPLOAD_PART_SIZE_BYTES = 8 * 1024 * 1024;
+const R2_STREAM_UPLOAD_QUEUE_SIZE = 1;
+
+const streamToBuffer = async (stream) => {
+  const chunks = [];
+
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks);
+};
+
+const encodeCopySourceKey = (storageKey) => {
+  return storageKey.split('/').map(encodeURIComponent).join('/');
+};
+
+const logR2ProviderError = (operation, error) => {
+  const providerError = error?.cause || error;
+  logger.error(
+    '[R2]',
+    `operation=${operation}`,
+    `name=${providerError?.name || 'UnknownError'}`,
+    `code=${providerError?.code || providerError?.Code || 'UNKNOWN'}`,
+    `status=${providerError?.$metadata?.httpStatusCode || 'UNKNOWN'}`,
+    `requestId=${providerError?.$metadata?.requestId || providerError?.$metadata?.extendedRequestId || 'UNKNOWN'}`
+  );
+
+  if (providerError?.message) {
+    logger.error('[R2]', `message=${providerError.message}`);
+  }
+
+  if (providerError?.cause?.name || providerError?.cause?.message) {
+    logger.error(
+      '[R2]',
+      `causeName=${providerError.cause.name || 'UNKNOWN'}`,
+      `causeMessage=${providerError.cause.message || 'UNKNOWN'}`
+    );
+  }
+};
+
+class R2StorageDriver {
+  constructor(config) {
+    this.name = 'r2';
+    this.config = config.r2;
+    this.client = new S3Client({
+      region: this.config.region,
+      endpoint: this.config.endpoint,
+      credentials: {
+        accessKeyId: this.config.accessKeyId,
+        secretAccessKey: this.config.secretAccessKey,
+      },
+      forcePathStyle: true,
+    });
+  }
+
+  async initialize() {
+    await this.exists('__edms-storage-initialization-probe__');
+  }
+
+  async putTemporary(storageKey, content) {
+    if (!storageKey.startsWith(`${STORAGE_DIRECTORIES.TEMPORARY}/`)) {
+      throw new StorageError('[STORAGE] temporary storage key must be under temporary/', 'STORAGE_INVALID_KEY');
+    }
+
+    return this.put(storageKey, content);
+  }
+
+  async putTemporaryStream(storageKey, stream, options = {}) {
+    if (!storageKey.startsWith(`${STORAGE_DIRECTORIES.TEMPORARY}/`)) {
+      throw new StorageError('[STORAGE] temporary storage key must be under temporary/', 'STORAGE_INVALID_KEY');
+    }
+
+    return this.putStream(storageKey, stream, options);
+  }
+
+  async finalize(temporaryStorageKey, permanentStorageKey) {
+    if (!(await this.exists(temporaryStorageKey))) {
+      throw new StorageError('[STORAGE] temporary source object does not exist', 'STORAGE_SOURCE_NOT_FOUND');
+    }
+
+    await this.copy(temporaryStorageKey, permanentStorageKey);
+
+    if (!(await this.exists(permanentStorageKey))) {
+      throw new StorageError('[STORAGE] permanent object verification failed after copy', 'STORAGE_FINALIZE_VERIFY_FAILED');
+    }
+
+    try {
+      await this.deleteTemporary(temporaryStorageKey);
+    } catch (error) {
+      throw new StorageError(
+        '[STORAGE] temporary object cleanup failed after successful R2 finalize copy',
+        'STORAGE_TEMPORARY_CLEANUP_FAILED',
+        error
+      );
+    }
+
+    return { storageKey: permanentStorageKey };
+  }
+
+  async put(storageKey, content) {
+    try {
+      if (await this.exists(storageKey)) {
+        throw new StorageError('[STORAGE] target storage key already exists', 'STORAGE_TARGET_EXISTS');
+      }
+
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.config.bucketName,
+          Key: storageKey,
+          Body: content,
+        })
+      );
+
+      return { storageKey };
+    } catch (error) {
+      throw normalizeStorageError(error, 'write R2 object');
+    }
+  }
+
+  async putStream(storageKey, stream, options = {}) {
+    try {
+      if (await this.exists(storageKey)) {
+        throw new StorageError('[STORAGE] target storage key already exists', 'STORAGE_TARGET_EXISTS');
+      }
+
+      const uploadParams = {
+        Bucket: this.config.bucketName,
+        Key: storageKey,
+        Body: stream,
+      };
+
+      if (options.contentType) {
+        uploadParams.ContentType = options.contentType;
+      }
+
+      if (Number.isInteger(options.contentLength) && options.contentLength >= 0) {
+        uploadParams.ContentLength = options.contentLength;
+      }
+
+      const upload = new Upload({
+        client: this.client,
+        leavePartsOnError: false,
+        params: uploadParams,
+        partSize: R2_STREAM_UPLOAD_PART_SIZE_BYTES,
+        queueSize: R2_STREAM_UPLOAD_QUEUE_SIZE,
+      });
+
+      await upload.done();
+
+      return { storageKey };
+    } catch (error) {
+      await this.deleteTemporary(storageKey).catch(() => {});
+      if (error.statusCode) {
+        throw error;
+      }
+      logR2ProviderError('putStream', error);
+      throw normalizeStorageError(error, 'stream R2 object');
+    }
+  }
+
+  async get(storageKey) {
+    try {
+      const response = await this.client.send(
+        new GetObjectCommand({
+          Bucket: this.config.bucketName,
+          Key: storageKey,
+        })
+      );
+
+      return streamToBuffer(response.Body);
+    } catch (error) {
+      throw normalizeStorageError(error, 'read R2 object');
+    }
+  }
+
+  async getStream(storageKey) {
+    try {
+      const response = await this.client.send(
+        new GetObjectCommand({
+          Bucket: this.config.bucketName,
+          Key: storageKey,
+        })
+      );
+
+      return response.Body;
+    } catch (error) {
+      throw normalizeStorageError(error, 'stream R2 object');
+    }
+  }
+
+  async exists(storageKey) {
+    try {
+      await this.client.send(
+        new HeadObjectCommand({
+          Bucket: this.config.bucketName,
+          Key: storageKey,
+        })
+      );
+
+      return true;
+    } catch (error) {
+      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+        return false;
+      }
+
+      throw normalizeStorageError(error, 'check R2 object');
+    }
+  }
+
+  async copy(sourceStorageKey, targetStorageKey) {
+    try {
+      if (await this.exists(targetStorageKey)) {
+        throw new StorageError('[STORAGE] target storage key already exists', 'STORAGE_TARGET_EXISTS');
+      }
+
+      await this.client.send(
+        new CopyObjectCommand({
+          Bucket: this.config.bucketName,
+          Key: targetStorageKey,
+          CopySource: `${this.config.bucketName}/${encodeCopySourceKey(sourceStorageKey)}`,
+        })
+      );
+
+      return { storageKey: targetStorageKey };
+    } catch (error) {
+      throw normalizeStorageError(error, 'copy R2 object');
+    }
+  }
+
+  async move(sourceStorageKey, targetStorageKey) {
+    await this.copy(sourceStorageKey, targetStorageKey);
+    await this.delete(sourceStorageKey);
+
+    return { storageKey: targetStorageKey };
+  }
+
+  async delete(storageKey) {
+    try {
+      await this.client.send(
+        new DeleteObjectCommand({
+          Bucket: this.config.bucketName,
+          Key: storageKey,
+        })
+      );
+
+      return true;
+    } catch (error) {
+      throw normalizeStorageError(error, 'delete R2 object');
+    }
+  }
+
+  async deleteTemporary(storageKey) {
+    if (!storageKey.startsWith(`${STORAGE_DIRECTORIES.TEMPORARY}/`)) {
+      throw new StorageError('[STORAGE] temporary storage key must be under temporary/', 'STORAGE_INVALID_KEY');
+    }
+
+    return this.delete(storageKey);
+  }
+
+  async cleanupDevelopmentStorage() {
+    const prefixes = [
+      `${STORAGE_DIRECTORIES.PROJECTS}/`,
+      `${STORAGE_DIRECTORIES.TEMPORARY}/`,
+    ];
+    const summary = {
+      deletedObjects: 0,
+      driver: this.name,
+      failed: 0,
+      prefixes,
+      scannedObjects: 0,
+      supported: true,
+    };
+
+    for (const prefix of prefixes) {
+      let continuationToken;
+
+      do {
+        const response = await this.client.send(
+          new ListObjectsV2Command({
+            Bucket: this.config.bucketName,
+            ContinuationToken: continuationToken,
+            Prefix: prefix,
+          })
+        );
+        const objects = response.Contents || [];
+        summary.scannedObjects += objects.length;
+
+        if (objects.length > 0) {
+          await this.client.send(
+            new DeleteObjectsCommand({
+              Bucket: this.config.bucketName,
+              Delete: {
+                Objects: objects.map((object) => ({ Key: object.Key })),
+                Quiet: true,
+              },
+            })
+          );
+          summary.deletedObjects += objects.length;
+        }
+
+        continuationToken = response.IsTruncated ? response.NextContinuationToken : null;
+      } while (continuationToken);
+    }
+
+    return summary;
+  }
+}
+
+module.exports = R2StorageDriver;

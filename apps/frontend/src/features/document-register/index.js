@@ -4,6 +4,7 @@ export { default as DashboardDocumentRegisterTable } from "./components/Dashboar
 export { default as DocumentActionGroup } from "./components/DocumentActionGroup";
 export { default as DocumentRegisterPage } from "./pages/DocumentRegisterPage";
 export { default as useDocumentRegisterTable } from "./hooks/useDocumentRegisterTable";
+export { useRealtimeDocumentRuntimeSync } from "./hooks/useRealtimeDocumentRuntimeSync";
 export {
   ACTION_CODE,
   DOCUMENT_REGISTER_PERMISSION,

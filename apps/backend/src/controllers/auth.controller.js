@@ -9,6 +9,7 @@ const {
   AUTH_MESSAGES,
 } = require('../constants/auth.constants');
 const { clearAuthCookies, setAuthCookies } = require('../utils/authCookie');
+const realtimeConnectionRegistry = require('../services/realtimeConnectionRegistry.service');
 
 const login = async (req, res, next) => {
   try {
@@ -37,6 +38,8 @@ const login = async (req, res, next) => {
         user: result.user,
         role: result.role,
         permissions: result.permissions,
+        accessibleProjects: result.accessibleProjects,
+        activeMembership: result.activeMembership,
         activeProject: result.activeProject,
         officialRole: result.officialRole,
       },
@@ -48,9 +51,13 @@ const login = async (req, res, next) => {
 
 const logout = async (req, res, next) => {
   try {
-    await authService.logout({
+    const result = await authService.logout({
       refreshToken: req.cookies[AUTH_COOKIE_NAMES.REFRESH_TOKEN],
     });
+
+    if (result?.userId) {
+      realtimeConnectionRegistry.closeConnectionsByUser(result.userId, { reason: 'logout' });
+    }
 
     clearAuthCookies(res);
 
@@ -89,6 +96,8 @@ const refresh = async (req, res, next) => {
         user: result.user,
         role: result.role,
         permissions: result.permissions,
+        accessibleProjects: result.accessibleProjects,
+        activeMembership: result.activeMembership,
         activeProject: result.activeProject,
         officialRole: result.officialRole,
       },
@@ -106,6 +115,8 @@ const me = async (req, res, next) => {
         user: req.user,
         role: req.role,
         permissions: req.permissions,
+        accessibleProjects: req.accessibleProjects,
+        activeMembership: req.activeMembership,
         activeProject: req.activeProject,
         officialRole: req.officialRole,
       },

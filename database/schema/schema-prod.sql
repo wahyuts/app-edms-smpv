@@ -142,6 +142,29 @@ CREATE TABLE refresh_sessions (
   CONSTRAINT fk_refresh_sessions_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE temporary_uploads (
+  id VARCHAR(64) NOT NULL,
+  temporary_file_id VARCHAR(64) NOT NULL,
+  storage_key VARCHAR(255) NOT NULL,
+  original_file_name VARCHAR(255) NOT NULL,
+  physical_file_name VARCHAR(255) NOT NULL,
+  mime_type VARCHAR(255) NOT NULL,
+  extension VARCHAR(64) NOT NULL,
+  file_size BIGINT UNSIGNED NOT NULL,
+  checksum VARCHAR(255) NULL,
+  uploaded_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  expires_at DATETIME(3) NOT NULL,
+  consumed_at DATETIME(3) NULL,
+  created_by_user_id BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_temporary_uploads_temporary_file_id (temporary_file_id),
+  UNIQUE KEY uq_temporary_uploads_storage_key (storage_key),
+  KEY idx_temporary_uploads_expires_at (expires_at),
+  KEY idx_temporary_uploads_consumed_at (consumed_at),
+  KEY idx_temporary_uploads_created_by_user_id (created_by_user_id),
+  CONSTRAINT fk_temporary_uploads_created_by_user_id FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE projects (
   id VARCHAR(64) NOT NULL,
   project_code VARCHAR(64) NOT NULL,
@@ -458,7 +481,7 @@ CREATE TABLE notifications (
   KEY idx_notifications_project_id (project_id),
   KEY idx_notifications_recipient_project_membership_id (recipient_project_membership_id),
   KEY idx_notifications_created_at (created_at),
-  CONSTRAINT chk_notifications_priority CHECK (priority IN ('Low', 'Normal', 'High', 'Critical')),
+  CONSTRAINT chk_notifications_priority CHECK (priority IN ('Low', 'Medium', 'Normal', 'High', 'Critical')),
   CONSTRAINT chk_notifications_official_role CHECK (official_role IS NULL OR official_role IN ('Admin', 'Document Owner', 'Team Process', 'Team Project')),
   CONSTRAINT chk_notifications_recipient_role CHECK (recipient_role IS NULL OR recipient_role IN ('Admin', 'Document Owner', 'Team Process', 'Team Project')),
   CONSTRAINT chk_notifications_is_read CHECK (is_read IN (0, 1)),

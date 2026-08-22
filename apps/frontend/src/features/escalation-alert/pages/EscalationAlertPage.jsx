@@ -38,12 +38,11 @@ const EscalationAlertPage = () => {
         </p> */}
         <h1 className="mt-2 text-3xl font-bold">Escalation Alert</h1>
         <p className="mt-2 max-w-3xl text-sm text-[#CBD5E1]">
-          Monitor dokumen yang melewati SLA dan membutuhkan perhatian
-          berdasarkan level eskalasi terkini.
+          Monitor documents that have exceeded their deadlines and require attention based on the current escalation level.
         </p>
       </header>
 
-      <EscalationSummary summary={tableState.summary} />
+      <EscalationSummary isLoading={tableState.isLoading} summary={tableState.summary} />
       <EscalationAlertTable {...tableStateWithUrlSearchSync} />
     </>
   );

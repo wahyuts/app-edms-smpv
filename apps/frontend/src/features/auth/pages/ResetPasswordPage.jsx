@@ -4,7 +4,6 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   formatValidationIssues,
-  getPasswordPolicyMessage,
   PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
   resetPasswordSchema,
 } from "@/features/auth/schemas/password-recovery.schema";
@@ -90,42 +89,20 @@ const ResetPasswordPage = () => {
     const validationResult = resetPasswordSchema.safeParse(formValues);
 
     if (!validationResult.success) {
-      const issues = formatValidationIssues(validationResult.error.issues)
-        .map((issue) => {
-          if (issue.field !== "newPassword" || issue.message !== "Invalid input") {
-            return issue;
-          }
-
-          return {
-            ...issue,
-            message: getPasswordPolicyMessage(formValues.newPassword),
-          };
-        });
+      const issues = formatValidationIssues(validationResult.error.issues);
       const hasEmptyField = issues.some((issue) => issue.message.includes("wajib diisi"));
       const hasConfirmationMismatch = issues.some((issue) => issue.field === "confirmPassword");
-      const hasPasswordPolicyIssue = issues.some((issue) => issue.field === "newPassword");
 
       if (hasEmptyField) {
         showToast({
           message: issues.map((issue) => issue.message).join("\n"),
-          title: "Data Belum Lengkap",
+          title: "Data Still Incomplete",
           variant: "error",
         });
       } else if (hasConfirmationMismatch) {
         showToast({
           message: PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
-          title: "Konfirmasi Password Tidak Sesuai",
-          variant: "error",
-        });
-      } else if (hasPasswordPolicyIssue) {
-        const passwordPolicyMessage = issues
-          .filter((issue) => issue.field === "newPassword")
-          .map((issue) => issue.message)
-          .join("\n");
-
-        showToast({
-          message: passwordPolicyMessage,
-          title: "Password Baru Tidak Valid",
+          title: "Confirm Password Does Not Match",
           variant: "error",
         });
       }
@@ -143,8 +120,8 @@ const ResetPasswordPage = () => {
 
     if (!response.success) {
       showToast({
-        message: "Link reset password tidak valid atau telah kedaluwarsa.",
-        title: "Link Reset Tidak Valid",
+        message: "Password reset link is invalid or has expired.",
+        title: "Reset Link Invalid",
         variant: "error",
       });
       setTokenValidation({
@@ -155,8 +132,8 @@ const ResetPasswordPage = () => {
     }
 
     showToast({
-      message: "Silakan login menggunakan password baru.",
-      title: "Password Berhasil Diubah",
+      message: "Please login using the new password.",
+      title: "Password Successfully Changed",
       variant: "success",
     });
     setResetResult(response);

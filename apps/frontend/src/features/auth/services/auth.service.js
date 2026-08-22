@@ -1,4 +1,5 @@
 import { apiClient } from "@/shared/api";
+import { queryClient } from "@/shared/api/query-client";
 
 import {
   CURRENT_USER_CHANGED_EVENT,
@@ -9,14 +10,14 @@ import {
 const PASSWORD_RESET_GENERIC_MESSAGE =
   "Jika data akun valid, instruksi Reset Password telah dikirim.";
 const LOGIN_MESSAGES = {
-  invalidCredentials: "Username atau Password tidak benar.",
-  passwordRequired: "Silakan masukkan Password Anda.",
-  serverUnavailable: "Tidak dapat terhubung ke server.",
-  sessionExpired: "Session telah berakhir.",
-  usernameRequired: "Silakan masukkan Username Anda.",
+  invalidCredentials: "Username or Password is incorrect.",
+  passwordRequired: "Please enter your password.",
+  serverUnavailable: "Unable to connect to the server.",
+  sessionExpired: "Your session has expired.",
+  usernameRequired: "Please enter your username.",
 };
 const CHANGE_PASSWORD_MESSAGES = {
-  currentPasswordIncorrect: "Current Password tidak benar.",
+  currentPasswordIncorrect: "Current password is incorrect.",
 };
 
 let initializationPromise = null;
@@ -59,6 +60,16 @@ const getChangePasswordErrorMessage = (error) => {
   return backendMessage;
 };
 
+const getUpdateProfileErrorMessage = (error) => {
+  const backendMessage = getErrorMessage(error, "Gagal memperbarui profil");
+
+  if (backendMessage === "Email Sudah Digunakan") {
+    return "Email sudah digunakan";
+  }
+
+  return backendMessage;
+};
+
 const assertBackendSuccess = (response, fallbackMessage) => {
   if (response?.data?.success === false) {
     const error = new Error(response.data.message ?? fallbackMessage);
@@ -79,36 +90,82 @@ const mapUserIdentity = (user = {}) => ({
   isActive: user.status ? user.status === "Active" : Boolean(user.isActive),
   name: user.fullName ?? user.name ?? "",
   position: user.position ?? null,
-  roleId: user.roleId ?? null,
   status: user.status ?? (user.isActive ? "Active" : "Inactive"),
   userCode: user.userCode ?? "",
   username: user.username ?? "",
 });
 
 const mapAuthContext = (data = {}) => ({
+  accessibleProjects: Array.isArray(data.accessibleProjects) ? data.accessibleProjects : [],
+  activeMembership: data.activeMembership ?? null,
   activeProject: data.activeProject ?? null,
-  officialRole: data.officialRole ?? null,
   permissions: Array.isArray(data.permissions) ? data.permissions : [],
   role: data.role ?? null,
   user: data.user ? mapUserIdentity(data.user) : null,
 });
 
-const setAuthContextFromResponse = (data = {}) => {
-  const context = mapAuthContext(data);
+const isActiveProjectValid = ({ activeMembership, activeProject } = {}) =>
+  Boolean(
+    activeProject?.id &&
+    activeProject.status === "Active" &&
+    activeMembership?.id &&
+    activeMembership.status === "Active",
+  );
+
+const maskProjectSelection = (context) => ({
+  ...context,
+  activeMembership: null,
+  activeProject: null,
+});
+
+const setAuthContextFromResponse = (data = {}, options = {}) => {
+  const backendContext = mapAuthContext(data);
+  const requiredByOption = options.requireProjectSelection;
+  const shouldRequireSelection = Boolean(
+    backendContext.accessibleProjects.length > 0 &&
+    (
+      typeof requiredByOption === "boolean"
+        ? requiredByOption
+        : getAuthState().projectSelectionRequired
+    ),
+  );
+  const context = shouldRequireSelection
+    ? maskProjectSelection(backendContext)
+    : backendContext;
+
+  context.projectSelectionRequired = shouldRequireSelection;
   useAuthStore.getState().setAuthContext(context);
   return context;
 };
 
 const clearCurrentUser = () => {
   useAuthStore.getState().clearAuth();
+  queryClient.clear();
 };
 
 const getCurrentUser = () => getAuthState().user;
 const getCurrentRole = () => getAuthState().role;
 const getCurrentPermissions = () => getAuthState().permissions;
+const getAccessibleProjects = () => getAuthState().accessibleProjects;
+const getActiveMembership = () => getAuthState().activeMembership;
 const getActiveProject = () => getAuthState().activeProject;
-const getOfficialRole = () => getAuthState().officialRole;
+const isProjectSelectionRequired = () => getAuthState().projectSelectionRequired;
 const isAuthenticated = () => getAuthState().authenticated;
+const hasValidActiveProject = () =>
+  isActiveProjectValid({
+    activeMembership: getActiveMembership(),
+    activeProject: getActiveProject(),
+  }) && !isProjectSelectionRequired();
+
+const getPostAuthenticationDestination = () => {
+  const accessibleProjects = getAccessibleProjects();
+
+  if (accessibleProjects.length > 0 && !hasValidActiveProject()) {
+    return "/select-project";
+  }
+
+  return "/dashboard";
+};
 
 const subscribeCurrentUserChange = (listener) => {
   if (typeof window === "undefined") return () => {};
@@ -124,14 +181,14 @@ const subscribeCurrentUserChange = (listener) => {
   };
 };
 
-const getMe = async () => {
+const getMe = async (options = {}) => {
   const response = assertBackendSuccess(
     await apiClient.get("/v1/auth/me"),
     LOGIN_MESSAGES.sessionExpired,
   );
-  const context = setAuthContextFromResponse(response.data?.data);
+  const context = setAuthContextFromResponse(response.data?.data, options);
 
-    return createSuccessResponse(response.data?.message ?? "Data User berhasil dimuat.", context);
+  return createSuccessResponse(response.data?.message ?? "Data User berhasil dimuat.", context);
 };
 
 const initialize = async () => {
@@ -174,7 +231,7 @@ const login = async ({ username, password }) => {
       }),
       LOGIN_MESSAGES.invalidCredentials,
     );
-    const meResponse = await getMe();
+    const meResponse = await getMe({ requireProjectSelection: true });
 
     return createSuccessResponse(
       loginResponse.data?.message ?? "Login berhasil.",
@@ -245,10 +302,30 @@ const changePassword = async ({
   }
 };
 
-const updateCurrentProfile = async () => {
-  return createFailedResponse("Update Profile belum tersedia.", {
-    errors: [],
-  });
+const updateCurrentProfile = async ({ email, fullName, name } = {}) => {
+  try {
+    const response = assertBackendSuccess(
+      await apiClient.patch("/v1/profile", {
+        email,
+        name: name ?? fullName,
+      }),
+      "Gagal memperbarui profil",
+    );
+    const refreshedProfile = await getMe();
+
+    return createSuccessResponse(
+      response.data?.message ?? "Profil berhasil diperbarui",
+      {
+        ...(response.data?.data ?? {}),
+        user: refreshedProfile.data.user,
+      },
+    );
+  } catch (error) {
+    return createFailedResponse(
+      getUpdateProfileErrorMessage(error),
+      { errors: error?.response?.data?.errors ?? [] },
+    );
+  }
 };
 
 const forgotPassword = async ({ registeredEmail, username }) => {
@@ -330,15 +407,24 @@ const getMockEmailDetail = async (emailId) => {
 
 const setCurrentUser = (currentUser) => {
   useAuthStore.getState().setAuthContext({
+    accessibleProjects: getAuthState().accessibleProjects,
+    activeMembership: getAuthState().activeMembership,
     ...getAuthState(),
     user: currentUser ? mapUserIdentity(currentUser) : null,
   });
 };
 
+const completeProjectSelection = async () => {
+  return getMe({ requireProjectSelection: false });
+};
+
 export const AuthService = {
   changePassword,
+  completeProjectSelection,
   clearCurrentUser,
   forgotPassword,
+  getAccessibleProjects,
+  getActiveMembership,
   getActiveProject,
   getCurrentPermissions,
   getCurrentRole,
@@ -346,9 +432,11 @@ export const AuthService = {
   getMe,
   getMockEmailDetail,
   getMockEmails,
-  getOfficialRole,
+  getPostAuthenticationDestination,
+  hasValidActiveProject,
   initialize,
   isAuthenticated,
+  isProjectSelectionRequired,
   login,
   logout,
   refresh,

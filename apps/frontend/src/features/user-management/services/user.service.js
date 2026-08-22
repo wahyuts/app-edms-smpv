@@ -1,40 +1,11 @@
+import { apiClient } from "@/shared/api";
+
 import {
-  DEFAULT_USER_STATUS,
   USER_DEPARTMENT_OPTIONS,
   USER_STATUSES,
   USER_STATUS_OPTIONS,
 } from "../constants/user.constants";
-import {
-  UserCredentialRepository,
-  UserPersistenceRepository,
-  UserRepository,
-} from "../repositories/user.repository";
-import {
-  AUDIT_RESOURCE_TYPE,
-  AUDIT_TRAIL_ACTION,
-  AuditTrailService,
-} from "@/features/audit-trail";
-import {
-  changeUserPasswordSchema,
-  createUserSchema,
-  formatValidationIssues,
-  updateUserSchema,
-} from "../schemas/user.schema";
 import { DepartmentService } from "./department.service";
-import { UserSeedService, normalizeUserRecord } from "./user-seed.service";
-
-let initializationPromise = null;
-
-const initialize = async () => {
-  if (!initializationPromise) {
-    initializationPromise = UserSeedService.initialize().catch((error) => {
-      initializationPromise = null;
-      throw error;
-    });
-  }
-
-  return initializationPromise;
-};
 
 export class UserValidationError extends Error {
   constructor(message, errors = []) {
@@ -45,393 +16,199 @@ export class UserValidationError extends Error {
 }
 
 const cloneValue = (value) => JSON.parse(JSON.stringify(value));
-
 const normalizeText = (value) => String(value ?? "").trim();
-const normalizeKey = (value) => normalizeText(value).toLowerCase();
+const normalizeKey = (value) =>
+  normalizeText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 
-const parseSchema = (schema, payload) => {
-  const result = schema.safeParse(payload);
-  if (result.success) return result.data;
+const getErrorMessage = (error, fallback = "Gagal memuat User.") =>
+  error?.response?.data?.message ?? error?.message ?? fallback;
 
-  throw new UserValidationError(
-    "Validation failed.",
-    formatValidationIssues(result.error.issues),
-  );
+const getErrorList = (error) => error?.response?.data?.errors ?? error?.errors ?? [];
+
+const throwServiceError = (error, fallback) => {
+  throw new UserValidationError(getErrorMessage(error, fallback), getErrorList(error));
 };
 
-const createEntityId = (users) => {
-  const numericIds = users
-    .map((user) => Number(user.id))
-    .filter((id) => Number.isFinite(id));
-  return numericIds.length > 0 ? Math.max(...numericIds) + 1 : 1;
-};
+export const normalizeUserRecord = (user = {}) => ({
+  ...user,
+  department: user.department ?? user.departmentNameSnapshot ?? "",
+  departmentId: user.departmentId ?? null,
+  departmentNameSnapshot: user.departmentNameSnapshot ?? user.department ?? "",
+  fullName: user.fullName ?? user.name ?? "",
+  isActive: user.status ? user.status === USER_STATUSES.ACTIVE : Boolean(user.isActive),
+  name: user.fullName ?? user.name ?? "",
+  status: user.status ?? (user.isActive ? USER_STATUSES.ACTIVE : USER_STATUSES.INACTIVE),
+});
 
-const createUserCode = (id) =>
-  `USR-${String(id).padStart(6, "0")}`;
+const unwrapCollection = (response) => ({
+  data: response.data?.data?.data ?? [],
+  pagination: response.data?.data?.pagination ?? {
+    page: 1,
+    pageSize: response.data?.data?.data?.length ?? 0,
+    totalItems: response.data?.data?.data?.length ?? 0,
+    totalPages: 1,
+  },
+});
 
-const mapUserListItem = (user) => {
-  const normalizedUser = normalizeUserRecord(user);
-
-  return {
-    ...normalizedUser,
-    name: normalizedUser.name,
-    status: normalizedUser.status,
-  };
+const requestCollection = async (params = {}) => {
+  try {
+    return unwrapCollection(await apiClient.get("/v1/users", { params }));
+  } catch (error) {
+    throwServiceError(error, "Gagal memuat User.");
+  }
 };
 
 const getUsers = async () => {
-  await initialize();
-  const users = await UserRepository.getAll();
-  return cloneValue(users.map(mapUserListItem));
+  const { data } = await requestCollection({ page: 1, pageSize: 1000, sortBy: "createdAt", direction: "desc" });
+  return cloneValue(data.map(normalizeUserRecord));
 };
 
-const getUserList = async (query = {}) => queryUsers(await getUsers(), query);
+const getUserList = async (query = {}) => {
+  const { data, pagination } = await requestCollection({
+    ...query,
+    pageSize: query.pageSize ?? query.limit ?? 10,
+  });
+  return {
+    data: cloneValue(data.map(normalizeUserRecord)),
+    pagination,
+  };
+};
 
 const getUserDetail = async (userId) => {
-  await initialize();
-  const user = await UserRepository.getById(userId);
-  return user ? cloneValue(mapUserListItem(user)) : null;
+  try {
+    const response = await apiClient.get(`/v1/users/${userId}`);
+    return normalizeUserRecord(response.data?.data);
+  } catch (error) {
+    throwServiceError(error, "User tidak ditemukan.");
+  }
 };
 
-const getUserByUsername = async (username) => {
-  await initialize();
-  const user = await UserRepository.getByUsername(username);
-  return user ? cloneValue(mapUserListItem(user)) : null;
-};
+const getUserByUsername = async (username) =>
+  (await getUsers()).find((user) => normalizeKey(user.username) === normalizeKey(username)) ?? null;
 
-const checkUsernameUniqueness = async (username, currentUserId = null) => {
-  await initialize();
-  const usernameKey = normalizeKey(username);
-  if (!usernameKey) return false;
-
-  const users = await UserRepository.getAll();
-  return !users.some((user) =>
-    user.id !== currentUserId && normalizeKey(user.username) === usernameKey,
+const checkUsernameUniqueness = async (username, currentUserId = null) =>
+  !(await getUsers()).some(
+    (user) => String(user.id) !== String(currentUserId) && normalizeKey(user.username) === normalizeKey(username),
   );
-};
 
-const checkEmailUniqueness = async (email, currentUserId = null) => {
-  await initialize();
-  const emailKey = normalizeKey(email);
-  if (!emailKey) return false;
-
-  const users = await UserRepository.getAll();
-  return !users.some((user) =>
-    user.id !== currentUserId && normalizeKey(user.email) === emailKey,
+const checkEmailUniqueness = async (email, currentUserId = null) =>
+  !(await getUsers()).some(
+    (user) => String(user.id) !== String(currentUserId) && normalizeText(user.email).toLowerCase() === normalizeText(email).toLowerCase(),
   );
-};
 
-const assertUniqueUserFields = async ({ email, username }, currentUserId = null) => {
-  const errors = [];
-  if (!(await checkUsernameUniqueness(username, currentUserId))) {
-    errors.push({
-      field: "username",
-      message: "Username already exists.",
-    });
+const resolveDepartmentPayload = async (payload = {}) => {
+  if (payload.departmentId) {
+    return {
+      department: payload.department,
+      departmentId: payload.departmentId,
+    };
   }
-  if (!(await checkEmailUniqueness(email, currentUserId))) {
-    errors.push({
-      field: "email",
-      message: "Email already exists.",
-    });
-  }
-  if (errors.length > 0) {
-    throw new UserValidationError("Validation failed.", errors);
-  }
-};
 
-const assertAssignableDepartment = async (departmentName, currentDepartmentName = null) => {
-  const normalizedDepartmentName = normalizeText(departmentName);
-  const isCurrentDepartment =
-    normalizeKey(normalizedDepartmentName) === normalizeKey(currentDepartmentName);
-
-  if (isCurrentDepartment) return;
-
-  if (!(await DepartmentService.isActiveDepartmentName(normalizedDepartmentName))) {
-    throw new UserValidationError("Validation failed.", [
-      {
-        field: "department",
-        message: "Department must use an active Department Master Data record.",
-      },
-    ]);
-  }
+  const department = await DepartmentService.getDepartmentByName(payload.department);
+  return {
+    department: payload.department,
+    departmentId: department?.id ?? null,
+  };
 };
 
 const createUser = async (payload = {}) => {
-  await initialize();
-  const input = parseSchema(createUserSchema, payload);
-
-  await assertUniqueUserFields(input);
-  await assertAssignableDepartment(input.department);
-
-  const users = await UserRepository.getAll();
-  const id = createEntityId(users);
-  const now = new Date().toISOString();
-  const user = normalizeUserRecord({
-    createdAt: now,
-    department: input.department,
-    email: input.email,
-    fullName: input.name,
-    id,
-    isActive: true,
-    name: input.name,
-    status: DEFAULT_USER_STATUS,
-    updatedAt: null,
-    userCode: createUserCode(id),
-    username: input.username,
-  });
-  const credential = {
-    isActive: true,
-    password: input.initialPassword,
-    updatedAt: now,
-    userId: id,
-  };
-
-  await UserPersistenceRepository.runMutation((stores) => {
-    stores.users.add(user);
-    stores.userCredentials.add(credential);
-  });
-  await AuditTrailService.recordActivitySafely({
-    action: AUDIT_TRAIL_ACTION.CREATE_USER,
-    metadata: {
-      targetUsername: user.username,
-    },
-    reference: user.username,
-    resourceId: user.id,
-    resourceType: AUDIT_RESOURCE_TYPE.USER,
-  });
-
-  return cloneValue(user);
+  try {
+    const department = await resolveDepartmentPayload(payload);
+    const response = await apiClient.post("/v1/users", {
+      ...department,
+      email: payload.email,
+      initialPassword: payload.initialPassword,
+      name: payload.name ?? payload.fullName,
+      position: payload.position ?? null,
+      username: payload.username,
+    });
+    return normalizeUserRecord(response.data?.data);
+  } catch (error) {
+    throwServiceError(error, "Gagal membuat User.");
+  }
 };
 
 const updateUser = async (userId, payload = {}) => {
-  await initialize();
-  const currentUser = await UserRepository.getById(userId);
-  if (!currentUser) {
-    throw new UserValidationError("User was not found.", [
-      { field: "id", message: "User was not found." },
-    ]);
-  }
-
-  const input = parseSchema(updateUserSchema, payload);
-  await assertUniqueUserFields(input, userId);
-  await assertAssignableDepartment(input.department, currentUser.department);
-
-  const now = new Date().toISOString();
-  const updatedUser = normalizeUserRecord({
-    ...currentUser,
-    department: input.department,
-    email: input.email,
-    fullName: input.name,
-    isActive: input.status === USER_STATUSES.ACTIVE,
-    name: input.name,
-    status: input.status,
-    updatedAt: now,
-    username: input.username,
-  });
-  const credential = await UserCredentialRepository.getByUserId(userId);
-
-  await UserPersistenceRepository.runMutation((stores) => {
-    stores.users.put(updatedUser);
-    if (credential) {
-      stores.userCredentials.put({
-        ...credential,
-        isActive: updatedUser.isActive,
-        updatedAt: now,
-      });
-    }
-  });
-  await AuditTrailService.recordActivitySafely({
-    action: AUDIT_TRAIL_ACTION.UPDATE_USER,
-    metadata: {
-      targetUsername: updatedUser.username,
-    },
-    reference: updatedUser.username,
-    resourceId: updatedUser.id,
-    resourceType: AUDIT_RESOURCE_TYPE.USER,
-  });
-
-  return cloneValue(updatedUser);
-};
-
-const updateUserPassword = async (userId, payload = {}) => {
-  await initialize();
-  const input = parseSchema(changeUserPasswordSchema, payload);
-  const user = await UserRepository.getById(userId);
-  const credential = await UserCredentialRepository.getByUserId(userId);
-
-  if (!user || !credential) {
-    throw new UserValidationError("User credential was not found.", [
-      { field: "id", message: "User credential was not found." },
-    ]);
-  }
-
-  const updatedCredential = {
-    ...credential,
-    password: input.newPassword,
-    updatedAt: new Date().toISOString(),
-  };
-
-  await UserCredentialRepository.update(updatedCredential);
-  return cloneValue(updatedCredential);
-};
-
-const setUserStatus = async (userId, status) => {
-  await initialize();
-  const user = await UserRepository.getById(userId);
-  if (!user) {
-    throw new UserValidationError("User was not found.", [
-      { field: "id", message: "User was not found." },
-    ]);
-  }
-
-  const normalizedStatus = status === USER_STATUSES.INACTIVE
-    ? USER_STATUSES.INACTIVE
-    : USER_STATUSES.ACTIVE;
-  const now = new Date().toISOString();
-  const updatedUser = normalizeUserRecord({
-    ...user,
-    isActive: normalizedStatus === USER_STATUSES.ACTIVE,
-    status: normalizedStatus,
-    updatedAt: now,
-  });
-  const credential = await UserCredentialRepository.getByUserId(userId);
-
-  await UserPersistenceRepository.runMutation((stores) => {
-    stores.users.put(updatedUser);
-    if (credential) {
-      stores.userCredentials.put({
-        ...credential,
-        isActive: updatedUser.isActive,
-        updatedAt: now,
-      });
-    }
-  });
-  await AuditTrailService.recordActivitySafely({
-    action: normalizedStatus === USER_STATUSES.ACTIVE
-      ? AUDIT_TRAIL_ACTION.ACTIVATE_USER
-      : AUDIT_TRAIL_ACTION.DEACTIVATE_USER,
-    metadata: {
-      targetUsername: updatedUser.username,
-    },
-    reference: updatedUser.username,
-    resourceId: updatedUser.id,
-    resourceType: AUDIT_RESOURCE_TYPE.USER,
-  });
-
-  return cloneValue(updatedUser);
-};
-
-const renameDepartmentReferences = async (previousDepartmentName, nextDepartmentName) => {
-  await initialize();
-  const previousDepartmentKey = normalizeKey(previousDepartmentName);
-  const nextDepartment = normalizeText(nextDepartmentName);
-
-  if (!previousDepartmentKey || !nextDepartment) return [];
-
-  const users = await UserRepository.getAll();
-  const now = new Date().toISOString();
-  const updatedUsers = users
-    .filter((user) => normalizeKey(user.department) === previousDepartmentKey)
-    .map((user) => normalizeUserRecord({
-      ...user,
-      department: nextDepartment,
-      updatedAt: now,
-    }));
-
-  if (updatedUsers.length === 0) return [];
-
-  await UserPersistenceRepository.runMutation((stores) => {
-    updatedUsers.forEach((user) => {
-      stores.users.put(user);
+  try {
+    const department = await resolveDepartmentPayload(payload);
+    const response = await apiClient.put(`/v1/users/${userId}`, {
+      ...department,
+      email: payload.email,
+      name: payload.name ?? payload.fullName,
+      position: payload.position ?? null,
+      status: payload.status,
     });
-  });
-
-  return cloneValue(updatedUsers);
+    return normalizeUserRecord(response.data?.data);
+  } catch (error) {
+    throwServiceError(error, "Gagal mengubah User.");
+  }
 };
 
-const activateUser = (userId) => setUserStatus(userId, USER_STATUSES.ACTIVE);
+const activateUser = async (userId) => {
+  try {
+    const response = await apiClient.patch(`/v1/users/${userId}/activate`);
+    return normalizeUserRecord(response.data?.data);
+  } catch (error) {
+    throwServiceError(error, "Gagal mengaktifkan User.");
+  }
+};
 
-const deactivateUser = (userId) => setUserStatus(userId, USER_STATUSES.INACTIVE);
+const deactivateUser = async (userId) => {
+  try {
+    const response = await apiClient.patch(`/v1/users/${userId}/deactivate`);
+    return normalizeUserRecord(response.data?.data);
+  } catch (error) {
+    throwServiceError(error, "Gagal menonaktifkan User.");
+  }
+};
+
+const updateUserPassword = async () => {
+  throw new UserValidationError("Reset Password Admin belum tersedia.", [
+    { field: "password", message: "Gunakan Change Password atau Reset Password." },
+  ]);
+};
 
 const deleteUser = async () => {
-  throw new UserValidationError(
-    "Delete User is not supported by PRD PART 9. Use Inactive status to preserve user history.",
-    [
-      {
-        field: "status",
-        message: "User accounts must use Active / Inactive lifecycle and must not be deleted.",
-      },
-    ],
-  );
+  throw new UserValidationError("User tidak dapat dihapus.", [
+    { field: "status", message: "Gunakan status Inactive." },
+  ]);
 };
 
 const searchUsers = (users, search = "") => {
   const keyword = normalizeKey(search);
   if (!keyword) return cloneValue(users);
-
-  const searchableFields = [
-    "name",
-    "fullName",
-    "username",
-    "email",
-    "department",
-    "status",
-  ];
-
+  const searchableFields = ["name", "fullName", "username", "email", "department", "status"];
   return cloneValue(users.filter((user) =>
-    searchableFields.some((fieldName) =>
-      normalizeKey(user[fieldName]).includes(keyword),
-    ),
+    searchableFields.some((fieldName) => normalizeKey(user[fieldName]).includes(keyword)),
   ));
 };
 
-const filterUsers = (users, filters = {}) => cloneValue(users.filter((user) => {
-  const departmentFilter = filters.department;
-  const statusFilter = filters.status;
-
-  return (
-    (!departmentFilter || user.department === departmentFilter) &&
-    (!statusFilter || user.status === statusFilter)
-  );
-}));
+const filterUsers = (users, filters = {}) =>
+  cloneValue(users.filter((user) =>
+    (!filters.department || user.department === filters.department) &&
+    (!filters.status || user.status === filters.status),
+  ));
 
 const getTimestamp = (value) => {
   const timestamp = new Date(value ?? "").getTime();
   return Number.isNaN(timestamp) ? null : timestamp;
 };
 
-const getFallbackSortValue = (user) =>
-  normalizeKey(user.id ?? user.userCode ?? user.username ?? user.name);
-
-const compareTimestampValues = (firstUser, secondUser, sortBy, multiplier) => {
-  const firstTimestamp = getTimestamp(firstUser[sortBy]);
-  const secondTimestamp = getTimestamp(secondUser[sortBy]);
-
-  if (firstTimestamp !== null && secondTimestamp === null) return -1;
-  if (firstTimestamp === null && secondTimestamp !== null) return 1;
-  if (firstTimestamp !== null && secondTimestamp !== null) {
-    if (firstTimestamp === secondTimestamp) return 0;
-    return firstTimestamp > secondTimestamp ? multiplier : -multiplier;
-  }
-
-  const firstFallback = getFallbackSortValue(firstUser);
-  const secondFallback = getFallbackSortValue(secondUser);
-  if (firstFallback === secondFallback) return 0;
-  return firstFallback > secondFallback ? -1 : 1;
-};
-
-const getSortableValue = (user, sortBy) => normalizeKey(user[sortBy]);
-
 const sortUsers = (users, { direction = "desc", sortBy = "createdAt" } = {}) => {
   const multiplier = direction === "desc" ? -1 : 1;
   return cloneValue([...users].sort((firstUser, secondUser) => {
     if (sortBy === "createdAt" || sortBy === "updatedAt") {
-      return compareTimestampValues(firstUser, secondUser, sortBy, multiplier);
+      const firstTimestamp = getTimestamp(firstUser[sortBy]);
+      const secondTimestamp = getTimestamp(secondUser[sortBy]);
+      if (firstTimestamp !== null && secondTimestamp !== null && firstTimestamp !== secondTimestamp) {
+        return firstTimestamp > secondTimestamp ? multiplier : -multiplier;
+      }
     }
-
-    const firstValue = getSortableValue(firstUser, sortBy);
-    const secondValue = getSortableValue(secondUser, sortBy);
+    const firstValue = normalizeKey(firstUser[sortBy] ?? firstUser.name);
+    const secondValue = normalizeKey(secondUser[sortBy] ?? secondUser.name);
     if (firstValue === secondValue) return 0;
     return firstValue > secondValue ? multiplier : -multiplier;
   }));
@@ -441,43 +218,29 @@ const paginateUsers = (users, { page = 1, pageSize = 10 } = {}) => {
   const normalizedPageSize = Math.max(1, Number(pageSize) || 10);
   const totalItems = users.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / normalizedPageSize));
-  const normalizedPage = Math.min(
-    Math.max(1, Number(page) || 1),
-    totalPages,
-  );
+  const normalizedPage = Math.min(Math.max(1, Number(page) || 1), totalPages);
   const startIndex = (normalizedPage - 1) * normalizedPageSize;
-
   return {
     data: cloneValue(users.slice(startIndex, startIndex + normalizedPageSize)),
-    pagination: {
-      page: normalizedPage,
-      pageSize: normalizedPageSize,
-      totalItems,
-      totalPages,
-    },
+    pagination: { page: normalizedPage, pageSize: normalizedPageSize, totalItems, totalPages },
   };
 };
 
-function queryUsers(users, query = {}) {
-  const filteredUsers = filterUsers(searchUsers(users, query.search), {
-    department: query.department,
-    status: query.status,
-  });
-  const sortedUsers = sortUsers(filteredUsers, {
-    direction: query.direction ?? query.order,
-    sortBy: query.sortBy ?? query.sort,
-  });
+const queryUsers = (users, query = {}) =>
+  paginateUsers(
+    sortUsers(filterUsers(searchUsers(users, query.search), {
+      department: query.department,
+      status: query.status,
+    }), {
+      direction: query.direction ?? query.order,
+      sortBy: query.sortBy ?? query.sort,
+    }),
+    { page: query.page, pageSize: query.pageSize },
+  );
 
-  return paginateUsers(sortedUsers, {
-    page: query.page,
-    pageSize: query.pageSize,
-  });
-}
-
-const getCredentialByUserId = async (userId) => {
-  await initialize();
-  return cloneValue(await UserCredentialRepository.getByUserId(userId));
-};
+const renameDepartmentReferences = async () => [];
+const getCredentialByUserId = async () => null;
+const initialize = async () => true;
 
 export const UserService = {
   activateUser,

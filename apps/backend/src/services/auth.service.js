@@ -7,6 +7,7 @@ const {
 } = require('../constants/auth.constants');
 const authRepository = require('../repositories/auth.repository');
 const authorizationService = require('./authorization.service');
+const projectContextService = require('./projectContext.service');
 const {
   generateAccessToken,
   generateRefreshToken,
@@ -33,11 +34,6 @@ const stripInternalUserFields = (user) => {
   return publicUser;
 };
 
-const buildNeutralProjectContext = () => ({
-  activeProject: null,
-  officialRole: null,
-});
-
 const isTokenIssuedBeforePasswordChange = (tokenIssuedAt, passwordChangedAtEpoch) => {
   if (!tokenIssuedAt || !passwordChangedAtEpoch) {
     return false;
@@ -50,14 +46,21 @@ const isTokenIssuedBeforePasswordChange = (tokenIssuedAt, passwordChangedAtEpoch
 };
 
 const buildAuthPayload = async (user) => {
-  const authorizedUser = await authorizationService.buildAuthorizationContext(user);
+  const projectContext = await projectContextService.resolveProjectContext(user.id);
+  const authorizedUser = await authorizationService.buildProjectAuthorizationContext(
+    user,
+    projectContext.officialRole
+  );
   const publicUser = stripInternalUserFields(authorizedUser);
 
   return {
     user: publicUser,
     role: authorizedUser.role,
     permissions: authorizedUser.permissions,
-    ...buildNeutralProjectContext(),
+    activeProject: projectContext.activeProject,
+    activeMembership: projectContext.activeMembership,
+    accessibleProjects: projectContext.accessibleProjects,
+    officialRole: projectContext.officialRole,
   };
 };
 
@@ -160,7 +163,7 @@ const refresh = async ({ refreshToken, ipAddress }) => {
 
 const logout = async ({ refreshToken }) => {
   if (!refreshToken) {
-    return true;
+    return { userId: null };
   }
 
   try {
@@ -171,11 +174,11 @@ const logout = async ({ refreshToken }) => {
       refreshTokenHash: hashToken(refreshToken),
       reason: 'Logout',
     });
-  } catch (error) {
-    return true;
-  }
 
-  return true;
+    return { userId: payload.sub };
+  } catch (error) {
+    return { userId: null };
+  }
 };
 
 const changePassword = async ({ userId, currentPassword, newPassword }) => {

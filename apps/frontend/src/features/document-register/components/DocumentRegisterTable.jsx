@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { ChevronLeft, ChevronRight, ClipboardList } from "lucide-react";
 
 import SelectDropdown from "@/shared/components/form/SelectDropdown";
@@ -27,7 +28,7 @@ const statusStyles = {
   [DOCUMENT_STATUS.PROJECT_REVIEW]:
     "border-[#FACC15]/40 bg-[#FACC15]/15 text-[#FDE68A]",
   [DOCUMENT_STATUS.PROJECT_COMMENT]:
-    "border-[#F97316]/40 bg-[#F97316]/15 text-[#FDBA74]",
+    "border-[#FACC15]/40 bg-[#FACC15]/15 text-[#FDE68A]",
   [DOCUMENT_STATUS.PROJECT_REJECT]:
     "border-[#EF4444]/40 bg-[#EF4444]/15 text-[#FCA5A5]",
   [DOCUMENT_STATUS.APPROVED]:
@@ -132,7 +133,9 @@ export const DocumentRegisterTable = ({
   areaOptions = [],
   drawingFilter,
   drawingOptions = [],
+  error = null,
   isDashboard = false,
+  isError = false,
   isLoading = false,
   canUseLifecycleFilter = false,
   lifecycleFilter = DOCUMENT_LIFECYCLE_FILTER.ACTIVE,
@@ -158,9 +161,13 @@ export const DocumentRegisterTable = ({
 }) => {
   const { hasProjectPermission } = usePermission();
   useProjectContextStore((state) => state.activeOfficialRole);
+  const [activeAction, setActiveAction] = useState(null);
   const canViewDocument = hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.VIEW);
   const paginationItems = getPaginationItems(totalPages, pageNumber);
   const statusFilterValue = Array.isArray(statusFilter) ? "" : statusFilter;
+  const setGlobalActiveAction = useCallback((nextAction) => {
+    setActiveAction(nextAction);
+  }, []);
 
   if (!canViewDocument) {
     return (
@@ -328,7 +335,7 @@ export const DocumentRegisterTable = ({
             <tr>
               <th className="sticky top-0 z-20 w-16 bg-[#08233B] px-4 py-3 font-bold">No</th>
               <th className="sticky top-0 z-20 min-w-44 bg-[#08233B] px-4 py-3 font-bold">Document Number</th>
-              <th className="sticky top-0 z-20 min-w-72 bg-[#08233B] px-4 py-3 font-bold">Description</th>
+              <th className="sticky top-0 z-20 w-72 min-w-72 max-w-72 bg-[#08233B] px-4 py-3 font-bold">Description</th>
               {isDashboard ? (
                 <th className="sticky top-0 z-20 min-w-24 bg-[#08233B] px-4 py-3 font-bold">Drawing</th>
               ) : null}
@@ -339,7 +346,7 @@ export const DocumentRegisterTable = ({
               ) : null}
               <th className="sticky top-0 z-20 min-w-40 bg-[#08233B] px-4 py-3 font-bold">Status</th>
               {isDashboard ? (
-                <th className="sticky top-0 z-20 min-w-44 bg-[#08233B] px-4 py-3 font-bold">SLA Timer</th>
+                <th className="sticky top-0 z-20 min-w-44 bg-[#08233B] px-4 py-3 font-bold">Review Timer</th>
               ) : null}
               <th className="sticky right-0 top-0 z-30 min-w-60 bg-[#08233B] px-4 py-3 font-bold shadow-[-8px_0_16px_rgba(2,11,22,0.35)]">
                 Actions
@@ -358,7 +365,18 @@ export const DocumentRegisterTable = ({
               </tr>
             ) : null}
 
-            {!isLoading && rows.length === 0 ? (
+            {!isLoading && isError ? (
+              <tr>
+                <td
+                  className="px-4 py-8 text-center font-semibold text-[#FCA5A5]"
+                  colSpan={isDashboard ? 9 : 8}
+                >
+                  {error instanceof Error ? error.message : "Document Register gagal dimuat."}
+                </td>
+              </tr>
+            ) : null}
+
+            {!isLoading && !isError && rows.length === 0 ? (
               <tr>
                 <td
                   className="px-4 py-8 text-center text-[#94A3B8]"
@@ -369,7 +387,7 @@ export const DocumentRegisterTable = ({
               </tr>
             ) : null}
 
-            {!isLoading
+            {!isLoading && !isError
               ? rows.map((documentItem, rowIndex) => (
                   <tr
                     className="group border-t border-[#123A5A] text-[#F8FAFC] transition-colors hover:bg-[#08233B]"
@@ -384,8 +402,10 @@ export const DocumentRegisterTable = ({
                         <LifecycleBadge lifecycle={documentItem.lifecycle} />
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-[#CBD5E1]">
-                      {documentItem.description}
+                    <td className="w-72 min-w-72 max-w-72 px-4 py-3 text-[#CBD5E1]">
+                      <span className="block whitespace-normal break-words [overflow-wrap:anywhere]">
+                        {documentItem.description}
+                      </span>
                     </td>
                     {isDashboard ? (
                       <td className="px-4 py-3 text-[#CBD5E1]">
@@ -418,8 +438,10 @@ export const DocumentRegisterTable = ({
                     ) : null}
                     <td className="sticky right-0 z-10 bg-[#061B2F] px-4 py-3 shadow-[-8px_0_16px_rgba(2,11,22,0.28)] transition-colors group-hover:bg-[#08233B]">
                       <DocumentActionGroup
+                        activeAction={activeAction}
                         documentItem={documentItem}
                         isDashboard={isDashboard}
+                        onActiveActionChange={setGlobalActiveAction}
                         onWorkflowComplete={refreshDocuments}
                       />
                     </td>

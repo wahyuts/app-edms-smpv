@@ -29,6 +29,8 @@ const authenticate = async (req, res, next) => {
     req.user = currentUser.user;
     req.role = currentUser.role;
     req.permissions = currentUser.permissions;
+    req.accessibleProjects = currentUser.accessibleProjects;
+    req.activeMembership = currentUser.activeMembership;
     req.activeProject = currentUser.activeProject;
     req.officialRole = currentUser.officialRole;
 

@@ -1,17 +1,20 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Clock3,
   Download,
   Eye,
+  Loader2,
   Pencil,
   MessageSquare,
   Archive,
   RotateCcw,
 } from "lucide-react";
 
-import { useToast } from "@/shared/components/toast";
-import { usePermission } from "@/shared/hooks/usePermission";
 import { AuthService } from "@/features/auth/services/auth.service";
+import { useToast } from "@/shared/components/toast";
+import { queryClient } from "@/shared/api/query-client";
+import { usePermission } from "@/shared/hooks/usePermission";
+import { useRealtimeEvent, useRealtimeRecovery } from "@/shared/realtime";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 import {
@@ -21,11 +24,22 @@ import {
   DOCUMENT_STATUS,
   OFFICIAL_ROLE,
 } from "../constants/document.constants";
-import { DocumentService } from "../services/document.service";
-import { FileService } from "../services/file.service";
-import { WorkflowAttachmentService } from "../services/workflow-attachment.service";
-import { CommentReadService } from "../services/comment-read.service";
+import { DocumentApiService } from "../services/document-api.service";
+import {
+  COMMENT_VIEWER_UPDATED_NOTICE,
+  isCommentActorSelfEvent,
+  isCommentViewerRealtimeEvent,
+} from "../utils/commentRealtimeSync";
 import { getDocumentActionVisibility } from "../utils/documentActionVisibility";
+import { synchronizeDocumentRuntimeQueries } from "../utils/documentRuntimeQuerySync";
+import { createRealtimeRefetchCoalescer } from "../utils/realtimeRefetchCoalescer";
+import {
+  isActorSelfEvent,
+  isRelevantWorkflowDetailEvent,
+  shouldCloseWorkflowActionModal,
+  shouldRefreshWorkflowDocumentViewer,
+  WORKFLOW_DETAIL_STALE_NOTICE,
+} from "../utils/workflowRealtimeSync";
 import {
   ApprovalCommentModal,
   ApprovalConfirmationModal,
@@ -58,16 +72,59 @@ const modalType = {
   VIEW: "view",
 };
 
-const ActionIconButton = ({ icon: Icon, label, onClick, showIndicator = false }) => {
+const actionLoadingType = {
+  APPROVAL_A: "approvalA",
+  APPROVAL_B: "approvalB",
+  APPROVAL_C: "approvalC",
+  ARCHIVE: "archive",
+  COMMENT: "comment",
+  DOWNLOAD: "download",
+  EDIT: "edit",
+  HISTORY: "history",
+  RESTORE: "restore",
+  VIEW: "view",
+};
+
+const attachmentActionType = {
+  DOWNLOAD: "download",
+  VIEW: "view",
+};
+
+const createExpectedWorkflowState = (document = {}) => ({
+  activeRevisionId: document.activeRevisionId ?? null,
+  currentAssigneeUserId: document.currentAssigneeUserId ?? null,
+  workflowStatus: document.workflowStatus ?? document.status ?? null,
+});
+
+const isWorkflowConflictError = (error) =>
+  error?.status === 409 &&
+  ["WORKFLOW_CONFLICT", "REVISION_CONFLICT"].includes(error?.code);
+
+const ActionButtonSpinner = ({ className = "h-4 w-4" }) => (
+  <Loader2
+    aria-hidden="true"
+    className={["animate-spin", className].join(" ")}
+  />
+);
+
+const ActionIconButton = ({
+  disabled = false,
+  icon: Icon,
+  isLoading = false,
+  label,
+  onClick,
+  showIndicator = false,
+}) => {
   return (
     <button
       aria-label={label}
       className={[baseIconButtonClassName, "relative"].join(" ")}
+      disabled={disabled}
       onClick={onClick}
       title={label}
       type="button"
     >
-      <Icon className="h-4 w-4" />
+      {isLoading ? <ActionButtonSpinner /> : <Icon className="h-4 w-4" />}
       {showIndicator ? (
         <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-[#061B2F] bg-[#EF4444] px-1 text-[10px] font-bold leading-none text-white">
           !
@@ -77,7 +134,14 @@ const ActionIconButton = ({ icon: Icon, label, onClick, showIndicator = false })
   );
 };
 
-const ReviewActionButton = ({ children, label, onClick, tone }) => {
+const ReviewActionButton = ({
+  children,
+  disabled = false,
+  isLoading = false,
+  label,
+  onClick,
+  tone,
+}) => {
   return (
     <button
       aria-label={label}
@@ -85,29 +149,38 @@ const ReviewActionButton = ({ children, label, onClick, tone }) => {
         "inline-flex h-8 w-8 items-center justify-center rounded-md border text-xs font-bold transition-colors",
         reviewButtonStyles[tone],
       ].join(" ")}
+      disabled={disabled}
       onClick={onClick}
       title={label}
       type="button"
     >
-      {children}
+      {isLoading ? <ActionButtonSpinner className="h-3.5 w-3.5" /> : children}
     </button>
   );
 };
 
 export const DocumentActionGroup = ({
   actionMode = "workflow",
+  activeAction: controlledActiveAction = undefined,
   documentItem,
   isDashboard = false,
+  onActiveActionChange = undefined,
   onWorkflowComplete = () => {},
 }) => {
   const { showToast } = useToast();
-  const { getActiveProjectRole, hasProjectPermission } = usePermission();
+  const { hasProjectPermission } = usePermission();
   const [activeModal, setActiveModal] = useState(null);
+  const [localActiveAction, setLocalActiveAction] = useState(null);
   const [attachmentErrors, setAttachmentErrors] = useState({});
+  const [activeAttachmentAction, setActiveAttachmentAction] = useState(null);
   const [attachmentViewerFile, setAttachmentViewerFile] = useState(null);
   const [comments, setComments] = useState([]);
+  const [detailDocument, setDetailDocument] = useState(documentItem);
   const [documentFile, setDocumentFile] = useState(null);
-  const [hasUnreadComments, setHasUnreadComments] = useState(false);
+  const [localReadState, setLocalReadState] = useState({
+    documentId: null,
+    unreadCommentCount: 0,
+  });
   const [timeline, setTimeline] = useState([]);
   const [workflowAttachmentFile, setWorkflowAttachmentFile] = useState(null);
   const [workflowAttachmentPreview, setWorkflowAttachmentPreview] = useState(null);
@@ -116,15 +189,28 @@ export const DocumentActionGroup = ({
   const [workflowComment, setWorkflowComment] = useState("");
   const [selectedWorkflowAttachment, setSelectedWorkflowAttachment] = useState(null);
   const [validationMessage, setValidationMessage] = useState("");
+  const [activeWorkflowSubmitAction, setActiveWorkflowSubmitAction] = useState(null);
+  const [workflowExpectedState, setWorkflowExpectedState] = useState(
+    createExpectedWorkflowState(documentItem),
+  );
+  const activeWorkflowSubmitActionRef = useRef(null);
+  const activeModalRef = useRef(activeModal);
+  const isControlledActionLock = controlledActiveAction !== undefined &&
+    typeof onActiveActionChange === "function";
+  const activeAction = isControlledActionLock
+    ? controlledActiveAction
+    : localActiveAction;
+  const activeActionRef = useRef(activeAction);
+  const activeAttachmentActionRef = useRef(null);
+  const commentRefetchCoalescerRef = useRef(null);
+  const detailRefetchCoalescerRef = useRef(null);
 
-  const activeProjectRole = getActiveProjectRole();
-  const currentUser = AuthService.getCurrentUser();
   const activeMembership = useProjectContextStore((state) => state.activeMembership);
-  const currentUserId = currentUser?.id ?? activeProjectRole?.roleName ?? "anonymous";
-  const currentUserName =
-    currentUser?.fullName ?? currentUser?.name ?? currentUser?.username ?? "Current User";
+  const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
   const projectRoleName = activeMembership?.officialRole;
+  const currentUserId = AuthService.getCurrentUser()?.id ?? null;
   const isArchivedDocument = documentItem?.lifecycle === DOCUMENT_LIFECYCLE.ARCHIVED;
+
   const defaultVisibility = getDocumentActionVisibility({
     hasPermission: hasProjectPermission,
     roleName: projectRoleName,
@@ -161,8 +247,14 @@ export const DocumentActionGroup = ({
           ),
           workflowActions: [],
           showHistory: false,
-        }
+      }
     : defaultVisibility;
+  const workflowVisibility = visibility;
+  const hasUnreadComments = Boolean(documentItem?.hasUnreadComments) &&
+    !(
+      localReadState.documentId === documentItem?.id &&
+      localReadState.unreadCommentCount === Number(documentItem?.unreadCommentCount ?? 0)
+    );
   const canEditDocument = hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.EDIT);
   const canArchiveDocument =
     !isDashboard &&
@@ -175,38 +267,61 @@ export const DocumentActionGroup = ({
     isArchivedDocument &&
     projectRoleName === OFFICIAL_ROLE.ADMIN &&
     hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.ARCHIVE);
+  const currentActiveAction =
+    activeAction?.documentId === documentItem.id &&
+    String(activeAction?.projectId ?? "") === String(activeProjectId ?? "")
+      ? activeAction.type
+      : null;
+  const isActionLocked =
+    Boolean(activeAction) &&
+    String(activeAction?.projectId ?? "") === String(activeProjectId ?? "");
 
-  useEffect(() => {
-    let isActive = true;
+  const setActiveActionState = useCallback((nextAction) => {
+    activeActionRef.current = nextAction;
+    if (isControlledActionLock) {
+      onActiveActionChange(nextAction);
+      return;
+    }
 
-    const loadUnreadCommentState = async () => {
-      const documentComments =
-        await DocumentService.getWorkflowCommentsByDocumentId(documentItem.id);
+    setLocalActiveAction(nextAction);
+  }, [isControlledActionLock, onActiveActionChange]);
 
-      if (isActive) {
-        const nextHasUnreadComments =
-          await CommentReadService.hasUnreadComments({
-            comments: documentComments,
-            documentId: documentItem.id,
-            projectId: documentItem.projectId,
-            userId: currentUserId,
-          });
+  const runAction = useCallback(async (actionType, handler) => {
+    const activeActionSnapshot = activeActionRef.current;
 
-        setHasUnreadComments(nextHasUnreadComments);
+    if (String(activeActionSnapshot?.projectId ?? "") === String(activeProjectId ?? "")) {
+      return;
+    }
+
+    const nextAction = {
+      documentId: documentItem.id,
+      projectId: activeProjectId,
+      type: actionType,
+    };
+
+    setActiveActionState(nextAction);
+
+    try {
+      await handler();
+    } finally {
+      const latestAction = activeActionRef.current;
+      if (
+        latestAction?.documentId === nextAction.documentId &&
+        String(latestAction?.projectId ?? "") === String(nextAction.projectId ?? "") &&
+        latestAction?.type === nextAction.type
+      ) {
+        setActiveActionState(null);
       }
-    };
+    }
+  }, [activeProjectId, documentItem.id, setActiveActionState]);
 
-    loadUnreadCommentState().catch(() => {
-      if (isActive) setHasUnreadComments(true);
-    });
-
-    return () => {
-      isActive = false;
-    };
-  }, [currentUserId, documentItem.id, documentItem.lastUpdated, documentItem.projectId]);
+  useEffect(() => {
+    activeActionRef.current = activeAction;
+  }, [activeAction]);
 
   useEffect(() => {
     return () => {
+      activeActionRef.current = null;
       if (documentFile?.objectUrl) {
         window.URL.revokeObjectURL(documentFile.objectUrl);
       }
@@ -216,7 +331,24 @@ export const DocumentActionGroup = ({
     };
   }, [attachmentViewerFile, documentFile]);
 
-  const closeModal = () => {
+  const setActiveModalState = useCallback((nextModal) => {
+    activeModalRef.current = nextModal;
+    setActiveModal(nextModal);
+  }, []);
+
+  const clearActionIfCurrent = useCallback((actionType) => {
+    const latestAction = activeActionRef.current;
+
+    if (
+      latestAction?.documentId === documentItem.id &&
+      String(latestAction?.projectId ?? "") === String(activeProjectId ?? "") &&
+      latestAction?.type === actionType
+    ) {
+      setActiveActionState(null);
+    }
+  }, [activeProjectId, documentItem.id, setActiveActionState]);
+
+  const closeModal = useCallback(() => {
     if (documentFile?.objectUrl) {
       window.URL.revokeObjectURL(documentFile.objectUrl);
     }
@@ -224,8 +356,10 @@ export const DocumentActionGroup = ({
       window.URL.revokeObjectURL(attachmentViewerFile.objectUrl);
     }
 
-    setActiveModal(null);
+    setActiveModalState(null);
     setAttachmentErrors({});
+    activeAttachmentActionRef.current = null;
+    setActiveAttachmentAction(null);
     setAttachmentViewerFile(null);
     setComments([]);
     setDocumentFile(null);
@@ -235,20 +369,202 @@ export const DocumentActionGroup = ({
     setWorkflowAttachmentErrorMessage("");
     setArchiveReason("");
     setWorkflowComment("");
+    setWorkflowExpectedState(createExpectedWorkflowState(documentItem));
     setSelectedWorkflowAttachment(null);
     setValidationMessage("");
-  };
+    activeWorkflowSubmitActionRef.current = null;
+    setActiveWorkflowSubmitAction(null);
+  }, [attachmentViewerFile, documentFile, documentItem, setActiveModalState]);
+
+  useEffect(() => {
+    activeModalRef.current = activeModal;
+  }, [activeModal]);
+
+  const refetchWorkflowDetail = useCallback(async ({
+    event = null,
+    forceStale = false,
+    showNotice = true,
+  } = {}) => {
+    const activeModalSnapshot = activeModalRef.current;
+    const isSelfEvent = isActorSelfEvent({ currentUserId, event });
+    const shouldCloseModal =
+      forceStale ||
+      (shouldCloseWorkflowActionModal(activeModalSnapshot) && !isSelfEvent);
+
+    if (shouldCloseModal) {
+      closeModal();
+    }
+
+    await synchronizeDocumentRuntimeQueries({
+      refreshCurrentSurface: onWorkflowComplete,
+    });
+
+    try {
+      const latestDocument = await DocumentApiService.getDocumentById(documentItem.id);
+      setDetailDocument(latestDocument);
+      setWorkflowExpectedState(createExpectedWorkflowState(latestDocument));
+
+      if (
+        shouldRefreshWorkflowDocumentViewer(activeModalSnapshot) &&
+        !shouldCloseModal
+      ) {
+        const latestDocumentFile =
+          await DocumentApiService.getDocumentPreview(latestDocument);
+        const nextObjectUrl = window.URL.createObjectURL(latestDocumentFile.file);
+
+        setDocumentFile((currentDocumentFile) => {
+          if (currentDocumentFile?.objectUrl) {
+            window.URL.revokeObjectURL(currentDocumentFile.objectUrl);
+          }
+
+          return {
+            ...latestDocumentFile,
+            objectUrl: nextObjectUrl,
+          };
+        });
+      }
+    } catch {
+      // Existing register/dashboard refetch remains the recovery source if detail fetch fails.
+    }
+
+    if (shouldCloseModal && showNotice && !isSelfEvent) {
+      showToast({
+        message: WORKFLOW_DETAIL_STALE_NOTICE,
+        variant: "warning",
+      });
+    }
+  }, [closeModal, currentUserId, documentItem.id, onWorkflowComplete, showToast]);
+
+  useEffect(() => {
+    detailRefetchCoalescerRef.current = createRealtimeRefetchCoalescer({
+      delayMs: 500,
+      onFlush: refetchWorkflowDetail,
+    });
+
+    return () => {
+      detailRefetchCoalescerRef.current?.cancel();
+      detailRefetchCoalescerRef.current = null;
+    };
+  }, [refetchWorkflowDetail]);
+
+  useEffect(() => {
+    detailRefetchCoalescerRef.current?.cancel();
+  }, [activeProjectId, documentItem.id]);
+
+  const handleWorkflowDetailRealtimeEvent = useCallback(
+    (event) => {
+      if (!isRelevantWorkflowDetailEvent({
+        activeProjectId,
+        documentId: documentItem.id,
+        event,
+      })) {
+        return;
+      }
+
+      detailRefetchCoalescerRef.current?.schedule({ event });
+    },
+    [activeProjectId, documentItem.id],
+  );
+
+  const handleWorkflowDetailRecovery = useCallback(
+    (context) => {
+      if (String(context.projectId ?? "") !== String(activeProjectId ?? "")) return;
+
+      detailRefetchCoalescerRef.current?.schedule({
+        forceStale: Boolean(activeModalRef.current),
+        showNotice: Boolean(activeModalRef.current),
+      });
+    },
+    [activeProjectId],
+  );
+
+  useRealtimeEvent(handleWorkflowDetailRealtimeEvent);
+  useRealtimeRecovery(handleWorkflowDetailRecovery);
+
+  const refetchCommentViewer = useCallback(async ({
+    event = null,
+    showNotice = true,
+  } = {}) => {
+    if (activeModalRef.current !== modalType.COMMENT) return;
+
+    const nextComments = await DocumentApiService.getWorkflowComments(documentItem.id);
+    setComments(nextComments);
+
+    await DocumentApiService.markWorkflowCommentsRead(documentItem.id);
+    setLocalReadState({
+      documentId: documentItem.id,
+      unreadCommentCount: Number(documentItem?.unreadCommentCount ?? 0),
+    });
+    await queryClient.invalidateQueries({ queryKey: ["documents"] });
+
+    if (
+      showNotice &&
+      !isCommentActorSelfEvent({ currentUserId, event })
+    ) {
+      showToast({
+        message: COMMENT_VIEWER_UPDATED_NOTICE,
+        variant: "warning",
+      });
+    }
+  }, [currentUserId, documentItem.id, documentItem.unreadCommentCount, showToast]);
+
+  useEffect(() => {
+    commentRefetchCoalescerRef.current = createRealtimeRefetchCoalescer({
+      delayMs: 500,
+      onFlush: refetchCommentViewer,
+    });
+
+    return () => {
+      commentRefetchCoalescerRef.current?.cancel();
+      commentRefetchCoalescerRef.current = null;
+    };
+  }, [refetchCommentViewer]);
+
+  useEffect(() => {
+    commentRefetchCoalescerRef.current?.cancel();
+  }, [activeProjectId, documentItem.id]);
+
+  const handleCommentRealtimeEvent = useCallback(
+    (event) => {
+      if (activeModalRef.current !== modalType.COMMENT) return;
+      if (!isCommentViewerRealtimeEvent({
+        activeProjectId,
+        documentId: documentItem.id,
+        event,
+      })) {
+        return;
+      }
+
+      commentRefetchCoalescerRef.current?.schedule({ event });
+    },
+    [activeProjectId, documentItem.id],
+  );
+
+  const handleCommentRecovery = useCallback(
+    (context) => {
+      if (activeModalRef.current !== modalType.COMMENT) return;
+      if (String(context.projectId ?? "") !== String(activeProjectId ?? "")) return;
+
+      commentRefetchCoalescerRef.current?.schedule({ showNotice: false });
+    },
+    [activeProjectId],
+  );
+
+  useRealtimeEvent(handleCommentRealtimeEvent);
+  useRealtimeRecovery(handleCommentRecovery);
 
   const openViewDocument = async () => {
     try {
-      const activeDocumentFile = await FileService.getDocumentPreview(documentItem);
+      const documentDetail = await DocumentApiService.getDocumentById(documentItem.id);
+      const activeDocumentFile = await DocumentApiService.getDocumentPreview(documentDetail);
       const objectUrl = window.URL.createObjectURL(activeDocumentFile.file);
 
+      setDetailDocument(documentDetail);
       setDocumentFile({
         ...activeDocumentFile,
         objectUrl,
       });
-      setActiveModal(modalType.VIEW);
+      setActiveModalState(modalType.VIEW);
     } catch (error) {
       showToast({
         message:
@@ -258,35 +574,48 @@ export const DocumentActionGroup = ({
       setDocumentFile({
         error: error instanceof Error ? error.message : "View Document failed.",
       });
-      setActiveModal(modalType.VIEW);
+      setActiveModalState(modalType.VIEW);
+    }
+  };
+
+  const openEditDocument = async () => {
+    try {
+      const documentDetail = await DocumentApiService.getDocumentById(documentItem.id);
+      setDetailDocument(documentDetail);
+      setActiveModalState(modalType.EDIT);
+    } catch (error) {
+      showToast({
+        message:
+          error instanceof Error ? error.message : "Detail Document gagal dimuat.",
+        variant: "error",
+      });
     }
   };
 
   const openCommentViewer = async () => {
-    const documentComments =
-      await DocumentService.getWorkflowCommentsByDocumentId(documentItem.id);
-
     try {
-      await CommentReadService.markCommentsAsRead({
-        comments: documentComments,
+      const documentComments =
+        await DocumentApiService.getWorkflowComments(documentItem.id);
+
+      setComments(documentComments);
+      setAttachmentErrors({});
+      setActiveModalState(modalType.COMMENT);
+      clearActionIfCurrent(actionLoadingType.COMMENT);
+      await DocumentApiService.markWorkflowCommentsRead(documentItem.id);
+      setLocalReadState({
         documentId: documentItem.id,
-        projectId: documentItem.projectId,
-        userId: currentUserId,
+        unreadCommentCount: Number(documentItem?.unreadCommentCount ?? 0),
       });
-      setHasUnreadComments(false);
+      await queryClient.invalidateQueries({ queryKey: ["documents"] });
     } catch (error) {
       showToast({
         message:
           error instanceof Error
             ? error.message
-            : "Comment read status could not be saved.",
+            : "Workflow Comment gagal dimuat.",
         variant: "error",
       });
     }
-
-    setComments(documentComments);
-    setAttachmentErrors({});
-    setActiveModal(modalType.COMMENT);
   };
 
   const closeAttachmentViewer = () => {
@@ -296,7 +625,7 @@ export const DocumentActionGroup = ({
 
     setAttachmentViewerFile(null);
     setSelectedWorkflowAttachment(null);
-    setActiveModal(modalType.COMMENT);
+    setActiveModalState(modalType.COMMENT);
   };
 
   const setAttachmentError = (commentId, message) => {
@@ -314,12 +643,36 @@ export const DocumentActionGroup = ({
     });
   };
 
+  const clearAttachmentActionIfCurrent = useCallback((commentId, actionType) => {
+    const latestAction = activeAttachmentActionRef.current;
+
+    if (
+      latestAction?.commentId === commentId &&
+      latestAction?.type === actionType
+    ) {
+      activeAttachmentActionRef.current = null;
+      setActiveAttachmentAction(null);
+    }
+  }, []);
+
   const openAttachmentViewer = async (comment) => {
     const attachment = comment?.attachment ?? null;
 
     if (!attachment) {
       return;
     }
+
+    if (activeAttachmentActionRef.current) {
+      return;
+    }
+
+    const nextAction = {
+      commentId: comment.id,
+      type: attachmentActionType.VIEW,
+    };
+
+    activeAttachmentActionRef.current = nextAction;
+    setActiveAttachmentAction(nextAction);
 
     if (attachmentViewerFile?.objectUrl) {
       window.URL.revokeObjectURL(attachmentViewerFile.objectUrl);
@@ -330,14 +683,18 @@ export const DocumentActionGroup = ({
 
     try {
       const attachmentPreview =
-        await WorkflowAttachmentService.getAttachmentPreview(attachment);
+        await DocumentApiService.getWorkflowAttachmentPreview({
+          attachment,
+          documentId: documentItem.id,
+        });
       const objectUrl = window.URL.createObjectURL(attachmentPreview.file);
 
       setAttachmentViewerFile({
         ...attachmentPreview,
         objectUrl,
       });
-      setActiveModal(modalType.ATTACHMENT_VIEWER);
+      setActiveModalState(modalType.ATTACHMENT_VIEWER);
+      clearAttachmentActionIfCurrent(comment.id, attachmentActionType.VIEW);
     } catch (error) {
       const errorMessage =
         error instanceof Error
@@ -349,11 +706,14 @@ export const DocumentActionGroup = ({
         error: errorMessage,
         metadata: attachment,
       });
-      setActiveModal(modalType.ATTACHMENT_VIEWER);
+      setActiveModalState(modalType.ATTACHMENT_VIEWER);
+      clearAttachmentActionIfCurrent(comment.id, attachmentActionType.VIEW);
       showToast({
         message: errorMessage,
         variant: "error",
       });
+    } finally {
+      clearAttachmentActionIfCurrent(comment.id, attachmentActionType.VIEW);
     }
   };
 
@@ -364,8 +724,24 @@ export const DocumentActionGroup = ({
       return;
     }
 
+    if (activeAttachmentActionRef.current) {
+      return;
+    }
+
+    const nextAction = {
+      commentId: comment.id,
+      type: attachmentActionType.DOWNLOAD,
+    };
+
+    activeAttachmentActionRef.current = nextAction;
+    setActiveAttachmentAction(nextAction);
+
     try {
-      await WorkflowAttachmentService.downloadAttachment(attachment);
+      await DocumentApiService.downloadWorkflowAttachment({
+        attachment,
+        documentId: documentItem.id,
+      });
+      clearAttachmentActionIfCurrent(comment.id, attachmentActionType.DOWNLOAD);
       clearAttachmentError(comment.id);
       showToast({
         message: "Workflow Attachment downloaded.",
@@ -382,6 +758,8 @@ export const DocumentActionGroup = ({
         message: errorMessage,
         variant: "error",
       });
+    } finally {
+      clearAttachmentActionIfCurrent(comment.id, attachmentActionType.DOWNLOAD);
     }
   };
 
@@ -408,20 +786,78 @@ export const DocumentActionGroup = ({
   };
 
   const openHistory = async () => {
-    const documentTimeline =
-      await DocumentService.getDocumentTimelineByDocumentId(documentItem.id);
+    try {
+      const [documentHistory, revisionHistory] = await Promise.all([
+        DocumentApiService.getDocumentHistory(documentItem.id),
+        DocumentApiService.getDocumentRevisions(documentItem.id),
+      ]);
+      const revisionTimeline = revisionHistory.map((revisionItem) => ({
+        id: `revision-${revisionItem.id}`,
+        activity: "Revision",
+        createdBy: revisionItem.uploader,
+        createdDate: revisionItem.uploadedAt,
+        revision: revisionItem.revision,
+        status: revisionItem.resultStatus,
+        workflowEvent: revisionItem.isActive
+          ? "Active Revision"
+          : "Previous Revision",
+      }));
 
-    setTimeline(documentTimeline);
-    setActiveModal(modalType.HISTORY);
+      setTimeline([...documentHistory, ...revisionTimeline]);
+      setActiveModalState(modalType.HISTORY);
+    } catch (error) {
+      showToast({
+        message:
+          error instanceof Error ? error.message : "History Document gagal dimuat.",
+        variant: "error",
+      });
+    }
   };
 
-  const openWorkflowModal = (nextModalType) => {
-    setWorkflowAttachmentFile(null);
-    setWorkflowAttachmentPreview(null);
-    setWorkflowAttachmentErrorMessage("");
-    setWorkflowComment("");
-    setValidationMessage("");
-    setActiveModal(nextModalType);
+  const openWorkflowModal = async (nextModalType) => {
+    try {
+      const latestDocument = await DocumentApiService.getDocumentById(documentItem.id);
+      const latestVisibility = getDocumentActionVisibility({
+        hasPermission: hasProjectPermission,
+        roleName: projectRoleName,
+        status: latestDocument?.status,
+      });
+      const actionByModalType = {
+        [modalType.APPROVAL_A]: ACTION_CODE.APPROVAL_A,
+        [modalType.APPROVAL_B]: ACTION_CODE.APPROVAL_B,
+        [modalType.APPROVAL_C]: ACTION_CODE.APPROVAL_C,
+      };
+      const requiredAction = actionByModalType[nextModalType];
+
+      if (
+        latestDocument?.lifecycle === DOCUMENT_LIFECYCLE.ARCHIVED ||
+        !latestVisibility.workflowActions.includes(requiredAction)
+      ) {
+        await synchronizeDocumentRuntimeQueries({
+          refreshCurrentSurface: onWorkflowComplete,
+        });
+        showToast({
+          message: "Dokumen telah diperbarui. Data terbaru telah dimuat.",
+          variant: "warning",
+        });
+        return;
+      }
+
+      setDetailDocument(latestDocument);
+      setWorkflowExpectedState(createExpectedWorkflowState(latestDocument));
+      setWorkflowAttachmentFile(null);
+      setWorkflowAttachmentPreview(null);
+      setWorkflowAttachmentErrorMessage("");
+      setWorkflowComment("");
+      setValidationMessage("");
+      setActiveModalState(nextModalType);
+    } catch (error) {
+      showToast({
+        message:
+          error instanceof Error ? error.message : "Detail Document gagal dimuat.",
+        variant: "error",
+      });
+    }
   };
 
   const handleWorkflowAttachmentChange = ({
@@ -444,7 +880,7 @@ export const DocumentActionGroup = ({
 
   const downloadDocument = async () => {
     try {
-      await FileService.downloadDocumentFile(documentItem);
+      await DocumentApiService.downloadDocumentFile(documentItem);
 
       showToast({
         message: "Download Document berhasil.",
@@ -462,16 +898,18 @@ export const DocumentActionGroup = ({
   const submitEditDocument = async (formValue) => {
     try {
       if (formValue.isUploadRevision) {
-        await DocumentService.processUploadRevision(documentItem.id, {
+        await DocumentApiService.uploadRevision(documentItem.id, {
           area: formValue.area,
-          createdBy: currentUserName,
           daysUntilValidation: formValue.daysUntilValidation,
           description: formValue.description,
+          expectedState: createExpectedWorkflowState(detailDocument),
           file: formValue.file,
         });
 
         closeModal();
-        onWorkflowComplete();
+        await synchronizeDocumentRuntimeQueries({
+          refreshCurrentSurface: () => onWorkflowComplete({ showLoading: true }),
+        });
         showToast({
           message: "Upload Revision berhasil.",
           variant: "success",
@@ -479,24 +917,35 @@ export const DocumentActionGroup = ({
         return;
       }
 
-      await DocumentService.updateDocument(documentItem.id, {
+      await DocumentApiService.updateDocument(documentItem.id, {
         area: formValue.area,
         daysUntilValidation: formValue.daysUntilValidation,
         description: formValue.description,
-        updatedBy: activeProjectRole?.roleName ?? "Current User",
-        projectRole: projectRoleName,
       });
 
       closeModal();
-      onWorkflowComplete();
+      await synchronizeDocumentRuntimeQueries({
+        refreshCurrentSurface: () => onWorkflowComplete({ showLoading: true }),
+      });
       showToast({
-        message: "Edit Document saved.",
+        message: "Edit Document berhasil.",
         variant: "success",
       });
     } catch (error) {
+      if (isWorkflowConflictError(error)) {
+        closeModal();
+        await synchronizeDocumentRuntimeQueries({
+          refreshCurrentSurface: onWorkflowComplete,
+        });
+        showToast({
+          message: "Dokumen telah diperbarui oleh pengguna lain. Data dimuat ulang.",
+          variant: "warning",
+        });
+        return;
+      }
       showToast({
         message:
-          error instanceof Error ? error.message : "Upload Revision failed.",
+          error instanceof Error ? error.message : "Edit Document gagal.",
         variant: "error",
       });
       throw error;
@@ -505,14 +954,16 @@ export const DocumentActionGroup = ({
 
   const submitArchiveDocument = async () => {
     try {
-      await DocumentService.archiveDocument(documentItem.id, {
+      await DocumentApiService.archiveDocument(documentItem.id, {
         reason: archiveReason,
       });
 
       closeModal();
-      onWorkflowComplete();
+      await synchronizeDocumentRuntimeQueries({
+        refreshCurrentSurface: onWorkflowComplete,
+      });
       showToast({
-        message: "Document archived.",
+        message: "Document berhasil diarsipkan.",
         variant: "success",
       });
     } catch (error) {
@@ -525,12 +976,14 @@ export const DocumentActionGroup = ({
 
   const submitRestoreDocument = async () => {
     try {
-      await DocumentService.restoreDocument(documentItem.id);
+      await DocumentApiService.restoreDocument(documentItem.id);
 
       closeModal();
-      onWorkflowComplete();
+      await synchronizeDocumentRuntimeQueries({
+        refreshCurrentSurface: onWorkflowComplete,
+      });
       showToast({
-        message: "Document restored.",
+        message: "Document berhasil direstore.",
         variant: "success",
       });
     } catch (error) {
@@ -546,32 +999,64 @@ export const DocumentActionGroup = ({
     comment = "",
     attachmentFile = null,
   ) => {
+    if (activeWorkflowSubmitActionRef.current) {
+      return;
+    }
+
+    activeWorkflowSubmitActionRef.current = workflowAction;
+    setActiveWorkflowSubmitAction(workflowAction);
+
     try {
-      const result = await DocumentService.processWorkflowAction(
-        documentItem.id,
-        workflowAction,
-        {
+      if (workflowAction === ACTION_CODE.APPROVAL_A) {
+        await DocumentApiService.approveDocument(documentItem.id, {
+          expectedState: workflowExpectedState,
+        });
+      } else if (workflowAction === ACTION_CODE.APPROVAL_B) {
+        await DocumentApiService.submitApprovalWithComment(documentItem.id, {
           attachmentFile,
           comment,
-          createdBy: currentUserName,
-        },
-      );
+          expectedState: workflowExpectedState,
+        });
+      } else if (workflowAction === ACTION_CODE.APPROVAL_C) {
+        await DocumentApiService.rejectDocument(documentItem.id, {
+          attachmentFile,
+          comment,
+          expectedState: workflowExpectedState,
+        });
+      }
 
       closeModal();
-      onWorkflowComplete();
+      await synchronizeDocumentRuntimeQueries({
+        refreshCurrentSurface: () => onWorkflowComplete({ showLoading: true }),
+      });
       showToast({
-        message: `${workflowAction} processed: ${result.previousStatus} to ${result.nextStatus}`,
+        message: `${workflowAction} berhasil diproses.`,
         variant: "success",
       });
     } catch (error) {
       const nextMessage =
-        error instanceof Error ? error.message : `${workflowAction} failed.`;
+        error instanceof Error ? error.message : `${workflowAction} gagal diproses.`;
+
+      if (isWorkflowConflictError(error)) {
+        closeModal();
+        await synchronizeDocumentRuntimeQueries({
+          refreshCurrentSurface: onWorkflowComplete,
+        });
+        showToast({
+          message: "Dokumen telah diperbarui oleh pengguna lain. Data dimuat ulang.",
+          variant: "warning",
+        });
+        return;
+      }
 
       setValidationMessage(nextMessage);
       showToast({
         message: nextMessage,
         variant: "error",
       });
+    } finally {
+      activeWorkflowSubmitActionRef.current = null;
+      setActiveWorkflowSubmitAction(null);
     }
   };
 
@@ -592,85 +1077,121 @@ export const DocumentActionGroup = ({
     <>
       <div className="flex w-max flex-col gap-2">
         <div className="flex flex-wrap gap-2">
-          {visibility.topActions.includes(ACTION_CODE.VIEW) ? (
+          {workflowVisibility.topActions.includes(ACTION_CODE.VIEW) ? (
             <ActionIconButton
+              disabled={isActionLocked}
               icon={Eye}
+              isLoading={currentActiveAction === actionLoadingType.VIEW}
               label="View Document"
-              onClick={openViewDocument}
+              onClick={() => runAction(actionLoadingType.VIEW, openViewDocument)}
             />
           ) : null}
           {!isReadOnlyActionMode && !isArchivedDocument && canEditDocument ? (
             <ActionIconButton
+              disabled={isActionLocked}
               icon={Pencil}
+              isLoading={currentActiveAction === actionLoadingType.EDIT}
               label="Edit Document"
-              onClick={() => setActiveModal(modalType.EDIT)}
+              onClick={() => runAction(actionLoadingType.EDIT, openEditDocument)}
             />
           ) : null}
-          {visibility.topActions.includes(ACTION_CODE.DOWNLOAD) ? (
+          {workflowVisibility.topActions.includes(ACTION_CODE.DOWNLOAD) ? (
             <ActionIconButton
+              disabled={isActionLocked}
               icon={Download}
+              isLoading={currentActiveAction === actionLoadingType.DOWNLOAD}
               label="Download Document"
-              onClick={downloadDocument}
+              onClick={() => runAction(actionLoadingType.DOWNLOAD, downloadDocument)}
             />
           ) : null}
-          {visibility.topActions.includes(ACTION_CODE.COMMENT) ? (
+          {workflowVisibility.topActions.includes(ACTION_CODE.COMMENT) ? (
             <ActionIconButton
+              disabled={isActionLocked}
               icon={MessageSquare}
+              isLoading={currentActiveAction === actionLoadingType.COMMENT}
               label="View Comments"
-              onClick={openCommentViewer}
-              showIndicator={hasUnreadComments}
+              onClick={() => runAction(actionLoadingType.COMMENT, openCommentViewer)}
+              showIndicator={hasUnreadComments && currentActiveAction !== actionLoadingType.COMMENT}
             />
           ) : null}
           {!isReadOnlyActionMode && canArchiveDocument ? (
             <ActionIconButton
+              disabled={isActionLocked}
               icon={Archive}
+              isLoading={currentActiveAction === actionLoadingType.ARCHIVE}
               label="Archive Document"
-              onClick={() => setActiveModal(modalType.ARCHIVE)}
+              onClick={() => runAction(actionLoadingType.ARCHIVE, () => {
+                setActiveModalState(modalType.ARCHIVE);
+              })}
             />
           ) : null}
           {!isReadOnlyActionMode && canRestoreDocument ? (
             <ActionIconButton
+              disabled={isActionLocked}
               icon={RotateCcw}
+              isLoading={currentActiveAction === actionLoadingType.RESTORE}
               label="Restore Document"
-              onClick={submitRestoreDocument}
+              onClick={() => runAction(actionLoadingType.RESTORE, submitRestoreDocument)}
             />
           ) : null}
         </div>
 
-        {isReadOnlyActionMode ? null : visibility.showHistory ? (
+        {isReadOnlyActionMode ? null : workflowVisibility.showHistory ? (
           <button
             className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[#6D3FD6]/60 bg-[#3B0764] px-3 text-xs font-semibold text-white transition-colors hover:border-[#A78BFA] hover:bg-[#581C87]"
-            onClick={openHistory}
+            disabled={isActionLocked}
+            onClick={() => runAction(actionLoadingType.HISTORY, openHistory)}
             title="View History"
             type="button"
           >
-            <Clock3 className="h-3.5 w-3.5" />
-            <span>History</span>
+            {currentActiveAction === actionLoadingType.HISTORY ? (
+              <ActionButtonSpinner className="h-3.5 w-3.5" />
+            ) : (
+              <Clock3 className="h-3.5 w-3.5" />
+            )}
+            <span className="inline-flex min-w-[3.25rem] justify-center">
+              {currentActiveAction === actionLoadingType.HISTORY ? "" : "History"}
+            </span>
           </button>
         ) : (
           <div className="grid grid-cols-3 gap-2">
-            {visibility.workflowActions.includes(ACTION_CODE.APPROVAL_A) ? (
+            {workflowVisibility.workflowActions.includes(ACTION_CODE.APPROVAL_A) ? (
               <ReviewActionButton
+                disabled={isActionLocked}
+                isLoading={currentActiveAction === actionLoadingType.APPROVAL_A}
                 label="Approved"
-                onClick={() => openWorkflowModal(modalType.APPROVAL_A)}
+                onClick={() => runAction(
+                  actionLoadingType.APPROVAL_A,
+                  () => openWorkflowModal(modalType.APPROVAL_A),
+                )}
                 tone="a"
               >
                 A
               </ReviewActionButton>
             ) : null}
-            {visibility.workflowActions.includes(ACTION_CODE.APPROVAL_B) ? (
+            {workflowVisibility.workflowActions.includes(ACTION_CODE.APPROVAL_B) ? (
               <ReviewActionButton
+                disabled={isActionLocked}
+                isLoading={currentActiveAction === actionLoadingType.APPROVAL_B}
                 label="Approved with Comment"
-                onClick={() => openWorkflowModal(modalType.APPROVAL_B)}
+                onClick={() => runAction(
+                  actionLoadingType.APPROVAL_B,
+                  () => openWorkflowModal(modalType.APPROVAL_B),
+                )}
                 tone="b"
               >
                 B
               </ReviewActionButton>
             ) : null}
-            {visibility.workflowActions.includes(ACTION_CODE.APPROVAL_C) ? (
+            {workflowVisibility.workflowActions.includes(ACTION_CODE.APPROVAL_C) ? (
               <ReviewActionButton
+                disabled={isActionLocked}
+                isLoading={currentActiveAction === actionLoadingType.APPROVAL_C}
                 label="Not Approved"
-                onClick={() => openWorkflowModal(modalType.APPROVAL_C)}
+                onClick={() => runAction(
+                  actionLoadingType.APPROVAL_C,
+                  () => openWorkflowModal(modalType.APPROVAL_C),
+                )}
                 tone="c"
               >
                 C
@@ -683,7 +1204,7 @@ export const DocumentActionGroup = ({
       {activeModal === modalType.VIEW ? (
         <ViewDocumentModal
           documentFile={documentFile}
-          documentItem={documentItem}
+          documentItem={detailDocument}
           onClose={closeModal}
           onDownload={downloadDocument}
         />
@@ -691,6 +1212,7 @@ export const DocumentActionGroup = ({
       {activeModal === modalType.COMMENT ? (
         <CommentViewerModal
           attachmentErrors={attachmentErrors}
+          activeAttachmentAction={activeAttachmentAction}
           comments={comments}
           documentItem={documentItem}
           onAttachmentDownload={downloadWorkflowAttachment}
@@ -709,7 +1231,7 @@ export const DocumentActionGroup = ({
       ) : null}
       {activeModal === modalType.EDIT ? (
         <EditDocumentModal
-          documentItem={documentItem}
+          documentItem={detailDocument}
           onCancel={closeModal}
           onValidationFailed={(message) =>
             showToast({
@@ -718,6 +1240,7 @@ export const DocumentActionGroup = ({
             })
           }
           onSubmit={submitEditDocument}
+          allowUploadRevision
         />
       ) : null}
       {activeModal === modalType.ARCHIVE ? (
@@ -739,8 +1262,9 @@ export const DocumentActionGroup = ({
       {activeModal === modalType.APPROVAL_A ? (
         <ApprovalConfirmationModal
           actionSummary="Approval A will continue the document to the next workflow status."
-          confirmLabel="Confirm"
-          documentItem={documentItem}
+          confirmLabel="Confirmed"
+          documentItem={detailDocument}
+          isSubmitting={activeWorkflowSubmitAction === ACTION_CODE.APPROVAL_A}
           message="Are you sure you want to approve this document?"
           onCancel={closeModal}
           onConfirm={() => executeWorkflowAction(ACTION_CODE.APPROVAL_A)}
@@ -752,8 +1276,9 @@ export const DocumentActionGroup = ({
           attachmentErrorMessage={workflowAttachmentErrorMessage}
           attachmentPreview={workflowAttachmentPreview}
           comment={workflowComment}
-          documentItem={documentItem}
+          documentItem={detailDocument}
           errorMessage={validationMessage}
+          isSubmitting={activeWorkflowSubmitAction === ACTION_CODE.APPROVAL_B}
           onAttachmentChange={handleWorkflowAttachmentChange}
           onAttachmentRemove={removeWorkflowAttachment}
           onCancel={closeModal}
@@ -762,6 +1287,7 @@ export const DocumentActionGroup = ({
             setValidationMessage("");
           }}
           onSubmit={submitApprovalB}
+          isCommentRequired
           submitLabel="Submit"
           title="Approved with Comment"
         />
@@ -772,9 +1298,10 @@ export const DocumentActionGroup = ({
           attachmentErrorMessage={workflowAttachmentErrorMessage}
           attachmentPreview={workflowAttachmentPreview}
           comment={workflowComment}
-          documentItem={documentItem}
+          documentItem={detailDocument}
           errorMessage={validationMessage}
           isDanger
+          isSubmitting={activeWorkflowSubmitAction === ACTION_CODE.APPROVAL_C}
           onAttachmentChange={handleWorkflowAttachmentChange}
           onAttachmentRemove={removeWorkflowAttachment}
           onCancel={closeModal}

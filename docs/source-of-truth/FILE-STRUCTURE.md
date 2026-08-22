@@ -882,7 +882,7 @@ src/
     └── mocks/
 ```
 
-Struktur generik lama seperti root `components/`, `pages/`, dan `features/` hanya boleh dibaca sebagai Historical Reference apabila masih muncul pada dokumen lain. Struktur tersebut bukan runtime folder architecture aktif.
+Struktur generik lama seperti root `components/`, `pages/`, dan istilah konseptual `modules/` hanya boleh dibaca sebagai Historical Reference apabila masih muncul pada dokumen lain. Runtime frontend saat ini menggunakan feature-based folders di `apps/frontend/src/features`.
 
 ### Responsibilities
 
@@ -890,7 +890,8 @@ Struktur generik lama seperti root `components/`, `pages/`, dan `features/` hany
 - Mengelola navigasi aplikasi.
 - Mengelola interaksi pengguna.
 - Berkomunikasi dengan Backend melalui REST API melalui Service Layer.
-- Pada runtime development saat Backend belum tersedia, seluruh local persistence, IndexedDB, localStorage, Fake API, dan Mock JSON tetap diakses melalui Service Layer.
+- Pada fase lama sebelum Backend tersedia, seluruh local persistence, IndexedDB, localStorage, Fake API, dan Mock JSON diakses melalui Service Layer sebagai historical frontend baseline.
+- Pada current backend-integrated runtime, Service Layer frontend memanggil Backend REST API dan tidak menjadi canonical business persistence.
 - Mengelola Global State dan Server State.
 - Menampilkan data sesuai Business Workflow.
 
@@ -3005,10 +3006,22 @@ Boundary resmi:
 - `app/routes` untuk React Router.
 - `app/navigation` untuk Sidebar Navigation.
 - `app/layouts` untuk AppShell dan layout auth.
-- `modules/*` untuk module UI.
-- `shared/services` untuk Service Layer dan IndexedDB access.
+- `features/*` untuk feature module UI dan integration layer.
+- `shared/api` untuk API client, interceptor, dan Query Client.
+- `shared/services` untuk shared service yang masih berlaku.
 - `shared/constants` untuk status, permission, action, lifecycle, SLA, role, dan storage constants.
 - `shared/stores` untuk Zustand store.
-- `shared/mocks` atau mock JSON untuk seed data.
+- `shared/realtime` untuk SSE client, event dispatcher, event validator, dan recovery hook.
+- `shared/mocks` atau mock JSON untuk historical/dev seed data apabila masih diperlukan.
 
-Backend, database migration, dan production storage directory yang belum berisi implementasi runtime diklasifikasikan sebagai target architecture placeholder, bukan current backend implementation.
+Backend runtime aktual berada pada `apps/backend/src` dan menggunakan boundary:
+
+- `routes` untuk Express route registration.
+- `controllers` untuk request/response orchestration.
+- `services` untuk business workflow, transaction orchestration, storage, notification, audit, realtime publisher, scheduler, dan domain logic.
+- `repositories` untuk MySQL persistence/query.
+- `middlewares` untuk authentication, authorization, upload, dan error handling.
+- `storage` untuk Local Storage driver dan Cloudflare R2 driver.
+- `validators` dan `utils` untuk validasi serta helper teknis.
+
+Backend, database, dan storage yang sebelumnya diklasifikasikan sebagai target architecture placeholder sekarang menjadi current backend-integrated runtime untuk scope yang sudah dimigrasikan.

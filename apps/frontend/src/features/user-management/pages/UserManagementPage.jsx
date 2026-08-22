@@ -18,9 +18,12 @@ import { useNavigate } from "react-router-dom";
 import DepartmentManagementSection from "@/features/user-management/components/DepartmentManagementSection";
 import { DEPARTMENT_STATUSES } from "@/features/user-management/constants/department.constants";
 import { USER_QUERY_KEY } from "@/features/user-management/constants/user-query.constants";
+import { USER_STATUSES } from "@/features/user-management/constants/user.constants";
 import {
-  USER_STATUSES,
-} from "@/features/user-management/constants/user.constants";
+  createUserSchema,
+  formatValidationIssues,
+  updateUserSchema,
+} from "@/features/user-management/schemas/user.schema";
 import { DepartmentService } from "@/features/user-management/services/department.service";
 import { DemoDataResetService } from "@/features/user-management/services/demo-data-reset.service";
 import {
@@ -58,6 +61,7 @@ const initialCreateForm = {
 const USER_MANAGEMENT_PERMISSION = "user-management.view";
 const RESET_CONFIRMATION_TEXT = DemoDataResetService.CONFIRMATION_TEXT;
 const ADMIN_ROLE_NAME = "Admin";
+const NO_DEPARTMENT_NAME = "No Department";
 const PROJECT_MEMBERSHIP_QUERY_KEY = ["project-membership-management", "memberships"];
 
 const sortOptions = [
@@ -75,6 +79,14 @@ const statusStyles = {
 };
 
 const normalizeKey = (value) => String(value ?? "").trim().toLowerCase();
+const prioritizeNoDepartment = (departments) =>
+  [...departments].sort((firstDepartment, secondDepartment) => {
+    const firstIsNoDepartment = normalizeKey(firstDepartment.name) === normalizeKey(NO_DEPARTMENT_NAME);
+    const secondIsNoDepartment = normalizeKey(secondDepartment.name) === normalizeKey(NO_DEPARTMENT_NAME);
+
+    if (firstIsNoDepartment === secondIsNoDepartment) return 0;
+    return firstIsNoDepartment ? -1 : 1;
+  });
 
 const getPaginationItems = (totalPages, currentPage) => {
   if (totalPages <= 7) {
@@ -127,6 +139,18 @@ const getErrorMessage = (error) => {
   return error?.message ?? "User Management request failed.";
 };
 
+const validateFormState = (mode, form) => {
+  const schema = mode === "create" ? createUserSchema : updateUserSchema;
+  const result = schema.safeParse(form);
+
+  if (result.success) return result.data;
+
+  throw new UserValidationError(
+    "Data tidak valid.",
+    formatValidationIssues(result.error.issues),
+  );
+};
+
 const getEditForm = (user) => ({
   department: user.department ?? "",
   email: user.email ?? "",
@@ -166,11 +190,13 @@ const FieldError = ({ message }) =>
   message ? <p className="text-xs font-medium text-[#FCA5A5]">{message}</p> : null;
 
 const TextField = ({
+  disabled = false,
   error,
   label,
   name,
   onChange,
   placeholder,
+  readOnly = false,
   type = "text",
   value,
 }) => (
@@ -178,9 +204,11 @@ const TextField = ({
     <span>{label}</span>
     <input
       className={controlClassName}
+      disabled={disabled}
       name={name}
       onChange={onChange}
       placeholder={placeholder}
+      readOnly={readOnly}
       type={type}
       value={value}
     />
@@ -281,6 +309,7 @@ const UserFormModal = ({
               name="username"
               onChange={onChange}
               placeholder="Enter username"
+              readOnly={!isCreate}
               value={form.username}
             />
             <TextField
@@ -394,6 +423,50 @@ const UserFormModal = ({
     </div>
   );
 };
+
+const CreateUserConfirmationModal = ({
+  form,
+  onCancel,
+  onConfirm,
+  submitting,
+}) => (
+  <div className="fixed inset-0 z-[9100] flex items-center justify-center bg-[#020B16]/80 px-4 py-6">
+    <div className="w-full max-w-md rounded-lg border border-[#123A5A] bg-[#061B2F] p-5 shadow-2xl">
+      <h2 className="text-xl font-bold">Konfirmasi Username</h2>
+      <div className="mt-3 space-y-3 text-sm text-[#CBD5E1]">
+        <p>Username yang dipilih tidak dapat diubah setelah akun dibuat.</p>
+        <div className="rounded-md border border-[#123A5A] bg-[#08233B] px-3 py-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">
+            Username
+          </p>
+          <p className="mt-1 font-mono text-base font-bold text-[#F8FAFC]">
+            {form.username}
+          </p>
+        </div>
+        <p>Pastikan username sudah benar sebelum melanjutkan.</p>
+        <p>Apakah Anda yakin ingin membuat user ini?</p>
+      </div>
+      <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <button
+          className={actionButtonClassName}
+          disabled={submitting}
+          onClick={onCancel}
+          type="button"
+        >
+          Batal
+        </button>
+        <button
+          className={primaryButtonClassName}
+          disabled={submitting}
+          onClick={onConfirm}
+          type="button"
+        >
+          {submitting ? "Saving..." : "Buat User"}
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
 const StatusConfirmationModal = ({
   onCancel,
@@ -532,6 +605,7 @@ const UserManagementPage = () => {
   const [formErrors, setFormErrors] = useState({});
   const [formMode, setFormMode] = useState(null);
   const [formState, setFormState] = useState(initialCreateForm);
+  const [createConfirmationForm, setCreateConfirmationForm] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchValue, setSearchValue] = useState("");
@@ -549,7 +623,7 @@ const UserManagementPage = () => {
   const currentRole = AuthorizationService.getCurrentRole();
   const canResetDemoData =
     DemoDataResetService.isFeatureEnabled() &&
-    currentRole?.roleName === ADMIN_ROLE_NAME &&
+    currentRole?.name === ADMIN_ROLE_NAME &&
     AuthorizationService.hasPermission(USER_MANAGEMENT_PERMISSION);
   const canManageDepartments = AuthorizationService.hasPermission(
     USER_MANAGEMENT_PERMISSION,
@@ -577,8 +651,10 @@ const UserManagementPage = () => {
   const errorMessage = loadError ? getErrorMessage(loadError) : "";
 
   const activeDepartments = useMemo(
-    () => allDepartments.filter(
-      (department) => department.status === DEPARTMENT_STATUSES.ACTIVE,
+    () => prioritizeNoDepartment(
+      allDepartments.filter(
+        (department) => department.status === DEPARTMENT_STATUSES.ACTIVE,
+      ),
     ),
     [allDepartments],
   );
@@ -662,6 +738,8 @@ const UserManagementPage = () => {
   };
 
   const closeForm = () => {
+    if (isSubmitting) return;
+    setCreateConfirmationForm(null);
     setFormMode(null);
     setFormErrors({});
     setFormState(initialCreateForm);
@@ -671,6 +749,7 @@ const UserManagementPage = () => {
   const openCreateForm = () => {
     setFormMode("create");
     setFormErrors({});
+    setCreateConfirmationForm(null);
     setSelectedUser(null);
     setFormState(initialCreateForm);
   };
@@ -678,6 +757,7 @@ const UserManagementPage = () => {
   const openEditForm = (user) => {
     setFormMode("edit");
     setFormErrors({});
+    setCreateConfirmationForm(null);
     setSelectedUser(user);
     setFormState(getEditForm(user));
   };
@@ -689,6 +769,7 @@ const UserManagementPage = () => {
       ...currentForm,
       [name]: value,
     }));
+    setCreateConfirmationForm(null);
     setFormErrors((currentErrors) => ({
       ...currentErrors,
       [name]: null,
@@ -697,10 +778,12 @@ const UserManagementPage = () => {
 
   const handleFormSubmit = async (event) => {
     event.preventDefault();
-    setIsSubmitting(true);
+    let requestStarted = false;
     setFormErrors({});
 
     try {
+      const validatedForm = validateFormState(formMode, formState);
+
       if (isDepartmentLoading || departmentLoadError) {
         throw new UserValidationError("Validation failed.", [
           {
@@ -720,13 +803,15 @@ const UserManagementPage = () => {
       }
 
       if (formMode === "create") {
-        await UserService.createUser(formState);
-        showToast({
-          message: "User created successfully.",
-          variant: "success",
-        });
-      } else if (formMode === "edit" && selectedUser) {
-        await UserService.updateUser(selectedUser.id, formState);
+        setCreateConfirmationForm(validatedForm);
+        return;
+      }
+
+      setIsSubmitting(true);
+      requestStarted = true;
+
+      if (formMode === "edit" && selectedUser) {
+        await UserService.updateUser(selectedUser.id, validatedForm);
         showToast({
           message: "User updated successfully.",
           variant: "success",
@@ -740,6 +825,40 @@ const UserManagementPage = () => {
       ]);
     } catch (error) {
       setFormErrors(getErrorMap(error));
+      showToast({
+        message: getErrorMessage(error),
+        variant: "error",
+      });
+    } finally {
+      if (requestStarted) {
+        setIsSubmitting(false);
+      }
+    }
+  };
+
+  const handleCreateUserConfirm = async () => {
+    if (!createConfirmationForm || isSubmitting) return;
+
+    setIsSubmitting(true);
+
+    try {
+      await UserService.createUser(createConfirmationForm);
+      showToast({
+        message: "User created successfully.",
+        variant: "success",
+      });
+      setCreateConfirmationForm(null);
+      setFormMode(null);
+      setFormErrors({});
+      setFormState(initialCreateForm);
+      setSelectedUser(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: PROJECT_MEMBERSHIP_QUERY_KEY }),
+      ]);
+    } catch (error) {
+      setFormErrors(getErrorMap(error));
+      setCreateConfirmationForm(null);
       showToast({
         message: getErrorMessage(error),
         variant: "error",
@@ -832,7 +951,7 @@ const UserManagementPage = () => {
           </p>
           <h1 className="mt-2 text-3xl font-bold">User Management</h1>
           <p className="mt-2 max-w-3xl text-sm text-[#CBD5E1]">
-            Kelola identitas akun, department, dan lifecycle Active / Inactive.
+            Manage account identities, departments, and the active/inactive lifecycle.
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -903,7 +1022,7 @@ const UserManagementPage = () => {
           <div>
             <h2 className="text-xl font-bold">User List</h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
-              Daftar akun pengguna yang tersimpan pada sumber data Authentication.
+              List of user accounts stored in the Authentication data source.
             </p>
           </div>
 
@@ -1164,6 +1283,15 @@ const UserManagementPage = () => {
           onSubmit={handleFormSubmit}
           statuses={statuses}
           submitLabel={formMode === "create" ? "Create User" : "Update User"}
+          submitting={isSubmitting}
+        />
+      ) : null}
+
+      {createConfirmationForm ? (
+        <CreateUserConfirmationModal
+          form={createConfirmationForm}
+          onCancel={() => setCreateConfirmationForm(null)}
+          onConfirm={handleCreateUserConfirm}
           submitting={isSubmitting}
         />
       ) : null}

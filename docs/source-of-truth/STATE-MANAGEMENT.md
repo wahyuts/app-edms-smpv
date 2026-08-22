@@ -2510,19 +2510,32 @@ Seluruh implementasi React Hooks, Zustand, TanStack Query, Store Organization, S
 
 ## Current Implementation
 
+Legacy / historical implementation:
+
 - Zustand digunakan untuk Active Project Context: `accessibleProjects`, `activeProject`, `activeMembership`, `activeOfficialRole`, `loading`, `error`, dan `initialized`.
 - TanStack Query digunakan untuk server-state simulation dari Service Layer, invalidation, refetch, dan caching.
 - localStorage digunakan untuk `edms.currentUser`, `edms.activeProjectByUser`, dan `edms.sidebar.collapsed`.
-- IndexedDB digunakan sebagai local persistence utama untuk entity dan file binary.
+- Pada fase legacy/frontend-local, IndexedDB digunakan sebagai local persistence utama untuk entity dan file binary.
 - Component tidak boleh memanggil IndexedDB langsung; akses data berjalan melalui Service Layer.
+
+Current backend-integrated runtime:
+
+- Backend REST API menjadi Runtime Source of Truth untuk business data.
+- MySQL menjadi canonical persistence untuk entity, workflow, notification, audit, SLA marker, project membership, dan storage metadata.
+- TanStack Query digunakan untuk server-state dari REST API, cache, invalidation, refetch, realtime recovery, dan post-mutation synchronization.
+- Zustand tetap digunakan untuk Active Project Context dan global UI/project context state.
+- localStorage hanya digunakan untuk frontend snapshot atau preference non-business seperti `edms.currentUser`, sidebar collapse state, dan UI preference lain yang tidak menjadi canonical business data.
+- IndexedDB, mock JSON, Fake API, dan local workflow/history builder dinyatakan **Legacy / Historical Frontend Baseline** dan bukan Runtime Source of Truth untuk implementasi backend-integrated saat ini.
+- Realtime SSE hanya menjadi Event Channel untuk invalidation/refetch; data final tetap diambil ulang melalui REST API.
 
 ## State Boundary
 
 - Authentication State berasal dari `AuthService`.
 - Project Context State berasal dari `project-context.store`.
 - UI State lokal seperti modal, wizard step, selected row, dan filter sementara dikelola di component atau hooks.
-- Persistent entity state berada di IndexedDB.
-- Query state yang berasal dari Service Layer dikelola TanStack Query.
+- Persistent entity state runtime berada di Backend REST API dan MySQL.
+- Query state yang berasal dari REST API dikelola TanStack Query.
+- IndexedDB persistence diklasifikasikan sebagai legacy/historical baseline kecuali secara eksplisit dipakai untuk tool development non-runtime.
 
 ## Project Context Rule
 

@@ -137,11 +137,14 @@ export const AuditTrailPage = () => {
         </p> */}
         <h1 className="mt-2 text-3xl font-bold">Audit Trail</h1>
         <p className="mt-2 max-w-3xl text-sm text-[#CBD5E1]">
-          Riwayat read-only untuk seluruh Significant Activity yang dicatat oleh sistem.
+          Read-only history for all Significant Activities recorded by the system.
         </p>
       </header>
 
-      <AuditTrailSummary summary={tableState.summary} />
+      <AuditTrailSummary
+        isLoading={tableState.isSummaryLoading}
+        summary={tableState.summary}
+      />
       <AuditTrailTable
         {...tableState}
         onBulkDeleteRequest={handleBulkDeleteRequest}

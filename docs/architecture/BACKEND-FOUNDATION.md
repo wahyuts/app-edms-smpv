@@ -50,8 +50,13 @@ Jika terjadi konflik, urutan di atas menjadi prioritas.
   Authentication   JWT
   Password Hash    bcrypt
   Token Storage    HttpOnly Cookie
-  File Upload      Multer
-  Storage          Backend Managed Local Storage
+  File Upload      Busboy Streaming Upload
+  Storage          Backend Managed Local Storage / Cloudflare R2
+
+Historical Note:
+
+- `Multer` adalah konsep upload lama pada fase awal backend.
+- Runtime saat ini menggunakan Busboy-based streaming upload agar penggunaan memory lebih terkendali saat file besar diproses.
 
 ## Environment Convention
 
@@ -91,7 +96,36 @@ REFRESH_TOKEN_EXPIRES_IN=
 CORS_ALLOWED_ORIGINS=
 STORAGE_PATH=
 BCRYPT_ROUNDS=
+MYSQL_CONNECTION_LIMIT=
+UPLOAD_MAX_FILE_SIZE_BYTES=
+UPLOAD_TEMPORARY_TTL_HOURS=
+STORAGE_DRIVER=
+R2_ACCOUNT_ID=
+R2_BUCKET_NAME=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_ENDPOINT=
+R2_REGION=
+R2_PUBLIC_BASE_URL=
+SLA_NOTIFICATION_SCHEDULER_ENABLED=
+SLA_NOTIFICATION_SCHEDULER_INTERVAL_MS=
+SLA_NOTIFICATION_BATCH_SIZE=
+SLA_NOTIFICATION_JOB_TOKEN=
+TEMPORARY_UPLOAD_CLEANUP_SCHEDULER_ENABLED=
+TEMPORARY_UPLOAD_CLEANUP_INTERVAL_MS=
+TEMPORARY_UPLOAD_CLEANUP_BATCH_SIZE=
 ```
+
+Runtime env notes:
+
+- `APP_ENV` menerima `development`, `test`, `staging`, atau `production`.
+- `MYSQL_CONNECTION_LIMIT` bersifat optional dan default backend adalah `10`.
+- `UPLOAD_MAX_FILE_SIZE_BYTES` bersifat optional dan default backend adalah `25 * 1024 * 1024` bytes.
+- Railway development saat ini dapat meng-override `UPLOAD_MAX_FILE_SIZE_BYTES` menjadi `100 MB` agar selaras dengan batas upload yang ditampilkan frontend.
+- `UPLOAD_TEMPORARY_TTL_HOURS` bersifat optional dan default backend adalah `24` jam.
+- `STORAGE_DRIVER` menerima `local` atau `r2`.
+- Env `R2_*` wajib tersedia apabila `STORAGE_DRIVER=r2`.
+- Scheduler SLA Notification dan Temporary Upload Cleanup dikendalikan melalui env masing-masing dan tidak mengubah Business Workflow.
 
 ------------------------------------------------------------------------
 
@@ -140,6 +174,16 @@ backend/
 ------------------------------------------------------------------------
 
 # 6. Storage Architecture
+
+Current canonical physical storage uses business-readable identifiers:
+
+```text
+storage/projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/revisions/{REVISION}/{PHYSICAL_FILE_NAME}
+storage/projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/process-comments/{ATTACHMENT_FILE_NAME}
+storage/projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/project-comments/{ATTACHMENT_FILE_NAME}
+```
+
+`PROJECT_CODE`, `DOCUMENT_NUMBER`, and canonical revision labels (`IFR-Submitted`, `IFA-Submitted`, `AS-Built`) are used only for physical storage readability. Database relationships continue to use internal ids.
 
 ``` text
 storage/
@@ -386,6 +430,74 @@ Owner Approval.
 10. Audit API
 11. Integration
 12. Final Validation
+
+------------------------------------------------------------------------
+
+# 13A. Unified Temporary Upload Pipeline
+
+Backend menggunakan temporary upload sebagai satu-satunya handoff file untuk aksi user yang masih menunggu Save atau Submit.
+
+Pipeline resmi:
+
+1. File dipilih user dan diunggah ke `POST /api/v1/storage/temporary-uploads`.
+2. Backend membuat metadata `temporary_uploads` dan menyimpan file pada storage temporary.
+3. Endpoint bisnis menerima `temporaryFileId`, bukan raw multipart file.
+4. Service layer memvalidasi ownership user, expiry, single-use, dan keberadaan physical temporary file.
+5. Dalam transaksi bisnis, backend membuat metadata permanen, memindahkan file ke storage project, dan menghapus record temporary upload.
+
+Endpoint bisnis yang memakai pipeline ini:
+
+- Create Document.
+- Upload Revision.
+- Approval B attachment.
+- Approval C attachment.
+- Workflow Comment Attachment.
+
+Cancel atau abandoned upload tidak membuat resource permanen. Cleanup temporary dilakukan hanya terhadap record/file temporary yang expired, orphan, atau jelas merupakan artifact validation.
+
+------------------------------------------------------------------------
+
+# 13A.1 Canonical Storage Path
+
+Backend wajib membentuk permanent storage key, bukan frontend.
+
+Rules:
+
+- `projects.id` tetap menjadi internal database/API identity.
+- `projects.project_code` menjadi physical project directory.
+- Document folder menggunakan `document_number`.
+- Revision folder menggunakan canonical revision label: `IFR-Submitted`, `IFA-Submitted`, `AS-Built`.
+- Revision berbeda dari Workflow Status.
+- `stored_files.storage_key` dan `relative_path` menyimpan relative path portable.
+- Download memakai `original_file_name`, bukan physical filename.
+
+Canonical document revision key:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/revisions/{REVISION}/{DOCUMENT_NUMBER}_{REVISION}_{SUBMIT_DATE_YYYYMMDD}_{SHORT_FILE_ID}_{SANITIZED_ORIGINAL_FILE_NAME}
+```
+
+Workflow attachment key:
+
+```text
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/process-comments/{ATTACHMENT_FILE_NAME}
+projects/{PROJECT_CODE}/documents/{DOCUMENT_NUMBER}/attachments/project-comments/{ATTACHMENT_FILE_NAME}
+```
+
+------------------------------------------------------------------------
+
+# 13B. Project-Scoped Authorization
+
+Backend membedakan system RBAC role dan Active Project Official Role.
+
+Resolution:
+
+- `users.role_id` tetap menjadi sumber permission global.
+- `project_memberships.official_role` pada Active Project menjadi sumber permission project-scoped.
+- Authentication payload mengembalikan permission efektif untuk Active Project saat ini.
+- Project switch wajib melakukan refresh auth/profile agar frontend guard membaca permission efektif terbaru.
+
+Project-scoped route tetap harus melakukan service-level validation terhadap active membership, document project relation, temporary upload ownership, dan workflow responsible role.
 
 ------------------------------------------------------------------------
 

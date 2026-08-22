@@ -2,7 +2,6 @@ import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
-  getPasswordPolicyMessage,
   PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
 } from "@/features/auth/schemas/password-recovery.schema";
 import { AuthService } from "@/features/auth/services/auth.service";
@@ -45,21 +44,21 @@ const ChangePasswordPage = () => {
       const nextErrors = {};
 
       if (!currentPassword) {
-        nextErrors.currentPassword = "Current Password wajib diisi.";
+        nextErrors.currentPassword = "Current password is required.";
       }
 
       if (!newPassword) {
-        nextErrors.newPassword = "New Password wajib diisi.";
+        nextErrors.newPassword = "New password is required.";
       }
 
       if (!confirmPassword) {
-        nextErrors.confirmPassword = "Confirm Password wajib diisi.";
+        nextErrors.confirmPassword = "Confirm password is required.";
       }
 
       setErrors(nextErrors);
       showChangePasswordToast({
         message: Object.values(nextErrors).join("\n"),
-        title: "Data Belum Lengkap",
+        title: "Data Still Incomplete",
       });
       return;
     }
@@ -70,20 +69,7 @@ const ChangePasswordPage = () => {
       });
       showChangePasswordToast({
         message: PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
-        title: "Konfirmasi Password Tidak Sesuai",
-      });
-      return;
-    }
-
-    const passwordPolicyMessage = getPasswordPolicyMessage(newPassword);
-
-    if (passwordPolicyMessage) {
-      setErrors({
-        newPassword: passwordPolicyMessage,
-      });
-      showChangePasswordToast({
-        message: passwordPolicyMessage,
-        title: "Password Baru Tidak Valid",
+        title: "Confirm Password Does Not Match",
       });
       return;
     }
@@ -99,8 +85,8 @@ const ChangePasswordPage = () => {
 
     if (response.success) {
       showChangePasswordToast({
-        message: "Silakan login kembali.",
-        title: "Password Berhasil Diubah",
+        message: "Please relogin.",
+        title: "Password Successfully Changed",
         variant: "success",
       });
       form.reset();
@@ -111,11 +97,11 @@ const ChangePasswordPage = () => {
 
     if (response.message.includes("Current Password")) {
       showChangePasswordToast({
-        message: "Current Password tidak benar.",
-        title: "Gagal Mengubah Password",
+        message: "Current password is incorrect.",
+        title: "Change Password Failed",
       });
       setErrors({
-        currentPassword: "Current Password tidak benar.",
+        currentPassword: "Current password is incorrect.",
       });
       form.elements.currentPassword.value = "";
       currentPasswordRef.current?.focus();
@@ -123,8 +109,8 @@ const ChangePasswordPage = () => {
     }
 
     showChangePasswordToast({
-      message: "Gagal mengubah Password.",
-      title: "Terjadi Kesalahan",
+      message: "Change password failed.",
+      title: "Change Password Failed",
     });
   };
 
@@ -136,7 +122,7 @@ const ChangePasswordPage = () => {
         </p>
         <h1 className="mt-2 text-3xl font-bold">Change Password</h1>
         <p className="mt-2 text-sm text-[#CBD5E1]">
-          Ubah password untuk akun yang sedang Login.
+          Change the password for the currently logged-in account.
         </p>
       </header>
 

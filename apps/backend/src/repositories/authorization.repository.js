@@ -22,6 +22,28 @@ const findPermissionsByRoleId = async (roleId) => {
   }));
 };
 
+const findRoleByName = async (roleName) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT id, role_code, role_name, is_active
+      FROM roles
+      WHERE role_name = ?
+      LIMIT 1
+    `,
+    [roleName]
+  );
+
+  const row = rows[0];
+
+  return row && {
+    id: row.id,
+    roleCode: row.role_code,
+    roleName: row.role_name,
+    isActive: Boolean(row.is_active),
+  };
+};
+
 module.exports = {
   findPermissionsByRoleId,
+  findRoleByName,
 };

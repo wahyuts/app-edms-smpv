@@ -4,6 +4,9 @@ let app;
 let env;
 let server;
 let closeDatabasePool;
+let realtimeConnectionRegistry;
+let slaNotificationScheduler;
+let temporaryUploadCleanupScheduler;
 let isShuttingDown = false;
 
 const getSafeErrorSummary = (error) => {
@@ -30,7 +33,7 @@ const shutdown = async (signalOrReason, exitCode = 0) => {
 
   try {
     if (server) {
-      await new Promise((resolve, reject) => {
+      const closeServerPromise = new Promise((resolve, reject) => {
         server.close((error) => {
           if (error) {
             if (error.code === 'ERR_SERVER_NOT_RUNNING') {
@@ -47,6 +50,19 @@ const shutdown = async (signalOrReason, exitCode = 0) => {
           resolve();
         });
       });
+
+      if (realtimeConnectionRegistry) {
+        realtimeConnectionRegistry.closeAll({ reason: 'shutdown' });
+      }
+
+      await closeServerPromise;
+    }
+
+    if (slaNotificationScheduler) {
+      slaNotificationScheduler.stop();
+    }
+    if (temporaryUploadCleanupScheduler) {
+      temporaryUploadCleanupScheduler.stop();
     }
 
     if (closeDatabasePool) {
@@ -69,6 +85,9 @@ const startServer = async () => {
     env = require('./config/env');
     const database = require('./config/database');
     const storage = require('./services/storage.service');
+    realtimeConnectionRegistry = require('./services/realtimeConnectionRegistry.service');
+    slaNotificationScheduler = require('./services/slaNotificationScheduler.service');
+    temporaryUploadCleanupScheduler = require('./services/temporaryUploadCleanupScheduler.service');
     app = require('./app');
     closeDatabasePool = database.closeDatabasePool;
 
@@ -82,6 +101,8 @@ const startServer = async () => {
     server = app.listen(env.port, () => {
       logger.log(`${env.appName} ${env.appVersion} running on port ${env.port}`);
     });
+    slaNotificationScheduler.start();
+    temporaryUploadCleanupScheduler.start();
   } catch (error) {
     logger.error('[BOOT] Backend startup failed');
     logger.error(error.message);

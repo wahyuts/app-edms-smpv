@@ -68,6 +68,26 @@ const statusStyles = {
 const editableProjectStatusOptions = PROJECT_STATUS_OPTIONS.filter(
   (status) => status !== PROJECT_STATUS.CLOSED,
 );
+const projectManagementProjectsQueryKey = ["project-management", "projects"];
+const projectMembershipManagementProjectsQueryKey = [
+  "project-membership-management",
+  "projects",
+];
+const projectMembershipManagementMembershipsQueryKey = [
+  "project-membership-management",
+  "memberships",
+];
+
+const invalidateProjectAdministrationQueries = () =>
+  Promise.all([
+    queryClient.invalidateQueries({ queryKey: projectManagementProjectsQueryKey }),
+    queryClient.invalidateQueries({
+      queryKey: projectMembershipManagementProjectsQueryKey,
+    }),
+    queryClient.invalidateQueries({
+      queryKey: projectMembershipManagementMembershipsQueryKey,
+    }),
+  ]);
 
 const getPaginationItems = (totalPages, currentPage) => {
   if (totalPages <= 7) {
@@ -652,7 +672,7 @@ const ProjectManagementPage = () => {
     refetch: refetchProjects,
   } = useQuery({
     queryFn: ProjectService.getProjects,
-    queryKey: ["project-management", "projects"],
+    queryKey: projectManagementProjectsQueryKey,
   });
   const errorMessage = loadError ? getErrorMessage(loadError) : "";
   const sortOption = sortOptions.find((option) => option.value === sortValue) ?? sortOptions[0];
@@ -818,6 +838,7 @@ const ProjectManagementPage = () => {
         variant: "success",
       });
       closeCloseWizard();
+      await invalidateProjectAdministrationQueries();
       await refetchProjects();
       navigate(nextContext.accessibleProjects.length > 0 ? "/select-project" : "/dashboard");
     } catch (error) {
@@ -865,6 +886,7 @@ const ProjectManagementPage = () => {
       }
 
       closeForm();
+      await invalidateProjectAdministrationQueries();
       await refetchProjects();
       await refreshProjectState();
     } catch (error) {
@@ -899,6 +921,7 @@ const ProjectManagementPage = () => {
       }
 
       setStatusTarget(null);
+      await invalidateProjectAdministrationQueries();
       await refetchProjects();
       await refreshProjectState();
     } catch (error) {
@@ -920,7 +943,7 @@ const ProjectManagementPage = () => {
           </p>
           <h1 className="mt-2 text-3xl font-bold">Project Management</h1>
           <p className="mt-2 max-w-3xl text-sm text-[#CBD5E1]">
-            Kelola Project Master Data dan lifecycle Active / Inactive / Closed untuk Multi Project EDMS.
+            Manage Project Master Data and Active / Inactive / Closed lifecycle for Multi Project EDMS.
           </p>
         </div>
         <button
@@ -946,7 +969,7 @@ const ProjectManagementPage = () => {
           <div>
             <h2 className="text-xl font-bold">Project List</h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
-              Daftar Project Master Data yang digunakan oleh Project Context.
+              List of Master Data projects used by the Project Context.
             </p>
           </div>
 

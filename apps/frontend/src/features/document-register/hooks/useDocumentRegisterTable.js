@@ -1,30 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
-import { SlaEngineService } from "@/features/sla-management/services/sla-engine.service";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
+import { useSlaRuntimeClock } from "@/features/sla-management/hooks/useSlaRuntimeClock";
+import { resolveLiveSlaTimer } from "@/features/sla-management/utils/sla-timer-display";
 import {
   DOCUMENT_LIFECYCLE_FILTER,
   OFFICIAL_ROLE,
 } from "../constants/document.constants";
-import { DocumentService } from "../services/document.service";
+import { DocumentApiService } from "../services/document-api.service";
 
 const DEFAULT_PAGE_SIZE = 5;
 const DEFAULT_SORT_BY = "updatedAt";
-const SLA_REFRESH_INTERVAL_MS = 60 * 1000;
-const FULL_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
-
-const recalculateDocumentSla = (documentItem) => {
-  const evaluatedDocument = SlaEngineService.evaluate(documentItem);
-
-  return {
-    ...documentItem,
-    slaAssignee: evaluatedDocument.slaAssignee,
-    slaStartedAt: evaluatedDocument.slaStartedAt,
-    slaStatus: evaluatedDocument.slaStatus,
-    slaStoppedAt: evaluatedDocument.slaStoppedAt,
-    slaTimer: evaluatedDocument.slaTimer,
-  };
-};
 
 const getUniqueOptions = (documents, fieldName) => {
   return [...new Set(documents.map((documentItem) => documentItem[fieldName]))]
@@ -39,8 +26,6 @@ export const useDocumentRegisterTable = ({
   enableControls = true,
   preserveStatusFilterOnProjectChange = false,
 } = {}) => {
-  const [sourceDocuments, setSourceDocuments] = useState([]);
-  const [documents, setDocuments] = useState([]);
   const [searchValue, setSearchValue] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [revisionFilter, setRevisionFilter] = useState("");
@@ -50,17 +35,38 @@ export const useDocumentRegisterTable = ({
   const [sortBy, setSortBy] = useState(DEFAULT_SORT_BY);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);
-  const [isLoading, setIsLoading] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [fullRefreshKey, setFullRefreshKey] = useState(0);
-  const hasLoadedOnceRef = useRef(false);
-  const activeProjectIdRef = useRef(null);
+  const [isPostMutationRefreshLoading, setIsPostMutationRefreshLoading] = useState(false);
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
   const activeOfficialRole = useProjectContextStore((state) => state.activeOfficialRole);
+  const currentTimestamp = useSlaRuntimeClock();
   const canUseLifecycleFilter = activeOfficialRole === OFFICIAL_ROLE.ADMIN;
   const effectiveLifecycleFilter = canUseLifecycleFilter
     ? lifecycleFilter
     : DOCUMENT_LIFECYCLE_FILTER.ACTIVE;
+  const effectiveDrawingFilter = drawingContext || drawingFilter;
+  const query = useMemo(() => ({
+    area: enableControls ? areaFilter : "",
+    direction: sortBy === DEFAULT_SORT_BY ? "desc" : "asc",
+    drawing: effectiveDrawingFilter,
+    lifecycle: effectiveLifecycleFilter,
+    page: pageNumber,
+    pageSize,
+    revision: enableControls ? revisionFilter : "",
+    search: enableControls ? searchValue : "",
+    sortBy,
+    status: enableControls ? statusFilter : "",
+  }), [
+    areaFilter,
+    effectiveDrawingFilter,
+    effectiveLifecycleFilter,
+    enableControls,
+    pageNumber,
+    pageSize,
+    revisionFilter,
+    searchValue,
+    sortBy,
+    statusFilter,
+  ]);
 
   useEffect(() => {
     const resetTimeoutId = window.setTimeout(() => {
@@ -95,127 +101,60 @@ export const useDocumentRegisterTable = ({
     return () => window.clearTimeout(directSearchTimeoutId);
   }, [directSearchValue]);
 
-  useEffect(() => {
-    const slaTimerIntervalId = window.setInterval(() => {
-      setSourceDocuments((currentDocuments) =>
-        currentDocuments.map(recalculateDocumentSla),
-      );
-      setDocuments((currentDocuments) =>
-        currentDocuments.map(recalculateDocumentSla),
-      );
-    }, SLA_REFRESH_INTERVAL_MS);
+  const documentsQuery = useQuery({
+    enabled: Boolean(activeProjectId),
+    queryFn: () => DocumentApiService.getDocuments(query),
+    queryKey: ["documents", "register", activeProjectId ?? null, query],
+  });
+  const refreshDocuments = useCallback(async ({ showLoading = false } = {}) => {
+    if (showLoading) {
+      setIsPostMutationRefreshLoading(true);
+    }
 
-    const fullRefreshIntervalId = window.setInterval(() => {
-      setFullRefreshKey((currentKey) => currentKey + 1);
-    }, FULL_REFRESH_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(slaTimerIntervalId);
-      window.clearInterval(fullRefreshIntervalId);
-    };
-  }, []);
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadDocuments = async () => {
-      const projectChanged = activeProjectIdRef.current !== activeProjectId;
-      activeProjectIdRef.current = activeProjectId;
-
-      if (!hasLoadedOnceRef.current || projectChanged) {
-        setSourceDocuments([]);
-        setDocuments([]);
-        setIsLoading(true);
+    try {
+      return await documentsQuery.refetch();
+    } finally {
+      if (showLoading) {
+        setIsPostMutationRefreshLoading(false);
       }
-
-      const sourceDocuments = drawingContext
-        ? await DocumentService.getDocumentsByDrawing(drawingContext, {
-            lifecycle: effectiveLifecycleFilter,
-          })
-        : await DocumentService.getDocumentsByLifecycle({
-            lifecycle: effectiveLifecycleFilter,
-          });
-
-      const searchedDocuments = enableControls
-        ? await DocumentService.searchDocuments(searchValue, sourceDocuments)
-        : sourceDocuments;
-
-      const filteredDocuments = enableControls
-        ? await DocumentService.filterDocuments(searchedDocuments, {
-            status: statusFilter,
-            revision: revisionFilter,
-            area: areaFilter,
-            drawing: drawingFilter,
-          })
-        : searchedDocuments;
-
-      const sortedDocuments = await DocumentService.sortDocuments(
-        filteredDocuments,
-        {
-          sortBy,
-          direction: sortBy === DEFAULT_SORT_BY ? "desc" : "asc",
-        },
-      );
-
-      if (isActive) {
-        setSourceDocuments(sourceDocuments);
-        setDocuments(sortedDocuments);
-        hasLoadedOnceRef.current = true;
-        setIsLoading(false);
-      }
-    };
-
-    loadDocuments();
-
-    return () => {
-      isActive = false;
-    };
-  }, [
-    areaFilter,
-    activeProjectId,
-    effectiveLifecycleFilter,
-    drawingFilter,
-    drawingContext,
-    enableControls,
-    fullRefreshKey,
-    refreshKey,
-    revisionFilter,
-    searchValue,
-    sortBy,
-    statusFilter,
-  ]);
-
-  const totalPages = Math.max(1, Math.ceil(documents.length / pageSize));
-  const normalizedPageNumber = Math.min(pageNumber, totalPages);
-  const startIndex = (normalizedPageNumber - 1) * pageSize;
-  const paginatedDocuments = documents.slice(startIndex, startIndex + pageSize);
-
-  const statusOptions = useMemo(
-    () => getUniqueOptions(sourceDocuments, "status"),
-    [sourceDocuments],
+    }
+  }, [documentsQuery]);
+  const response = documentsQuery.data ?? {
+    data: [],
+    pagination: {
+      page: pageNumber,
+      pageSize,
+      totalItems: 0,
+      totalPages: 1,
+    },
+  };
+  const sourceDocuments = useMemo(
+    () => response.data.map((documentItem) => resolveLiveSlaTimer(documentItem, currentTimestamp)),
+    [currentTimestamp, response.data],
   );
-  const areaOptions = useMemo(
-    () => getUniqueOptions(sourceDocuments, "area"),
-    [sourceDocuments],
-  );
-  const drawingOptions = useMemo(
-    () => getUniqueOptions(sourceDocuments, "drawing"),
-    [sourceDocuments],
-  );
+  const pagination = response.pagination;
+  const rows = sourceDocuments;
+  const totalPages = Math.max(1, pagination.totalPages ?? 1);
+  const normalizedPageNumber = Math.min(pagination.page ?? pageNumber, totalPages);
+  const startIndex = ((normalizedPageNumber - 1) * (pagination.pageSize ?? pageSize));
 
   return {
     areaFilter,
-    areaOptions,
-    documents,
+    areaOptions: getUniqueOptions(sourceDocuments, "area"),
+    canUseLifecycleFilter,
+    documents: rows,
     drawingFilter,
-    drawingOptions,
-    isLoading,
+    drawingOptions: getUniqueOptions(sourceDocuments, "drawing"),
+    error: documentsQuery.error,
+    isError: documentsQuery.isError,
+    isLoading: documentsQuery.isLoading || isPostMutationRefreshLoading,
     lifecycleFilter,
     pageNumber: normalizedPageNumber,
-    pageSize,
-    paginatedDocuments,
-    rows: paginatedDocuments,
+    pageSize: pagination.pageSize ?? pageSize,
+    paginatedDocuments: rows,
+    refreshDocuments,
     revisionFilter,
+    rows,
     searchValue,
     setAreaFilter: (nextAreaFilter) => {
       setAreaFilter(nextAreaFilter);
@@ -230,21 +169,16 @@ export const useDocumentRegisterTable = ({
       setPageNumber(1);
     },
     setPageNumber,
-    refreshDocuments: () => {
-      setPageNumber(1);
-      setSortBy(DEFAULT_SORT_BY);
-      setRefreshKey((currentKey) => currentKey + 1);
-    },
     setPageSize: (nextPageSize) => {
       setPageSize(nextPageSize);
       setPageNumber(1);
     },
-    setSearchValue: (nextSearchValue) => {
-      setSearchValue(nextSearchValue);
-      setPageNumber(1);
-    },
     setRevisionFilter: (nextRevisionFilter) => {
       setRevisionFilter(nextRevisionFilter);
+      setPageNumber(1);
+    },
+    setSearchValue: (nextSearchValue) => {
+      setSearchValue(nextSearchValue);
       setPageNumber(1);
     },
     setSortBy: (nextSortBy) => {
@@ -258,9 +192,9 @@ export const useDocumentRegisterTable = ({
     sortBy,
     startIndex,
     statusFilter,
-    statusOptions,
+    statusOptions: getUniqueOptions(sourceDocuments, "status"),
+    totalItems: pagination.totalItems ?? rows.length,
     totalPages,
-    canUseLifecycleFilter,
   };
 };
 

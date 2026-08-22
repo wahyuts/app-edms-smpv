@@ -5,6 +5,7 @@ import {
   Eye,
   FileText,
   FileUp,
+  Loader2,
   Paperclip,
   Trash2,
   X,
@@ -42,6 +43,7 @@ const fieldLabelClassName = "text-xs font-semibold uppercase text-[#94A3B8]";
 const valueClassName = "mt-1 text-sm font-semibold text-[#F8FAFC]";
 const fileInputClassName =
   "mt-2 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#123A5A] bg-[#031528] px-4 py-5 text-center text-sm text-[#94A3B8] transition-colors hover:border-[#0F7BFF] hover:bg-[#08233B]";
+const fileInputDragActiveClassName = "border-[#0F7BFF] bg-[#08233B]";
 
 const formatDateTime = (value) => {
   if (!value) {
@@ -55,6 +57,27 @@ const formatDateTime = (value) => {
     month: "short",
     year: "numeric",
   }).format(new Date(value));
+};
+
+const formatCommentDateTime = (value) => {
+  if (!value) {
+    return "-";
+  }
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "short",
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+  }).format(parsedDate);
 };
 
 const formatCommentActor = (comment) => {
@@ -81,21 +104,96 @@ const formatTimelineActor = (timelineItem) => {
   return actorRole ? `${actorName} (${actorRole})` : actorName;
 };
 
+const normalizeFileExtension = (extension = "") =>
+  String(extension).trim().replace(/^\./, "").toLowerCase();
+
 const FileUploadField = ({
   errorMessage,
   filePreview,
   isDisabled = false,
   onFileChange,
+  onFileSelectionError = () => {},
   required = false,
 }) => {
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+
+  const handleDragEvent = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleDragEnter = (event) => {
+    handleDragEvent(event);
+    if (!isDisabled) {
+      setIsDraggingFile(true);
+    }
+  };
+
+  const handleDragOver = (event) => {
+    handleDragEvent(event);
+    if (!isDisabled) {
+      setIsDraggingFile(true);
+    }
+  };
+
+  const handleDragLeave = (event) => {
+    handleDragEvent(event);
+    if (
+      event.relatedTarget &&
+      event.currentTarget.contains(event.relatedTarget)
+    ) {
+      return;
+    }
+    setIsDraggingFile(false);
+  };
+
+  const handleSelectedFiles = (fileList) => {
+    if (isDisabled) {
+      return;
+    }
+
+    const files = Array.from(fileList ?? []);
+
+    if (files.length === 0) {
+      return;
+    }
+
+    if (files.length > 1) {
+      onFileSelectionError("Hanya satu file yang dapat dipilih.");
+      return;
+    }
+
+    onFileChange(files[0]);
+  };
+
+  const handleFileInputChange = (event) => {
+    handleSelectedFiles(event.target.files);
+    event.target.value = "";
+  };
+
+  const handleDrop = (event) => {
+    handleDragEvent(event);
+    setIsDraggingFile(false);
+    handleSelectedFiles(event.dataTransfer?.files);
+  };
+
   return (
     <div>
       <p className={fieldLabelClassName}>
         Upload File {required ? "(Required)" : "(Optional)"}
       </p>
-      <label className={fileInputClassName}>
+      <label
+        className={[
+          fileInputClassName,
+          isDraggingFile && !isDisabled ? fileInputDragActiveClassName : "",
+        ].filter(Boolean).join(" ")}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
         <FileUp className="mb-2 h-6 w-6 text-[#00C8FF]" />
-        <span className="font-semibold text-[#F8FAFC]">Choose file</span>
+        <span className="font-semibold text-[#F8FAFC]">Choose file or Drag file here</span>
         <span className="mt-1 text-xs">
           PDF, DOCX, XLS, XLSX, JPG, or PNG. Maximum {MAX_UPLOAD_FILE_SIZE_MB} MB.
         </span>
@@ -103,7 +201,7 @@ const FileUploadField = ({
           accept={FILE_VALIDATION_CONFIG.acceptedInputTypes}
           className="sr-only"
           disabled={isDisabled}
-          onChange={onFileChange}
+          onChange={handleFileInputChange}
           type="file"
         />
       </label>
@@ -133,9 +231,29 @@ const WorkflowAttachmentField = ({
   onAttachmentChange,
   onAttachmentRemove,
 }) => {
-  const handleFileChange = (event) => {
-    const file = event.target.files?.[0] ?? null;
+  const [isDraggingAttachment, setIsDraggingAttachment] = useState(false);
 
+  const handleAttachmentSelectionError = (message) => {
+    onAttachmentChange({
+      errorMessage: message,
+      file: null,
+      preview: null,
+    });
+  };
+
+  const handleSelectedAttachmentFiles = (fileList) => {
+    const files = Array.from(fileList ?? []);
+
+    if (files.length === 0) {
+      return;
+    }
+
+    if (files.length > 1) {
+      handleAttachmentSelectionError("Hanya satu file yang dapat dipilih.");
+      return;
+    }
+
+    const file = files[0];
     if (!file) {
       return;
     }
@@ -156,15 +274,59 @@ const WorkflowAttachmentField = ({
         file: null,
         preview: null,
       });
-    } finally {
-      event.target.value = "";
     }
+  };
+
+  const handleFileChange = (event) => {
+    handleSelectedAttachmentFiles(event.target.files);
+    event.target.value = "";
+  };
+
+  const handleDragEvent = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleDragEnter = (event) => {
+    handleDragEvent(event);
+    setIsDraggingAttachment(true);
+  };
+
+  const handleDragOver = (event) => {
+    handleDragEvent(event);
+    setIsDraggingAttachment(true);
+  };
+
+  const handleDragLeave = (event) => {
+    handleDragEvent(event);
+    if (
+      event.relatedTarget &&
+      event.currentTarget.contains(event.relatedTarget)
+    ) {
+      return;
+    }
+    setIsDraggingAttachment(false);
+  };
+
+  const handleDrop = (event) => {
+    handleDragEvent(event);
+    setIsDraggingAttachment(false);
+    handleSelectedAttachmentFiles(event.dataTransfer?.files);
   };
 
   return (
     <div>
       <p className={fieldLabelClassName}>Workflow Attachment (Optional)</p>
-      <label className={fileInputClassName}>
+      <label
+        className={[
+          fileInputClassName,
+          isDraggingAttachment ? fileInputDragActiveClassName : "",
+        ].filter(Boolean).join(" ")}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
         <FileUp className="mb-2 h-6 w-6 text-[#00C8FF]" />
         <span className="font-semibold text-[#F8FAFC]">Upload Attachment</span>
         <span className="mt-1 text-xs">
@@ -229,16 +391,17 @@ const textareaClassName =
   "mt-2 min-h-24 w-full rounded-md border border-[#123A5A] bg-[#08233B] px-3 py-2 text-sm text-[#F8FAFC] outline-none transition-colors placeholder:text-[#64748B] focus:border-[#0F7BFF]";
 const validationClassName = "mt-2 text-sm font-semibold text-[#FCA5A5]";
 
-const uploadRevisionTargetStatusByCurrentStatus = {
-  [DOCUMENT_STATUS.PROCESS_COMMENT]: DOCUMENT_STATUS.PROCESS_REVIEW,
-  [DOCUMENT_STATUS.PROCESS_REJECT]: DOCUMENT_STATUS.PROCESS_REVIEW,
-  [DOCUMENT_STATUS.PROJECT_COMMENT]: DOCUMENT_STATUS.PROJECT_REVIEW,
-  [DOCUMENT_STATUS.PROJECT_REJECT]: DOCUMENT_STATUS.PROJECT_REVIEW,
-};
+const renderLoadingButtonContent = (label) => (
+  <span className="inline-flex items-center gap-2">
+    <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+    {label}
+  </span>
+);
 
 const DocumentActionModal = ({
   children,
   footer,
+  isCloseDisabled = false,
   onClose,
   size = "default",
   title,
@@ -266,7 +429,13 @@ const DocumentActionModal = ({
           <h2 className="text-lg font-bold">{title}</h2>
           <button
             aria-label="Close modal"
-            className="rounded-md p-1.5 text-[#CBD5E1] transition-colors hover:bg-[#0B2B47] hover:text-white"
+            className={[
+              "rounded-md p-1.5 text-[#CBD5E1] transition-colors",
+              isCloseDisabled
+                ? "cursor-not-allowed opacity-50"
+                : "hover:bg-[#0B2B47] hover:text-white",
+            ].join(" ")}
+            disabled={isCloseDisabled}
             onClick={onClose}
             type="button"
           >
@@ -312,11 +481,11 @@ export const ViewDocumentModal = ({
   const metadata = documentItem.fileMetadata;
   const fileExtension = documentFile?.error
     ? ""
-    : (
+    : normalizeFileExtension(
         documentFile?.metadata?.fileExtension ??
         metadata?.fileExtension ??
         ""
-      ).toLowerCase();
+      );
   const isDocxPreviewAvailable =
     fileExtension === "docx" && Boolean(documentFile?.previewHtml);
   const isSpreadsheetPreviewAvailable =
@@ -440,6 +609,7 @@ export const ViewDocumentModal = ({
           {fileExtension === "pdf" ? (
             <iframe
               className="h-full w-full bg-white"
+              key={documentFile.objectUrl}
               src={documentFile.objectUrl}
               title={`${documentItem.documentNumber} PDF Viewer`}
             />
@@ -448,6 +618,7 @@ export const ViewDocumentModal = ({
             <img
               alt={metadata?.originalFileName ?? documentItem.documentNumber}
               className="rounded-md object-contain"
+              key={documentFile.objectUrl}
               src={documentFile.objectUrl}
             />
           ) : null}
@@ -488,7 +659,7 @@ export const ViewDocumentModal = ({
                 File is unavailable.
               </p>
               <p className="mt-2 max-w-md">
-                The active file could not be found in browser storage.
+                The active file could not be loaded from the backend.
               </p>
             </div>
           ) : null}
@@ -499,7 +670,9 @@ export const ViewDocumentModal = ({
 };
 
 export const WorkflowAttachmentCard = ({
+  activeAction = null,
   attachment,
+  disabled = false,
   errorMessage = "",
   onDownload,
   onView,
@@ -528,19 +701,33 @@ export const WorkflowAttachmentCard = ({
         <div className="flex shrink-0 gap-2">
           <button
             className={secondaryButtonClassName}
+            disabled={disabled}
             onClick={onView}
             type="button"
           >
-            <Eye className="mr-2 h-4 w-4" />
-            View
+            {activeAction === "view" ? (
+              renderLoadingButtonContent("View")
+            ) : (
+              <>
+                <Eye className="mr-2 h-4 w-4" />
+                View
+              </>
+            )}
           </button>
           <button
             className={secondaryButtonClassName}
+            disabled={disabled}
             onClick={onDownload}
             type="button"
           >
-            <Download className="mr-2 h-4 w-4" />
-            Download
+            {activeAction === "download" ? (
+              renderLoadingButtonContent("Download")
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                Download
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -554,6 +741,7 @@ export const WorkflowAttachmentCard = ({
 };
 
 export const CommentViewerModal = ({
+  activeAttachmentAction = null,
   attachmentErrors = {},
   comments = [],
   documentItem,
@@ -588,7 +776,7 @@ export const CommentViewerModal = ({
                     {comment.workflowAction}
                   </p>
                   <p className="text-xs text-[#94A3B8]">
-                    {formatDateTime(comment.createdDate)}
+                    {formatCommentDateTime(comment.createdDate)}
                   </p>
                 </div>
                 <p className="mt-3 text-sm text-[#CBD5E1]">
@@ -598,7 +786,13 @@ export const CommentViewerModal = ({
                   By {formatCommentActor(comment)}
                 </p>
                 <WorkflowAttachmentCard
+                  activeAction={
+                    activeAttachmentAction?.commentId === comment.id
+                      ? activeAttachmentAction.type
+                      : null
+                  }
                   attachment={comment.attachment}
+                  disabled={Boolean(activeAttachmentAction)}
                   errorMessage={attachmentErrors[comment.id] ?? ""}
                   onDownload={() => onAttachmentDownload(comment)}
                   onView={() => onAttachmentView(comment)}
@@ -793,9 +987,10 @@ export const HistoryModal = ({ documentItem, onClose, timeline = [] }) => {
 
 export const ApprovalConfirmationModal = ({
   actionSummary,
-  confirmLabel = "Confirm",
+  confirmLabel = "Confirmed",
   documentItem,
   isDanger = false,
+  isSubmitting = false,
   message,
   onCancel,
   onConfirm,
@@ -804,18 +999,25 @@ export const ApprovalConfirmationModal = ({
     <DocumentActionModal
       footer={
         <>
-          <button className={secondaryButtonClassName} onClick={onCancel} type="button">
+          <button
+            className={secondaryButtonClassName}
+            disabled={isSubmitting}
+            onClick={onCancel}
+            type="button"
+          >
             Cancel
           </button>
           <button
             className={isDanger ? dangerButtonClassName : primaryButtonClassName}
+            disabled={isSubmitting}
             onClick={onConfirm}
             type="button"
           >
-            {confirmLabel}
+            {isSubmitting ? renderLoadingButtonContent("Confirming...") : confirmLabel}
           </button>
         </>
       }
+      isCloseDisabled={isSubmitting}
       onClose={onCancel}
       title={confirmLabel}
     >
@@ -840,6 +1042,7 @@ export const ApprovalCommentModal = ({
   errorMessage,
   isCommentRequired = false,
   isDanger = false,
+  isSubmitting = false,
   onAttachmentChange = () => {},
   onAttachmentRemove = () => {},
   onCancel,
@@ -852,18 +1055,25 @@ export const ApprovalCommentModal = ({
     <DocumentActionModal
       footer={
         <>
-          <button className={secondaryButtonClassName} onClick={onCancel} type="button">
+          <button
+            className={secondaryButtonClassName}
+            disabled={isSubmitting}
+            onClick={onCancel}
+            type="button"
+          >
             Cancel
           </button>
           <button
             className={isDanger ? dangerButtonClassName : primaryButtonClassName}
+            disabled={isSubmitting}
             onClick={onSubmit}
             type="button"
           >
-            {submitLabel}
+            {isSubmitting ? renderLoadingButtonContent("Submitting...") : submitLabel}
           </button>
         </>
       }
+      isCloseDisabled={isSubmitting}
       onClose={onCancel}
       title={title}
     >
@@ -927,9 +1137,14 @@ export const CreateDocumentModal = ({
     }));
   };
 
-  const handleFileChange = async (event) => {
-    const file = event.target.files?.[0] ?? null;
+  const handleFileSelectionError = (message) => {
+    setSelectedFile(null);
+    setFilePreview(null);
+    setFileErrorMessage(message);
+    onValidationFailed(message);
+  };
 
+  const handleFileChange = async (file) => {
     try {
       const nextFilePreview = await FileService.getUploadPreview(file);
 
@@ -944,11 +1159,7 @@ export const CreateDocumentModal = ({
       const message =
         error instanceof Error ? error.message : "Validasi file gagal.";
 
-      event.target.value = "";
-      setSelectedFile(null);
-      setFilePreview(null);
-      setFileErrorMessage(message);
-      onValidationFailed(message);
+      handleFileSelectionError(message);
     }
   };
 
@@ -1024,6 +1235,7 @@ export const CreateDocumentModal = ({
           filePreview={filePreview}
           isDisabled={isSubmitting}
           onFileChange={handleFileChange}
+          onFileSelectionError={handleFileSelectionError}
           required
         />
         <label className="block">
@@ -1073,7 +1285,7 @@ export const CreateDocumentModal = ({
           ) : null}
         </label>
         <label className="block">
-          <span className={fieldLabelClassName}>Times For Review</span>
+          <span className={fieldLabelClassName}>Day Times For Review</span>
           <input
             className={inputClassName}
             min={0}
@@ -1095,19 +1307,18 @@ export const CreateDocumentModal = ({
 };
 
 export const EditDocumentModal = ({
+  allowUploadRevision = false,
   documentItem,
   onCancel,
   onSubmit,
   onValidationFailed = () => {},
 }) => {
-  const isUploadRevision = [
+  const isUploadRevision = allowUploadRevision && [
     DOCUMENT_STATUS.PROCESS_COMMENT,
     DOCUMENT_STATUS.PROCESS_REJECT,
     DOCUMENT_STATUS.PROJECT_COMMENT,
     DOCUMENT_STATUS.PROJECT_REJECT,
   ].includes(documentItem.status);
-  const uploadRevisionTargetStatus =
-    uploadRevisionTargetStatusByCurrentStatus[documentItem.status];
   const [formValue, setFormValue] = useState({
     area: documentItem.area,
     daysUntilValidation: documentItem.daysUntilValidation,
@@ -1130,9 +1341,14 @@ export const EditDocumentModal = ({
     }));
   };
 
-  const handleFileChange = async (event) => {
-    const file = event.target.files?.[0] ?? null;
+  const handleFileSelectionError = (message) => {
+    setSelectedFile(null);
+    setFilePreview(null);
+    setFileErrorMessage(message);
+    onValidationFailed(message);
+  };
 
+  const handleFileChange = async (file) => {
     try {
       const nextFilePreview = await FileService.getUploadPreview(file);
 
@@ -1147,11 +1363,7 @@ export const EditDocumentModal = ({
       const message =
         error instanceof Error ? error.message : "Validasi file gagal.";
 
-      event.target.value = "";
-      setSelectedFile(null);
-      setFilePreview(null);
-      setFileErrorMessage(message);
-      onValidationFailed(message);
+      handleFileSelectionError(message);
     }
   };
 
@@ -1217,7 +1429,7 @@ export const EditDocumentModal = ({
             onClick={handleSubmit}
             type="button"
           >
-            {isSubmitting ? "Saving..." : "Submit"}
+            {isSubmitting ? "Updating..." : "Submit"}
           </button>
         </>
       }
@@ -1227,10 +1439,8 @@ export const EditDocumentModal = ({
       <div className="space-y-4">
         {isUploadRevision ? (
           <div className="rounded-lg border border-[#FACC15]/40 bg-[#FACC15]/10 p-4 text-sm text-[#FDE68A]">
-            Upload Revision will replace the Active File and continue{" "}
-            {documentItem.status} to{" "}
-            {uploadRevisionTargetStatus}
-            .
+            Upload Revision will replace the Active File. Backend will determine
+            the next workflow status.
           </div>
         ) : null}
         <div
@@ -1252,6 +1462,7 @@ export const EditDocumentModal = ({
               filePreview={filePreview}
               isDisabled={isSubmitting}
               onFileChange={handleFileChange}
+              onFileSelectionError={handleFileSelectionError}
               required
             />
           ) : null}
@@ -1280,7 +1491,7 @@ export const EditDocumentModal = ({
           ) : null}
         </label>
         <label className="block">
-          <span className={fieldLabelClassName}>Times For Review</span>
+          <span className={fieldLabelClassName}>Day Times For Review</span>
           <input
             className={inputClassName}
             min={0}
