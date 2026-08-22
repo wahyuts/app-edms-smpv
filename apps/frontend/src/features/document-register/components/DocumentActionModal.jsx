@@ -987,7 +987,7 @@ export const HistoryModal = ({ documentItem, onClose, timeline = [] }) => {
 
 export const ApprovalConfirmationModal = ({
   actionSummary,
-  confirmLabel = "Confirm",
+  confirmLabel = "Confirmed",
   documentItem,
   isDanger = false,
   isSubmitting = false,

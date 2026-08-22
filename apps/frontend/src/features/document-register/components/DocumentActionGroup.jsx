@@ -1262,7 +1262,7 @@ export const DocumentActionGroup = ({
       {activeModal === modalType.APPROVAL_A ? (
         <ApprovalConfirmationModal
           actionSummary="Approval A will continue the document to the next workflow status."
-          confirmLabel="Confirm"
+          confirmLabel="Confirmed"
           documentItem={detailDocument}
           isSubmitting={activeWorkflowSubmitAction === ACTION_CODE.APPROVAL_A}
           message="Are you sure you want to approve this document?"

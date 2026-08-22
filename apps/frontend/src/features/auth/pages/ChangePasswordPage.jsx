@@ -44,21 +44,21 @@ const ChangePasswordPage = () => {
       const nextErrors = {};
 
       if (!currentPassword) {
-        nextErrors.currentPassword = "Current Password wajib diisi.";
+        nextErrors.currentPassword = "Current password is required.";
       }
 
       if (!newPassword) {
-        nextErrors.newPassword = "New Password wajib diisi.";
+        nextErrors.newPassword = "New password is required.";
       }
 
       if (!confirmPassword) {
-        nextErrors.confirmPassword = "Confirm Password wajib diisi.";
+        nextErrors.confirmPassword = "Confirm password is required.";
       }
 
       setErrors(nextErrors);
       showChangePasswordToast({
         message: Object.values(nextErrors).join("\n"),
-        title: "Data Belum Lengkap",
+        title: "Data Still Incomplete",
       });
       return;
     }
@@ -69,7 +69,7 @@ const ChangePasswordPage = () => {
       });
       showChangePasswordToast({
         message: PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
-        title: "Konfirmasi Password Tidak Sesuai",
+        title: "Confirm Password Does Not Match",
       });
       return;
     }
@@ -85,8 +85,8 @@ const ChangePasswordPage = () => {
 
     if (response.success) {
       showChangePasswordToast({
-        message: "Silakan login kembali.",
-        title: "Password Berhasil Diubah",
+        message: "Please relogin.",
+        title: "Password Successfully Changed",
         variant: "success",
       });
       form.reset();
@@ -97,11 +97,11 @@ const ChangePasswordPage = () => {
 
     if (response.message.includes("Current Password")) {
       showChangePasswordToast({
-        message: "Current Password tidak benar.",
-        title: "Gagal Mengubah Password",
+        message: "Current password is incorrect.",
+        title: "Change Password Failed",
       });
       setErrors({
-        currentPassword: "Current Password tidak benar.",
+        currentPassword: "Current password is incorrect.",
       });
       form.elements.currentPassword.value = "";
       currentPasswordRef.current?.focus();
@@ -109,8 +109,8 @@ const ChangePasswordPage = () => {
     }
 
     showChangePasswordToast({
-      message: "Gagal mengubah Password.",
-      title: "Terjadi Kesalahan",
+      message: "Change password failed.",
+      title: "Change Password Failed",
     });
   };
 

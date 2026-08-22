@@ -96,13 +96,13 @@ const ResetPasswordPage = () => {
       if (hasEmptyField) {
         showToast({
           message: issues.map((issue) => issue.message).join("\n"),
-          title: "Data Belum Lengkap",
+          title: "Data Still Incomplete",
           variant: "error",
         });
       } else if (hasConfirmationMismatch) {
         showToast({
           message: PASSWORD_CONFIRMATION_MISMATCH_MESSAGE,
-          title: "Konfirmasi Password Tidak Sesuai",
+          title: "Confirm Password Does Not Match",
           variant: "error",
         });
       }
@@ -120,8 +120,8 @@ const ResetPasswordPage = () => {
 
     if (!response.success) {
       showToast({
-        message: "Link reset password tidak valid atau telah kedaluwarsa.",
-        title: "Link Reset Tidak Valid",
+        message: "Password reset link is invalid or has expired.",
+        title: "Reset Link Invalid",
         variant: "error",
       });
       setTokenValidation({
@@ -132,8 +132,8 @@ const ResetPasswordPage = () => {
     }
 
     showToast({
-      message: "Silakan login menggunakan password baru.",
-      title: "Password Berhasil Diubah",
+      message: "Please login using the new password.",
+      title: "Password Successfully Changed",
       variant: "success",
     });
     setResetResult(response);

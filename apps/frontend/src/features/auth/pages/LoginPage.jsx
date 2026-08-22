@@ -67,7 +67,7 @@ const LoginPage = () => {
 
       showToast({
         message: response.message,
-        title: response.success ? "Login Berhasil" : "Login Gagal",
+        title: response.success ? "Login Success" : "Login Failed",
         variant: response.success ? "success" : "error",
       });
 
@@ -78,8 +78,8 @@ const LoginPage = () => {
       }
     } catch {
       showToast({
-        message: "Login gagal diproses.",
-        title: "Login Gagal",
+        message: "Process Login Failed.",
+        title: "Login Failed",
         variant: "error",
       });
       setIsSubmitting(false);
