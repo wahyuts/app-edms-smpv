@@ -8,31 +8,31 @@ const requiredText = (fieldName, message = `${fieldName} is required.`) =>
   }).trim().min(1, message);
 
 const requiredConfirmPassword = z.string({
-  error: "Konfirmasi password wajib diisi",
-}).trim().min(1, "Konfirmasi password wajib diisi");
+  error: "Confirm password is required",
+}).trim().min(1, "Confirm password is required");
 
-const emailSchema = requiredText("Email", "Email wajib di isi.").email("Email tidak valid.");
+const emailSchema = requiredText("Email", "Email is required.").email("Email is not valid.");
 
 export const userIdentitySchema = z.object({
-  department: requiredText("Department", "Department wajib di isi."),
+  department: requiredText("Department", "Department is required."),
   email: emailSchema,
-  name: requiredText("Name", "Name wajib di isi."),
-  username: requiredText("Username", "Username wajib di isi."),
+  name: requiredText("Name", "Name is required."),
+  username: requiredText("Username", "Username is required."),
 });
 
 export const updateUserIdentitySchema = z.object({
-  department: requiredText("Department", "Department wajib di isi."),
+  department: requiredText("Department", "Department is required."),
   email: emailSchema,
-  name: requiredText("Name", "Name wajib di isi."),
+  name: requiredText("Name", "Name is required."),
 });
 
 export const createUserSchema = userIdentitySchema.extend({
   confirmPassword: requiredConfirmPassword,
-  initialPassword: requiredText("Initial Password", "Password wajib di isi."),
+  initialPassword: requiredText("Initial Password", "Password is required."),
 }).refine(
   (value) => value.initialPassword === value.confirmPassword,
   {
-    message: "Konfirmasi password tidak sama",
+    message: "Confirm password does not match",
     path: ["confirmPassword"],
   },
 );

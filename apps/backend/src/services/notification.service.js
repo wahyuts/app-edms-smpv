@@ -65,14 +65,14 @@ const messageDictionary = Object.freeze({
     title: 'Document Approved',
   },
   [NOTIFICATION_EVENT_TYPE.SLA_AT_RISK]: {
-    message: 'Document is approaching its SLA limit.',
+    message: 'Document is approaching review time limit.',
     priority: 'Medium',
-    title: 'SLA Warning',
+    title: 'Document At Risk',
   },
   [NOTIFICATION_EVENT_TYPE.SLA_OVERDUE]: {
-    message: 'Document has exceeded the SLA limit.',
+    message: 'Document has exceeded review time limit.',
     priority: 'High',
-    title: 'SLA Overdue',
+    title: 'Document Overdue',
   },
 });
 
