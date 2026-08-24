@@ -6,10 +6,10 @@ import { env } from "@/app/config/env";
 import { AuthService } from "@/features/auth/services/auth.service";
 
 const GENERIC_MESSAGE = [
-  "Jika data akun valid, link Reset Password telah dikirim ke Registered Email.",
-  "Periksa Inbox atau Spam Email Anda jika email belum ditemukan.",
+  "If the account details are valid, a password reset link has been sent to the registered email address.",
+  "Check your inbox or spam folder if you don't see the email.",
   "",
-  "Periksa inbox dan ikuti instruksi untuk melanjutkan.",
+  "Please follow the instructions on your email to proceed",
 ].join("\n");
 
 const formatDateTime = (value) => {
@@ -135,7 +135,7 @@ const CheckEmailPage = () => {
         Account Recovery
       </p>
       <h1 className="mt-3 text-3xl font-bold text-[#F8FAFC]">
-        Periksa Email Anda
+        Check Your Email
       </h1>
       <p className="mx-auto mt-3 max-w-xl whitespace-pre-line text-sm leading-6 text-[#CBD5E1]">
         {GENERIC_MESSAGE}
@@ -149,7 +149,7 @@ const CheckEmailPage = () => {
         className="mt-8 inline-flex text-sm font-medium text-[#00C8FF] transition-colors hover:text-[#F8FAFC]"
         to="/login"
       >
-        Kembali ke Login
+        Back to Login
       </Link>
     </section>
   );

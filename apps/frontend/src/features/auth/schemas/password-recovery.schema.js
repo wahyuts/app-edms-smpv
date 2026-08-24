@@ -1,14 +1,14 @@
 import { z } from "zod";
 
-export const PASSWORD_CONFIRMATION_MISMATCH_MESSAGE = "Confirm Password tidak sama.";
+export const PASSWORD_CONFIRMATION_MISMATCH_MESSAGE = "Confirm Password does not match.";
 
 const requiredText = (fieldName) =>
   z.string({
-    error: `${fieldName} wajib diisi.`,
-  }).trim().min(1, `${fieldName} wajib diisi.`);
+    error: `${fieldName} is required.`,
+  }).trim().min(1, `${fieldName} is required.`);
 
 export const forgotPasswordSchema = z.object({
-  registeredEmail: requiredText("Registered Email").email("Registered Email tidak valid."),
+  registeredEmail: requiredText("Registered Email").email("Registered Email is required."),
   username: requiredText("Username"),
 });
 

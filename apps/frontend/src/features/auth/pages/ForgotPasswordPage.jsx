@@ -70,7 +70,7 @@ const ForgotPasswordPage = () => {
           Forgot Password
         </h1>
         <p className="mt-2 text-sm text-[#CBD5E1]">
-          Masukkan Username dan Registered Email untuk meminta link Reset Password.
+          Enter your username and registered email to request a password reset link.
         </p>
       </div>
 
@@ -84,7 +84,7 @@ const ForgotPasswordPage = () => {
           <input
             autoComplete="username"
             className={inputClassName}
-            placeholder="Masukkan username"
+            placeholder="Enter username"
             type="text"
             {...register("username")}
           />
@@ -98,7 +98,7 @@ const ForgotPasswordPage = () => {
           <input
             autoComplete="email"
             className={inputClassName}
-            placeholder="Masukkan registered email"
+            placeholder="Enter registered email"
             type="email"
             {...register("registeredEmail")}
           />
@@ -112,14 +112,14 @@ const ForgotPasswordPage = () => {
           disabled={isSubmitting}
           type="submit"
         >
-          {isSubmitting ? "Mengirim..." : "Kirim Link Reset"}
+          {isSubmitting ? "Sending..." : "Send Reset Link"}
         </button>
 
         <Link
           className="text-center text-sm font-medium text-[#00C8FF] transition-colors hover:text-[#F8FAFC]"
           to="/login"
         >
-          Kembali ke Login
+          Back to Login
         </Link>
       </form>
     </section>
