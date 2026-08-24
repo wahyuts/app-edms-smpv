@@ -22,23 +22,23 @@ const TokenStateMessage = ({ description, title }) => (
       className="mt-8 inline-flex h-11 items-center rounded-md bg-[#0F7BFF] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30"
       to="/login"
     >
-      Kembali ke Login
+      Back to Login
     </Link>
   </section>
 );
 
 const tokenStateContent = {
   expired: {
-    description: "Link Reset Password telah kedaluwarsa.",
-    title: "Link Reset Kedaluwarsa",
+    description: "The password reset link has expired.",
+    title: "Reset Link Expired",
   },
   invalid: {
-    description: "Link Reset Password tidak valid.",
-    title: "Link Reset Tidak Valid",
+    description: "The password reset link is invalid.",
+    title: "Reset Link Invalid",
   },
   used: {
-    description: "Link Reset Password sudah digunakan.",
-    title: "Link Reset Sudah Digunakan",
+    description: "The password reset link has already been used.",
+    title: "Reset Link Already Used",
   },
 };
 
@@ -151,10 +151,10 @@ const ResetPasswordPage = () => {
           Account Recovery
         </p>
         <h1 className="mt-3 text-3xl font-bold text-[#F8FAFC]">
-          Memvalidasi Link Reset
+          Validating Reset Link
         </h1>
         <p className="mt-3 text-sm text-[#CBD5E1]">
-          Sistem sedang memeriksa link Reset Password.
+          System is checking the password reset link.
         </p>
       </section>
     );
@@ -167,10 +167,10 @@ const ResetPasswordPage = () => {
           Account Recovery
         </p>
         <h1 className="mt-3 text-3xl font-bold text-[#F8FAFC]">
-          Password Berhasil Direset
+          Password Successfully Reset
         </h1>
         <p className="mt-3 text-sm leading-6 text-[#CBD5E1]">
-          Gunakan password baru untuk Login.
+          Use new password to login.
         </p>
         {resetResult ? (
           <p className="sr-only" role="status">{resetResult.message}</p>
@@ -179,7 +179,7 @@ const ResetPasswordPage = () => {
           className="mt-8 inline-flex h-11 items-center rounded-md bg-[#0F7BFF] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#0B63CC] focus:outline-none focus:ring-2 focus:ring-[#0F7BFF]/30"
           to="/login"
         >
-          Kembali ke Login
+          Back to Login
         </Link>
       </section>
     );
@@ -200,7 +200,7 @@ const ResetPasswordPage = () => {
           Reset Password
         </h1>
         <p className="mt-2 text-sm text-[#CBD5E1]">
-          Buat password baru untuk akun EDMS Anda.
+          Create new password for your EDMS account.
         </p>
       </div>
 
@@ -213,7 +213,7 @@ const ResetPasswordPage = () => {
           <span>New Password</span>
           <PasswordInput
             autoComplete="new-password"
-            placeholder="Masukkan password baru"
+            placeholder="Enter new password"
             {...register("newPassword")}
           />
           {errors.newPassword ? (
@@ -226,7 +226,7 @@ const ResetPasswordPage = () => {
           <PasswordInput
             autoComplete="new-password"
             hideLabel="Sembunyikan confirm password"
-            placeholder="Masukkan confirm password"
+            placeholder="Enter confirm password"
             showLabel="Tampilkan confirm password"
             {...register("confirmPassword")}
           />
@@ -240,14 +240,14 @@ const ResetPasswordPage = () => {
           disabled={isSubmitting}
           type="submit"
         >
-          {isSubmitting ? "Memproses..." : "Reset Password"}
+          {isSubmitting ? "Processing..." : "Reset Password"}
         </button>
 
         <Link
           className="text-center text-sm font-medium text-[#00C8FF] transition-colors hover:text-[#F8FAFC]"
           to="/login"
         >
-          Kembali ke Login
+          Back to Login
         </Link>
       </form>
     </section>
