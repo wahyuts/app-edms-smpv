@@ -85,7 +85,7 @@ const MockEmailInbox = ({ requestId }) => {
               );
             }) : (
               <p className="rounded-md border border-dashed border-[#123A5A] px-4 py-5 text-sm text-[#94A3B8]">
-                Email development tidak ditemukan untuk request ini.
+                Email development not found for this request.
               </p>
             )}
           </div>
