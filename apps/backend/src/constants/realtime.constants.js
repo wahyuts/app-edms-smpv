@@ -21,6 +21,7 @@ const REALTIME_EVENT_TYPE = Object.freeze({
   NOTIFICATION_READ_ALL: 'notification.read_all',
   PROJECT_MEMBERSHIP_CHANGED: 'project_membership.changed',
   REVISION_UPLOADED: 'revision.uploaded',
+  SESSION_REPLACED: 'session.replaced',
   SLA_CHANGED: 'sla.changed',
   WORKFLOW_CHANGED: 'workflow.changed',
 });
@@ -31,6 +32,7 @@ const REALTIME_RESOURCE_TYPE = Object.freeze({
   PROJECT_MEMBERSHIP: 'Project Membership',
   REALTIME: 'Realtime',
   REVISION: 'Revision',
+  SESSION: 'Session',
   WORKFLOW_COMMENT: 'Workflow Comment',
 });
 

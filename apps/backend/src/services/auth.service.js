@@ -2,12 +2,15 @@ const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const env = require('../config/env');
 const {
+  AUTH_ERROR_CODES,
+  AUTH_SESSION_REVOCATION_REASONS,
   AUTH_TOKEN_TYPES,
   AUTH_MESSAGES,
 } = require('../constants/auth.constants');
 const authRepository = require('../repositories/auth.repository');
 const authorizationService = require('./authorization.service');
 const projectContextService = require('./projectContext.service');
+const sessionTakeoverRealtimeService = require('./sessionTakeoverRealtime.service');
 const {
   generateAccessToken,
   generateRefreshToken,
@@ -17,9 +20,12 @@ const {
 } = require('../utils/token');
 const jwtConfig = require('../config/jwt');
 
-const createAuthError = (message = AUTH_MESSAGES.UNAUTHENTICATED, statusCode = 401) => {
+const createAuthError = (message = AUTH_MESSAGES.UNAUTHENTICATED, statusCode = 401, code) => {
   const error = new Error(message);
   error.statusCode = statusCode;
+  if (code) {
+    error.code = code;
+  }
   return error;
 };
 
@@ -43,6 +49,69 @@ const isTokenIssuedBeforePasswordChange = (tokenIssuedAt, passwordChangedAtEpoch
   const passwordChangedAt = Number(passwordChangedAtEpoch);
 
   return Number.isFinite(issuedAt) && Number.isFinite(passwordChangedAt) && issuedAt < passwordChangedAt;
+};
+
+const isExpiredSession = (session) => {
+  if (!session?.expires_at) return true;
+  return new Date(session.expires_at).getTime() <= Date.now();
+};
+
+const wasSessionReplacedByNewLogin = async (session) => {
+  if (
+    !session?.revoked_at ||
+    session.revoked_reason !== AUTH_SESSION_REVOCATION_REASONS.FORCE_LOGOUT
+  ) {
+    return false;
+  }
+
+  return authRepository.hasActiveSessionIssuedAtOrAfter({
+    excludedSessionId: session.id,
+    issuedAt: session.issued_at,
+    userId: session.user_id,
+  });
+};
+
+const createInvalidSessionError = () =>
+  createAuthError(
+    AUTH_MESSAGES.INVALID_SESSION,
+    401,
+    AUTH_ERROR_CODES.INVALID_SESSION
+  );
+
+const createSessionReplacedError = () =>
+  createAuthError(
+    AUTH_MESSAGES.SESSION_REPLACED,
+    401,
+    AUTH_ERROR_CODES.SESSION_REPLACED
+  );
+
+const assertActiveSession = async ({ sessionId, userId }) => {
+  if (!sessionId) {
+    throw createInvalidSessionError();
+  }
+
+  const session = await authRepository.findRefreshSessionByIdAndUserId({
+    sessionId,
+    userId,
+  });
+
+  if (!session) {
+    throw createInvalidSessionError();
+  }
+
+  if (session.revoked_at) {
+    if (await wasSessionReplacedByNewLogin(session)) {
+      throw createSessionReplacedError();
+    }
+
+    throw createInvalidSessionError();
+  }
+
+  if (isExpiredSession(session)) {
+    throw createInvalidSessionError();
+  }
+
+  return session;
 };
 
 const buildAuthPayload = async (user) => {
@@ -87,7 +156,7 @@ const login = async ({ username, password, deviceName, ipAddress }) => {
   });
   const refreshTokenHash = hashToken(refreshToken);
 
-  const session = await authRepository.createRefreshSession({
+  const session = await authRepository.createRefreshSessionWithLoginTakeover({
     sessionId,
     sessionFamilyId,
     deviceId,
@@ -96,8 +165,16 @@ const login = async ({ username, password, deviceName, ipAddress }) => {
     expiresAt: refreshExpiresAt,
     deviceName,
     ipAddress,
+    revokedReason: AUTH_SESSION_REVOCATION_REASONS.FORCE_LOGOUT,
   });
-  const accessToken = generateAccessToken(credential.user.id);
+
+  sessionTakeoverRealtimeService.publishSessionReplacedSafely({
+    newSessionId: session.sessionId,
+    oldSessionIds: session.replacedSessionIds,
+    userId: credential.user.id,
+  });
+
+  const accessToken = generateAccessToken(credential.user.id, session.sessionId);
 
   return {
     accessToken,
@@ -108,12 +185,14 @@ const login = async ({ username, password, deviceName, ipAddress }) => {
   };
 };
 
-const getAuthenticatedUser = async (userId, tokenIssuedAt) => {
+const getAuthenticatedUser = async (userId, tokenIssuedAt, sessionId) => {
   const user = await authRepository.findActiveUserById(userId);
 
   if (!user) {
     throw createAuthError(AUTH_MESSAGES.UNAUTHENTICATED);
   }
+
+  await assertActiveSession({ sessionId, userId });
 
   if (isTokenIssuedBeforePasswordChange(tokenIssuedAt, user.passwordChangedAtEpoch)) {
     throw createAuthError(AUTH_MESSAGES.UNAUTHENTICATED);
@@ -132,12 +211,24 @@ const refresh = async ({ refreshToken, ipAddress }) => {
   }
 
   const refreshTokenHash = hashToken(refreshToken);
-  const session = await authRepository.findValidRefreshSession({
+  const session = await authRepository.findRefreshSessionByIdAndHash({
     sessionId: payload.sessionId,
     refreshTokenHash,
   });
 
   if (!session) {
+    throw createAuthError(AUTH_MESSAGES.INVALID_REFRESH_TOKEN);
+  }
+
+  if (session.revoked_at) {
+    if (await wasSessionReplacedByNewLogin(session)) {
+      throw createSessionReplacedError();
+    }
+
+    throw createAuthError(AUTH_MESSAGES.INVALID_REFRESH_TOKEN);
+  }
+
+  if (isExpiredSession(session)) {
     throw createAuthError(AUTH_MESSAGES.INVALID_REFRESH_TOKEN);
   }
 
@@ -152,7 +243,7 @@ const refresh = async ({ refreshToken, ipAddress }) => {
     ipAddress,
   });
 
-  const accessToken = generateAccessToken(user.id);
+  const accessToken = generateAccessToken(user.id, session.id);
 
   return {
     accessToken,
@@ -169,13 +260,13 @@ const logout = async ({ refreshToken }) => {
   try {
     const payload = verifyToken(refreshToken, AUTH_TOKEN_TYPES.REFRESH);
 
-    await authRepository.revokeRefreshSession({
+    const affectedRows = await authRepository.revokeRefreshSession({
       sessionId: payload.sessionId,
       refreshTokenHash: hashToken(refreshToken),
-      reason: 'Logout',
+      reason: AUTH_SESSION_REVOCATION_REASONS.LOGOUT,
     });
 
-    return { userId: payload.sub };
+    return { userId: affectedRows === 1 ? payload.sub : null };
   } catch (error) {
     return { userId: null };
   }

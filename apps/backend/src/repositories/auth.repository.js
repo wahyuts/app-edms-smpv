@@ -183,6 +183,78 @@ const createRefreshSession = async ({
   };
 };
 
+const createRefreshSessionWithLoginTakeover = async ({
+  sessionId,
+  sessionFamilyId,
+  deviceId,
+  userId,
+  refreshTokenHash,
+  expiresAt,
+  deviceName,
+  ipAddress,
+  revokedReason,
+}) => {
+  const connection = await pool.getConnection();
+  let replacedSessionIds = [];
+
+  try {
+    await connection.beginTransaction();
+    await connection.execute('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
+    const [activeSessionRows] = await connection.execute(
+      `
+        SELECT id
+        FROM refresh_sessions
+        WHERE user_id = ?
+          AND revoked_at IS NULL
+          AND expires_at > UTC_TIMESTAMP(3)
+      `,
+      [userId]
+    );
+    replacedSessionIds = activeSessionRows.map((row) => row.id);
+    await connection.execute(
+      `
+        UPDATE refresh_sessions
+        SET revoked_at = UTC_TIMESTAMP(3), revoked_reason = ?
+        WHERE user_id = ?
+          AND revoked_at IS NULL
+          AND expires_at > UTC_TIMESTAMP(3)
+      `,
+      [revokedReason, userId]
+    );
+    await connection.execute(
+      `
+        INSERT INTO refresh_sessions (
+          id,
+          user_id,
+          session_family_id,
+          device_id,
+          device_name,
+          refresh_token_hash,
+          issued_at,
+          expires_at,
+          created_ip,
+          last_ip
+        )
+        VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3), ?, ?, ?)
+      `,
+      [sessionId, userId, sessionFamilyId, deviceId, deviceName, refreshTokenHash, expiresAt, ipAddress, ipAddress]
+    );
+
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  return {
+    replacedSessionIds,
+    sessionId,
+    sessionFamilyId,
+  };
+};
+
 const findValidRefreshSession = async ({ sessionId, refreshTokenHash }) => {
   const [rows] = await pool.execute(
     `
@@ -200,6 +272,54 @@ const findValidRefreshSession = async ({ sessionId, refreshTokenHash }) => {
   return rows[0] || null;
 };
 
+const findRefreshSessionByIdAndHash = async ({ sessionId, refreshTokenHash }) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT id, user_id, refresh_token_hash, revoked_at, revoked_reason, expires_at, issued_at
+      FROM refresh_sessions
+      WHERE id = ?
+        AND refresh_token_hash = ?
+      LIMIT 1
+    `,
+    [sessionId, refreshTokenHash]
+  );
+
+  return rows[0] || null;
+};
+
+const findRefreshSessionByIdAndUserId = async ({ sessionId, userId }) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT id, user_id, revoked_at, revoked_reason, expires_at, issued_at
+      FROM refresh_sessions
+      WHERE id = ?
+        AND user_id = ?
+      LIMIT 1
+    `,
+    [sessionId, userId]
+  );
+
+  return rows[0] || null;
+};
+
+const hasActiveSessionIssuedAtOrAfter = async ({ excludedSessionId, issuedAt, userId }) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT id
+      FROM refresh_sessions
+      WHERE user_id = ?
+        AND id <> ?
+        AND revoked_at IS NULL
+        AND expires_at > UTC_TIMESTAMP(3)
+        AND (? IS NULL OR issued_at >= ?)
+      LIMIT 1
+    `,
+    [userId, excludedSessionId, issuedAt || null, issuedAt || null]
+  );
+
+  return rows.length > 0;
+};
+
 const touchRefreshSession = async ({ sessionId, ipAddress }) => {
   await pool.execute(
     `
@@ -212,7 +332,7 @@ const touchRefreshSession = async ({ sessionId, ipAddress }) => {
 };
 
 const revokeRefreshSession = async ({ sessionId, refreshTokenHash, reason }) => {
-  await pool.execute(
+  const [result] = await pool.execute(
     `
       UPDATE refresh_sessions
       SET revoked_at = UTC_TIMESTAMP(3), revoked_reason = ?
@@ -220,6 +340,8 @@ const revokeRefreshSession = async ({ sessionId, refreshTokenHash, reason }) => 
     `,
     [reason, sessionId, refreshTokenHash]
   );
+
+  return result.affectedRows;
 };
 
 const changePasswordAndRevokeSessions = async ({ userId, passwordHash }) => {
@@ -262,11 +384,15 @@ const changePasswordAndRevokeSessions = async ({ userId, passwordHash }) => {
 };
 
 module.exports = {
+  createRefreshSessionWithLoginTakeover,
   findUserCredentialByUsername,
   findActiveUserById,
   findCredentialByUserId,
   createRefreshSession,
+  findRefreshSessionByIdAndHash,
+  findRefreshSessionByIdAndUserId,
   findValidRefreshSession,
+  hasActiveSessionIssuedAtOrAfter,
   touchRefreshSession,
   revokeRefreshSession,
   changePasswordAndRevokeSessions,

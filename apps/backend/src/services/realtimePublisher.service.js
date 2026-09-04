@@ -11,6 +11,7 @@ const eventTypePattern = /^[a-z]+(?:[._][a-z]+)*$/;
 
 const buildRealtimeEvent = ({
   actorUserId = null,
+  code = null,
   commentId = null,
   correlationId = null,
   documentId = null,
@@ -27,6 +28,7 @@ const buildRealtimeEvent = ({
 }) => {
   const event = {
     actorUserId: actorUserId ?? null,
+    code: code ?? null,
     commentId: commentId ?? null,
     correlationId: correlationId ?? null,
     documentId: documentId ?? null,
