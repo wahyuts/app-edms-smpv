@@ -2,6 +2,7 @@ const logger = require('../config/logger');
 const { REALTIME_EVENT_SCOPE } = require('../constants/realtime.constants');
 
 const connections = new Map();
+const connectionIdsBySessionId = new Map();
 const connectionIdsByUserId = new Map();
 const connectionIdsByProjectId = new Map();
 
@@ -36,6 +37,7 @@ const register = ({
   projectId,
   requestId = null,
   response,
+  sessionId = null,
   userId,
 }) => {
   const connection = {
@@ -46,10 +48,14 @@ const register = ({
     projectId,
     requestId,
     response,
+    sessionId,
     userId,
   };
 
   connections.set(connectionId, connection);
+  if (sessionId) {
+    addIndex(connectionIdsBySessionId, sessionId, connectionId);
+  }
   addIndex(connectionIdsByUserId, userId, connectionId);
   if (projectId) {
     addIndex(connectionIdsByProjectId, projectId, connectionId);
@@ -60,6 +66,7 @@ const register = ({
     'event=connected',
     `connectionId=${connectionId}`,
     `userId=${userId}`,
+    `sessionId=${sessionId || '-'}`,
     `projectId=${projectId}`,
     `activeConnectionCount=${connections.size}`
   );
@@ -76,6 +83,9 @@ const unregister = (connectionId, { reason = 'disconnect' } = {}) => {
   }
 
   connections.delete(connectionId);
+  if (connection.sessionId) {
+    removeIndex(connectionIdsBySessionId, connection.sessionId, connectionId);
+  }
   removeIndex(connectionIdsByUserId, connection.userId, connectionId);
   if (connection.projectId) {
     removeIndex(connectionIdsByProjectId, connection.projectId, connectionId);
@@ -86,6 +96,7 @@ const unregister = (connectionId, { reason = 'disconnect' } = {}) => {
     'event=disconnected',
     `connectionId=${connectionId}`,
     `userId=${connection.userId}`,
+    `sessionId=${connection.sessionId || '-'}`,
     `projectId=${connection.projectId}`,
     `durationMs=${getDurationMs(connection)}`,
     `reason=${reason}`,
@@ -104,6 +115,9 @@ const listConnectionIdsByUser = (userId) =>
 
 const listConnectionIdsByProject = (projectId) =>
   [...(connectionIdsByProjectId.get(String(projectId)) || new Set())];
+
+const listConnectionIdsBySession = (sessionId) =>
+  [...(connectionIdsBySessionId.get(String(sessionId)) || new Set())];
 
 const listConnectionIdsByUsersInProject = ({ projectId, userIds = [] }) => {
   const projectConnections = connectionIdsByProjectId.get(String(projectId)) || new Set();
@@ -212,6 +226,17 @@ const closeConnectionsByUser = (userId, { reason = 'user_closed' } = {}) => {
   });
 };
 
+const closeConnectionsBySession = (sessionId, { reason = 'session_closed' } = {}) => {
+  listConnectionIdsBySession(sessionId).forEach((connectionId) => {
+    unregister(connectionId, { reason });
+  });
+};
+
+const closeConnectionsBySessions = (sessionIds = [], { reason = 'session_closed' } = {}) => {
+  [...new Set(sessionIds.filter(Boolean).map((sessionId) => String(sessionId)))]
+    .forEach((sessionId) => closeConnectionsBySession(sessionId, { reason }));
+};
+
 const closeAll = ({ reason = 'shutdown' } = {}) => {
   [...connections.keys()].forEach((connectionId) => {
     unregister(connectionId, { reason });
@@ -220,6 +245,8 @@ const closeAll = ({ reason = 'shutdown' } = {}) => {
 
 module.exports = {
   closeAll,
+  closeConnectionsBySession,
+  closeConnectionsBySessions,
   closeConnectionsByUser,
   deliver,
   getConnection,
@@ -233,6 +260,14 @@ module.exports = {
   }),
   sendToUser: (userId, event) => sendToConnectionIds({
     connectionIds: listConnectionIdsByUser(userId),
+    event,
+  }),
+  sendToSession: (sessionId, event) => sendToConnectionIds({
+    connectionIds: listConnectionIdsBySession(sessionId),
+    event,
+  }),
+  sendToSessions: (sessionIds, event) => sendToConnectionIds({
+    connectionIds: [...new Set(sessionIds.flatMap(listConnectionIdsBySession))],
     event,
   }),
   sendToUserInProject: ({ event, projectId, userId }) => sendToConnectionIds({
