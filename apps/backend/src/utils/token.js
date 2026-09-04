@@ -42,9 +42,10 @@ const signToken = ({ userId, tokenType, sessionId, expiresIn }) => {
   );
 };
 
-const generateAccessToken = (userId) => {
+const generateAccessToken = (userId, sessionId) => {
   return signToken({
     userId,
+    sessionId,
     tokenType: AUTH_TOKEN_TYPES.ACCESS,
     expiresIn: jwtConfig.accessTokenExpiresIn,
   });

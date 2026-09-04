@@ -89,6 +89,7 @@ const openConnection = async ({ req, res }) => {
 
   const connectionId = createEntityId('RT-CONN');
   const projectId = req.activeProject?.id ?? null;
+  const sessionId = req.sessionId ?? null;
   const userId = req.user.id;
   const requestId = req.id || req.headers['x-request-id'] || null;
 
@@ -139,6 +140,7 @@ const openConnection = async ({ req, res }) => {
     projectId,
     requestId,
     response: res,
+    sessionId,
     userId,
   });
 

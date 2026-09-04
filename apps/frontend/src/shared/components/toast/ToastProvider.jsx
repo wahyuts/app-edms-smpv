@@ -1,5 +1,11 @@
 import { X } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  SESSION_REPLACED_NOTICE,
+  SESSION_REPLACED_NOTICE_EVENT,
+  SESSION_REPLACED_NOTICE_STORAGE_KEY,
+} from "@/features/auth/services/session-takeover.service";
 
 import { ToastContext } from "./toast.context";
 
@@ -119,6 +125,66 @@ export const ToastProvider = ({ children }) => {
     },
     [removeToast],
   );
+
+  const showSessionReplacedToast = useCallback(
+    (notice = {}) => {
+      showToast({
+        message: notice.message ?? SESSION_REPLACED_NOTICE.message,
+        title: notice.title ?? SESSION_REPLACED_NOTICE.title,
+        variant: notice.variant ?? SESSION_REPLACED_NOTICE.variant,
+      });
+    },
+    [showToast],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const readStoredNotice = () => {
+      try {
+        const storedNotice = window.sessionStorage?.getItem(
+          SESSION_REPLACED_NOTICE_STORAGE_KEY,
+        );
+
+        if (!storedNotice) return null;
+
+        window.sessionStorage.removeItem(SESSION_REPLACED_NOTICE_STORAGE_KEY);
+        return JSON.parse(storedNotice);
+      } catch {
+        window.sessionStorage?.removeItem(SESSION_REPLACED_NOTICE_STORAGE_KEY);
+        return SESSION_REPLACED_NOTICE;
+      }
+    };
+
+    const storedNotice = readStoredNotice();
+    let storedNoticeTimeoutId = null;
+
+    if (storedNotice) {
+      storedNoticeTimeoutId = window.setTimeout(() => {
+        showSessionReplacedToast(storedNotice);
+      }, 0);
+    }
+
+    const handleSessionReplaced = (event) => {
+      showSessionReplacedToast(event.detail);
+    };
+
+    window.addEventListener(
+      SESSION_REPLACED_NOTICE_EVENT,
+      handleSessionReplaced,
+    );
+
+    return () => {
+      if (storedNoticeTimeoutId) {
+        window.clearTimeout(storedNoticeTimeoutId);
+      }
+
+      window.removeEventListener(
+        SESSION_REPLACED_NOTICE_EVENT,
+        handleSessionReplaced,
+      );
+    };
+  }, [showSessionReplacedToast]);
 
   const toastValue = useMemo(
     () => ({

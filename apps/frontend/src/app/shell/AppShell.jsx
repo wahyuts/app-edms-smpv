@@ -3,7 +3,12 @@ import { Bell, ChevronDown, ChevronLeft, ChevronRight, LogOut } from "lucide-rea
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import navigation from "@/app/navigation";
+import SessionTakeoverModal from "@/features/auth/components/SessionTakeoverModal";
 import { AuthService } from "@/features/auth/services/auth.service";
+import {
+  SESSION_REPLACED_CODE,
+  SessionTakeoverService,
+} from "@/features/auth/services/session-takeover.service";
 import { useRealtimeDocumentRuntimeSync } from "@/features/document-register";
 import {
   useCurrentUserUnreadNotificationCount,
@@ -101,6 +106,16 @@ const AppShell = ({ children }) => {
   ]);
 
   useRealtimeEvent(refreshProjectContextFromRealtime);
+
+  const handleSessionTakeoverRealtimeEvent = useCallback((event) => {
+    if (event.type !== REALTIME_EVENT_TYPE.SESSION_REPLACED) return;
+    if (event.code !== SESSION_REPLACED_CODE) return;
+    if (String(event.recipientUserId ?? "") !== String(currentUser?.id ?? "")) return;
+
+    SessionTakeoverService.handleRealtimeSessionReplaced();
+  }, [currentUser?.id]);
+
+  useRealtimeEvent(handleSessionTakeoverRealtimeEvent);
 
   useOutsideClick({
     enabled: isUserMenuVisible,
@@ -637,6 +652,7 @@ const AppShell = ({ children }) => {
           </footer>
         </main>
       </div>
+      <SessionTakeoverModal />
     </div>
   );
 };
