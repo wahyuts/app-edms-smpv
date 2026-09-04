@@ -1,3 +1,7 @@
+import {
+  SESSION_REPLACED_CODE,
+  SessionTakeoverService,
+} from "@/features/auth/services/session-takeover.service";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 
 const isAuthEndpoint = (url = "", endpoint) => {
@@ -16,9 +20,18 @@ const isPublicRecoveryPath = (pathname = "") => {
     pathname.startsWith("/mock-email");
 };
 
+const isSessionReplacedError = (error) => {
+  return error.response?.status === 401 &&
+    error.response?.data?.code === SESSION_REPLACED_CODE;
+};
+
 const setupInterceptors = (axiosInstance) => {
   axiosInstance.interceptors.request.use(
     (config) => {
+      if (isAuthEndpoint(config.url, "login")) {
+        SessionTakeoverService.resetSessionTakeoverStateForLogin();
+      }
+
       if (typeof FormData !== "undefined" && config.data instanceof FormData) {
         delete config.headers["Content-Type"];
         delete config.headers["content-type"];
@@ -35,6 +48,11 @@ const setupInterceptors = (axiosInstance) => {
       const originalRequest = error.config;
       const statusCode = error.response?.status;
       const requestUrl = originalRequest?.url ?? "";
+
+      if (isSessionReplacedError(error)) {
+        SessionTakeoverService.handleHttpSessionReplaced();
+        return Promise.reject(error);
+      }
 
       if (
         statusCode !== 401 ||
@@ -63,6 +81,11 @@ const setupInterceptors = (axiosInstance) => {
 
         return axiosInstance(originalRequest);
       } catch (refreshError) {
+        if (isSessionReplacedError(refreshError)) {
+          SessionTakeoverService.handleHttpSessionReplaced();
+          return Promise.reject(refreshError);
+        }
+
         useAuthStore.getState().clearAuth();
 
         if (

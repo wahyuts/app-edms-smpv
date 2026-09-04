@@ -25,7 +25,7 @@ const authenticate = async (req, res, next) => {
       });
     }
 
-    const currentUser = await authService.getAuthenticatedUser(payload.sub, payload.iat);
+    const currentUser = await authService.getAuthenticatedUser(payload.sub, payload.iat, payload.sessionId);
     req.user = currentUser.user;
     req.role = currentUser.role;
     req.permissions = currentUser.permissions;
@@ -33,6 +33,7 @@ const authenticate = async (req, res, next) => {
     req.activeMembership = currentUser.activeMembership;
     req.activeProject = currentUser.activeProject;
     req.officialRole = currentUser.officialRole;
+    req.sessionId = payload.sessionId;
 
     next();
   } catch (error) {
