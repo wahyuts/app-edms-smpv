@@ -26,7 +26,8 @@ INSERT INTO roles (
   (1, 'ROLE-ADMIN', 'Admin', 1),
   (2, 'ROLE-DOCUMENT-OWNER', 'Document Owner', 1),
   (3, 'ROLE-TEAM-PROCESS', 'Team Process', 1),
-  (4, 'ROLE-TEAM-PROJECT', 'Team Project', 1);
+  (4, 'ROLE-TEAM-PROJECT', 'Team Project', 1),
+  (5, 'ROLE-VIEWER', 'Viewer', 1);
 
 INSERT INTO permissions (
   id,
@@ -113,7 +114,16 @@ INSERT INTO role_permissions (
   (4, 15),
   (4, 17),
   (4, 18),
-  (4, 19);
+  (4, 19),
+  (5, 1),
+  (5, 2),
+  (5, 7),
+  (5, 13),
+  (5, 14),
+  (5, 15),
+  (5, 17),
+  (5, 18),
+  (5, 19);
 
 INSERT INTO document_types (
   id,
@@ -176,8 +186,8 @@ INSERT INTO system_metadata (
   `value`,
   updated_at
 ) VALUES
-  ('schema_version', '{"version":"1.0","phase":"1.3"}', '2026-01-01 00:00:00.000'),
-  ('seed_version', '{"version":"1.0","phase":"1.4","name":"seed-base"}', '2026-01-01 00:00:00.000'),
+  ('schema_version', '{"version":"1.1","phase":"2B","changeRequest":"CR-013"}', '2026-01-01 00:00:00.000'),
+  ('seed_version', '{"version":"1.1","phase":"2B","name":"seed-base","changeRequest":"CR-013"}', '2026-01-01 00:00:00.000'),
   ('bootstrap_status', '{"adminCreated":true,"baseSeedApplied":true}', '2026-01-01 00:00:00.000');
 
 COMMIT;

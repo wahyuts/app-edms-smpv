@@ -1,4 +1,117 @@
 
+## CR-013
+
+## Date
+
+2026-10-11
+
+## Request By
+
+Client
+
+## Priority
+
+High
+
+## Description
+
+Menambahkan Official Role kelima bernama **Viewer** sebagai fixed Official Role yang bersifat Project-Scoped melalui Project Membership.
+
+Viewer digunakan untuk kebutuhan akses baca, monitoring, dan download pada Project yang menjadi membership aktifnya.
+
+Viewer tidak menjadi reviewer, tidak menjadi Current Assignee untuk workflow review, dan tidak boleh menjalankan aksi mutasi Business Workflow.
+
+## Impact
+
+### Official Role Catalog
+
+Official Role resmi menjadi:
+
+- Admin.
+- Document Owner.
+- Team Process.
+- Team Project.
+- Viewer.
+
+Viewer bersifat additive dan tidak mengubah definisi empat Official Role existing.
+
+### Project Membership
+
+Viewer diberikan melalui Project Membership.
+
+User dapat memiliki Official Role berbeda pada Project berbeda.
+
+Authorization wajib mengikuti Active Project.
+
+### Viewer Access Matrix v1.0
+
+| Module / Action | Viewer |
+|---|---|
+| Dashboard View | ALLOWED |
+| Document Register View | ALLOWED |
+| Document View | ALLOWED |
+| Document Download | ALLOWED |
+| Comment Read | ALLOWED |
+| History Read | ALLOWED |
+| Attachment View | ALLOWED |
+| Attachment Download | ALLOWED |
+| Document Create | NOT ALLOWED |
+| Document Edit | NOT ALLOWED |
+| Document Delete | NOT ALLOWED |
+| Document Archive/Restore | NOT ALLOWED |
+| Revision Upload/Delete | NOT ALLOWED |
+| Workflow A/B/C | NOT ALLOWED |
+| Comment Create/Edit/Delete | NOT ALLOWED |
+| Attachment Upload/Delete | NOT ALLOWED |
+| SLA Monitoring View | ALLOWED |
+| Escalation Alert View | ALLOWED |
+| Audit Trail View | ALLOWED |
+| Notification View | ALLOWED |
+| Notification Mark as Read | ALLOWED |
+| Personal Notification Delete | ALLOWED |
+| Comment Read Receipt | ALLOWED |
+| My Profile View/Edit | ALLOWED |
+| Change Password | ALLOWED |
+| SLA Action Notification | NOT ALLOWED |
+| User Management | NOT ALLOWED |
+| Project Management | NOT ALLOWED |
+| Project Membership Management | NOT ALLOWED |
+| Role/Permission Management | NOT ALLOWED |
+
+Catatan scope: Notification, My Profile, dan Change Password hanya berlaku untuk akun Viewer sendiri. Audit Trail berlaku project-scoped sesuai authorization backend.
+
+### Personal State Decisions
+
+Viewer boleh menandai read dan menghapus personal notification miliknya sendiri, menghasilkan automatic comment read receipt saat membaca Comment, melihat/mengubah My Profile miliknya sendiri, dan mengganti password miliknya sendiri.
+
+Viewer tidak boleh mengubah notification user lain, menambah/mengubah/menghapus Comment, atau menerima SLA Warning/SLA Overdue notification yang meminta tindakan review atau approval.
+
+### Database
+
+Perubahan Viewer membutuhkan targeted database migration untuk memperluas CHECK constraint Official Role.
+
+Migration belum disetujui untuk eksekusi pada Phase 2A.
+
+### Runtime
+
+Status historis Phase 2A: hanya menyiapkan dokumentasi dan draft migration.
+
+Status development terkini:
+
+- Phase 2B Local Database Migration & Seed: COMPLETE.
+- Phase 2C Backend Viewer Authorization: COMPLETE.
+- Phase 2C.1 Static Authorization Verification: COMPLETE.
+- Phase 3 Frontend Viewer Integration: COMPLETE.
+- Development Manual UAT: SUCCESS.
+- Pre-Deployment Readiness: READY WITH CONDITIONS.
+- Railway Development Database Migration: COMPLETE, executed manually through DBeaver.
+- Railway Development system_metadata update: NOT EXECUTED.
+- Application Deployment: NOT STARTED.
+
+Backend runtime, frontend runtime, local development database, seed artifact, dan Railway Development database telah diselaraskan untuk CR-013. Railway Development migration dilakukan manual tanpa mengubah `system_metadata`, sehingga migration canonical repository tidak boleh dijalankan ulang secara otomatis pada Railway Development. Application deployment, production migration, dan online UAT belum dinyatakan selesai.
+
+---
+
 ## CR-012
 
 ## Date

@@ -3,6 +3,7 @@ export const OFFICIAL_ROLES = [
   { id: 2, roleCode: "ROLE-DOCUMENT-OWNER", roleName: "Document Owner" },
   { id: 3, roleCode: "ROLE-TEAM-PROCESS", roleName: "Team Process" },
   { id: 4, roleCode: "ROLE-TEAM-PROJECT", roleName: "Team Project" },
+  { id: 5, roleCode: "ROLE-VIEWER", roleName: "Viewer" },
 ];
 
 export const ROLE_ID_BY_NAME = Object.fromEntries(

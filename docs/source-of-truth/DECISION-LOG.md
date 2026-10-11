@@ -40,6 +40,52 @@ Fungsi utamanya adalah mencatat alasan di balik setiap keputusan desain dan arsi
 
 ---
 
+# VIEWER OFFICIAL ROLE CHANGE DECISION
+
+## Title
+
+Add Viewer as Fixed Project-Scoped Official Role
+
+### Status
+
+Approved for Documentation and Migration Preparation
+
+### Decision
+
+Official Role Catalog ditambah secara additive dengan role kelima bernama `Viewer`.
+
+Viewer bersifat fixed, Project-Scoped, dan diberikan melalui Project Membership.
+
+Viewer memperoleh akses baca, monitoring, dan download pada Project yang menjadi membership aktifnya.
+
+Viewer tidak memperoleh hak create/edit/upload/approval/archive/restore, tidak menjadi Current Assignee, dan tidak menerima SLA Warning atau SLA Overdue notification yang meminta tindakan review atau approval.
+
+Viewer boleh melakukan personal-state action berikut:
+
+- Mark notification milik sendiri sebagai read.
+- Delete personal notification milik sendiri.
+- Menghasilkan automatic comment read receipt ketika membaca Comment.
+- View/Edit My Profile milik sendiri.
+- Change Password milik sendiri.
+
+### Database Decision
+
+Database CHECK constraint Official Role harus diperluas dari empat role existing menjadi lima fixed role.
+
+Perubahan ini membutuhkan targeted migration dan tidak boleh dieksekusi tanpa approval terpisah.
+
+Railway Development execution note:
+
+CR-013 migration untuk Railway Development telah dijalankan manual melalui DBeaver pada database `railway` dan terverifikasi PASS. Eksekusi manual tersebut tidak mengubah `system_metadata`. Migration canonical repository tetap dipertahankan untuk fresh database setup dan environment lain, tetapi tidak boleh dijalankan ulang secara otomatis pada Railway Development tanpa approval dan rencana rekonsiliasi terpisah.
+
+### Reason
+
+Project membutuhkan role monitoring read-only yang tidak mewarisi kemampuan Document Owner maupun reviewer.
+
+Backend tetap menjadi enforcement authority dan Viewer harus memiliki permission set sendiri.
+
+---
+
 # DECISION-001
 
 ## Title

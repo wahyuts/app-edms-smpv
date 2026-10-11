@@ -47,6 +47,12 @@
       "roleCode": "ROLE-TEAM-PROJECT",
       "roleName": "Team Project",
       "isActive": true
+    },
+    {
+      "id": 5,
+      "roleCode": "ROLE-VIEWER",
+      "roleName": "Viewer",
+      "isActive": true
     }
   ],
   "permissions": [
