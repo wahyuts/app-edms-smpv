@@ -1210,8 +1210,13 @@ Official Role operasional berikut bersifat **Project-Scoped**:
 - Document Owner
 - Team Process
 - Team Project
+- Viewer
 
 Official Role tersebut diberikan kepada User Account melalui Project Membership.
+
+Viewer adalah Official Role read-only untuk akses baca, monitoring, dan download pada Project yang menjadi membership aktifnya.
+
+Viewer tidak menjadi Business Actor pada Workflow Review, tidak menjadi Current Assignee, dan tidak memperoleh hak Approval A/B/C.
 
 Role Admin tetap bersifat System-Level untuk kebutuhan administrasi aplikasi.
 
@@ -5055,12 +5060,13 @@ Business Rule Catalog merupakan indeks resmi seluruh aturan bisnis.
 
 Setiap ADR menjadi dasar keputusan arsitektur proyek.
 
-EDMS hanya menggunakan empat Official Role:
+EDMS menggunakan lima Official Role resmi:
 
 - Admin
 - Document Owner
 - Team Process
 - Team Project
+- Viewer
 
 Seluruh terminologi Reviewer Level 1, Reviewer Level 2, Engineering Reviewer, dan Project Reviewer dinyatakan deprecated.
 
@@ -5076,6 +5082,7 @@ Seluruh perubahan Business Workflow harus dicatat sebagai Change Request.
 | CR-002 | Dashboard Document Register Enhancement (View, Download, Comment, SLA Timer, Current Assignee) | Implemented |
 | CR-003 | History menggantikan Approval Button setelah Workflow selesai | Implemented |
 | CR-004 | Multi Project Support melalui Project Context, Project Membership, dan Project Data Isolation | Approved |
+| CR-013 | Official Role Viewer sebagai role kelima read-only berbasis Project Membership | Development Implemented / Online Pending |
 
 Change Request berikutnya harus menggunakan penomoran berurutan.
 

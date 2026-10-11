@@ -17,6 +17,7 @@ const OFFICIAL_ROLES = Object.freeze([
   'Document Owner',
   'Team Process',
   'Team Project',
+  'Viewer',
 ]);
 
 const ADMINISTRATION_MESSAGES = Object.freeze({
