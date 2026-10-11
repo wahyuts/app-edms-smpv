@@ -904,7 +904,7 @@ Attribute naming notes:
 | Closed project is final | `projects.status` | Project close service and governance decision. |
 | Active membership requires active project and active user | `project_memberships` | ProjectService validation. |
 | Membership status must be Active/Inactive | `project_memberships.status` | Project constants. |
-| Official role must be Admin/Document Owner/Team Process/Team Project | `project_memberships.official_role` | Project constants and workflow role checks. |
+| Official role must be Admin/Document Owner/Team Process/Team Project/Viewer | `project_memberships.official_role` | Project constants, Project Membership role options, Viewer Change Request CR-013, and workflow role checks. |
 | One membership per user per project | `project_memberships(project_id, user_id)` | Active project resolution and official role handling assume one authoritative membership record per user in each project. |
 | Membership official role is singular | `project_memberships.official_role` | Each user has one official operational role within a project membership. |
 | Document number unique within project | `engineering_documents(project_id, document_number)` | DocumentService `assertDocumentNumberIsUnique`. |

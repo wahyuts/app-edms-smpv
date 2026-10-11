@@ -18480,6 +18480,8 @@ Ketika Document pertama kali memasuki SLA Status **Overdue**, sistem mengirim Pe
 - Team Process.
 - Team Project.
 
+Viewer tidak menerima SLA Warning atau SLA Overdue notification yang meminta tindakan review atau approval.
+
 Apabila User yang sama memenuhi lebih dari satu jalur penerima, sistem wajib mencegah duplicate Notification untuk Business Event yang sama.
 
 Apabila lebih dari satu User Account memiliki Project Membership Active dengan Official Role yang sama pada Project terkait, maka setiap User Account menerima Notification miliknya masing-masing.
@@ -20690,12 +20692,13 @@ Sebaliknya, Official Role diberikan kepada User melalui **Project Membership** s
 
 ### Official Role Definition
 
-Engineering Document Management System (EDMS) menggunakan empat Official Role, yaitu:
+Engineering Document Management System (EDMS) menggunakan lima Official Role resmi, yaitu:
 
 - Admin
 - Document Owner
 - Team Process
 - Team Project
+- Viewer
 
 Setiap Official Role memiliki tanggung jawab bisnis yang berbeda dan digunakan secara konsisten pada seluruh modul EDMS.
 
@@ -20708,6 +20711,8 @@ Official Role menggunakan pendekatan **Fixed Role Strategy**.
 Daftar Official Role ditentukan sebagai bagian dari arsitektur sistem dan tidak dikelola melalui proses administrasi.
 
 Penambahan, pengurangan, maupun perubahan Official Role berada di luar ruang lingkup versi ini.
+
+Catatan CR-013: `Viewer` telah ditambahkan sebagai perubahan additive terhadap fixed Official Role Catalog. Penambahan Viewer tidak mengubah definisi Admin, Document Owner, Team Process, atau Team Project.
 
 ---
 
@@ -20733,8 +20738,11 @@ Official Role yang termasuk Project-Scoped Official Role adalah:
 - Document Owner
 - Team Process
 - Team Project
+- Viewer
 
 Admin pada Project Membership digunakan untuk administrasi Project dan tidak menjadi Current Assignee pada Business Workflow Document.
+
+Viewer pada Project Membership digunakan untuk akses baca, monitoring, dan download pada Project yang menjadi membership aktifnya. Viewer tidak menjadi Current Assignee dan tidak memperoleh hak Approval A/B/C.
 
 Satu User Account dapat memiliki Official Role yang berbeda pada Project yang berbeda.
 
@@ -20918,6 +20926,43 @@ Team Project memastikan Engineering Document memenuhi kebutuhan Project sebelum 
 - BUSINESS-WORKFLOW.md
 - PART 5 — Document Register
 - PART 6 — SLA Monitoring
+
+---
+
+### Viewer
+
+**Description**
+
+Viewer merupakan Official Role yang bertanggung jawab untuk membaca, memonitor, dan mengunduh informasi Project tanpa menjalankan aksi mutasi Business Workflow.
+
+Role ini digunakan untuk pengguna yang membutuhkan visibilitas terhadap dokumen engineering dan status monitoring pada Project tertentu, tetapi tidak menjadi reviewer dan tidak menjadi Current Assignee.
+
+**Primary Responsibility**
+
+- Melihat Dashboard.
+- Melihat Document Register.
+- Melihat dan mengunduh Document.
+- Membaca Comment dan History.
+- Melihat SLA Monitoring dan Escalation Alert.
+- Melihat Audit Trail sesuai Project Scope.
+- Mengelola personal notification miliknya sendiri dalam batas read/delete personal state.
+
+**Business Function**
+
+Viewer mendukung kebutuhan monitoring dan transparansi Project secara read-only.
+
+Viewer tidak boleh membuat Document, mengedit Document, upload revision, menjalankan Approval A/B/C, membuat atau mengubah Comment, upload Attachment, mengubah SLA/Escalation business state, atau mengakses modul Administration.
+
+Viewer tidak menerima SLA Warning atau SLA Overdue notification yang meminta tindakan review atau approval.
+
+**Reference Module**
+
+- BUSINESS-WORKFLOW.md
+- PART 5 — Document Register
+- PART 6 — SLA Monitoring
+- PART 8 — Notification
+- PART 13 — Escalation Alert
+- PART 14 — Multi Project Management
 
 ---
 
@@ -23098,6 +23143,8 @@ Notification dibuat sebagai hasil dari proses Escalation Alert.
 
 Notification Escalation Alert dikirim kepada seluruh User Active dengan Project Membership Active pada Project milik Document dan Official Role Admin, Document Owner, Team Process, atau Team Project.
 
+Viewer tidak termasuk penerima SLA Warning, SLA Overdue, atau Notification Escalation Alert yang meminta tindakan review atau approval.
+
 ---
 
 ### EA-008 – Notification Frequency
@@ -23148,7 +23195,7 @@ Business Rules berikut mendefinisikan aturan bisnis yang berlaku pada fitur **Es
 | **EA-004** | Escalation Level dihitung secara otomatis berdasarkan jumlah **Overdue Days** sesuai ketentuan pada **13.3 Escalation Level**. |
 | **EA-005** | Escalation Level merupakan **derived data** dan tidak boleh disimpan sebagai data permanen di dalam database. |
 | **EA-006** | Sistem harus membuat satu Notification ketika dokumen pertama kali memasuki kondisi **Overdue**. |
-| **EA-007** | Notification Escalation Alert dikirim kepada Admin, Document Owner, Team Process, dan Team Project pada Project milik Document. |
+| **EA-007** | Notification Escalation Alert dikirim kepada Admin, Document Owner, Team Process, dan Team Project pada Project milik Document. Viewer tidak menerima notification action-oriented review/approval. |
 | **EA-008** | Selama dokumen masih berada pada kondisi **Overdue**, sistem tidak boleh membuat Notification tambahan untuk dokumen yang sama. |
 | **EA-009** | Escalation Alert hanya berfungsi sebagai media monitoring dan tidak boleh mengubah Status Dokumen, Revision Status, Current Assignee, maupun Business Workflow. |
 | **EA-010** | Seluruh data yang ditampilkan pada halaman **Escalation Alert** harus berasal dari hasil evaluasi **SLA Monitoring** sebagai **Single Source of Truth**. |
@@ -23441,7 +23488,7 @@ Setiap Project Membership memiliki:
 | Project Membership ID | Identifier unik Membership. |
 | User Account | User yang menjadi anggota Project. |
 | Project | Project yang diberikan kepada User. |
-| Official Role | Admin, Document Owner, Team Process, atau Team Project. |
+| Official Role | Admin, Document Owner, Team Process, Team Project, atau Viewer. |
 | Membership Status | Active atau Inactive. |
 | Assigned Date | Waktu Membership dibuat. |
 | Assigned By | Admin yang memberikan Membership. |
@@ -23527,8 +23574,11 @@ Role yang tersedia:
 - Document Owner.
 - Team Process.
 - Team Project.
+- Viewer.
 
 Role Admin digunakan sebagai Initial Project Membership untuk Creator Project dan tetap merepresentasikan kewenangan administrasi.
+
+Role Viewer digunakan untuk akses baca, monitoring, dan download pada Project yang menjadi membership aktifnya. Viewer tidak menjadi Current Assignee dan tidak memperoleh hak Approval A/B/C.
 
 Contoh:
 
@@ -24246,4 +24296,3 @@ Manual UAT baseline menggunakan backend sebagai authority untuk permanent storag
 - Download filename tetap menggunakan original filename yang diunggah user.
 - Workflow attachment dipisahkan dari document revision dan disimpan di folder attachment komentar process/project.
 - Temporary upload tetap menjadi satu-satunya pipeline file sebelum promotion permanen.
-

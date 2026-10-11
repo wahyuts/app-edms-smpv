@@ -92,6 +92,30 @@ kembali berada pada kondisi synchronized.
 
 ---
 
+## DDD-003A - Viewer Official Role Targeted Constraint Expansion
+
+Status:
+
+APPROVED FOR PREPARATION ONLY
+
+Keputusan:
+
+Penambahan Official Role `Viewer` merupakan perubahan additive terhadap fixed Official Role Catalog.
+
+Database tetap wajib membatasi Official Role pada daftar fixed role yang disetujui:
+
+- Admin.
+- Document Owner.
+- Team Process.
+- Team Project.
+- Viewer.
+
+Perubahan database yang diperlukan adalah targeted migration untuk memperluas CHECK constraint Official Role, bukan redesign schema dan bukan pelonggaran menjadi unrestricted VARCHAR.
+
+Migration execution membutuhkan approval terpisah sebelum dijalankan terhadap Development, Staging, maupun Production.
+
+---
+
 # 3. Entity Decisions
 
 ## DDD-004 — Document Types

@@ -3,6 +3,7 @@ const ROLES = Object.freeze({
   DOCUMENT_OWNER: 'Document Owner',
   TEAM_PROCESS: 'Team Process',
   TEAM_PROJECT: 'Team Project',
+  VIEWER: 'Viewer',
 });
 
 module.exports = {
