@@ -2183,7 +2183,49 @@ Permission lama `document.read`, `document.review`, `sla.read`, `audit.read`, `e
 - `Document Owner` membuat Document dan Upload Revision pada dokumen yang dikembalikan atau ditolak.
 - `Team Process` menjalankan Approval A/B/C pada status `Process Review`.
 - `Team Project` menjalankan Approval A/B/C pada status `Project Review`.
+- `Viewer` dapat membaca, memonitor, dan mengunduh data Project sesuai Project Scope tanpa menjalankan mutasi Business Workflow.
 - User tanpa Membership aktif pada Project tidak boleh mengakses module project-scoped.
+
+## Viewer Access Matrix v1.0
+
+| Module / Action | Viewer |
+|---|---|
+| Dashboard View | ALLOWED |
+| Document Register View | ALLOWED |
+| Document View | ALLOWED |
+| Document Download | ALLOWED |
+| Comment Read | ALLOWED |
+| History Read | ALLOWED |
+| Attachment View | ALLOWED |
+| Attachment Download | ALLOWED |
+| Document Create | NOT ALLOWED |
+| Document Edit | NOT ALLOWED |
+| Document Delete | NOT ALLOWED |
+| Document Archive/Restore | NOT ALLOWED |
+| Revision Upload/Delete | NOT ALLOWED |
+| Workflow A/B/C | NOT ALLOWED |
+| Comment Create/Edit/Delete | NOT ALLOWED |
+| Attachment Upload/Delete | NOT ALLOWED |
+| SLA Monitoring View | ALLOWED |
+| Escalation Alert View | ALLOWED |
+| Audit Trail View | ALLOWED |
+| Notification View | ALLOWED |
+| Notification Mark as Read | ALLOWED |
+| Personal Notification Delete | ALLOWED |
+| Comment Read Receipt | ALLOWED |
+| My Profile View/Edit | ALLOWED |
+| Change Password | ALLOWED |
+| SLA Action Notification | NOT ALLOWED |
+| User Management | NOT ALLOWED |
+| Project Management | NOT ALLOWED |
+| Project Membership Management | NOT ALLOWED |
+| Role/Permission Management | NOT ALLOWED |
+
+Viewer harus menggunakan permission set sendiri dan tidak boleh diimplementasikan sebagai `Document Owner` dengan tombol disembunyikan.
+
+Backend tetap menjadi enforcement authority untuk seluruh denial di atas.
+
+Catatan scope: Notification, My Profile, dan Change Password hanya berlaku untuk akun Viewer sendiri. Audit Trail berlaku project-scoped sesuai authorization backend.
 
 ## Effective Permission Resolution
 
