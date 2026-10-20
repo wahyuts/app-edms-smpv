@@ -24,7 +24,7 @@ const findUserByEmail = async (email) => {
       SELECT id, username, full_name, email, department_id, department_name_snapshot,
         position, role_id, status, user_code, created_at, updated_at
       FROM users
-      WHERE email = ?
+      WHERE email_uniqueness_key = ?
       LIMIT 1
     `,
     [email]

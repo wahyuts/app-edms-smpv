@@ -11,7 +11,10 @@ const requiredConfirmPassword = z.string({
   error: "Confirm password is required",
 }).trim().min(1, "Confirm password is required");
 
-const emailSchema = requiredText("Email", "Email is required.").email("Email is not valid.");
+const emailSchema = z.preprocess(
+  (value) => typeof value === "string" ? value.trim().toLowerCase() || null : value ?? null,
+  z.string().email("Format email tidak valid.").nullable(),
+);
 
 export const userIdentitySchema = z.object({
   department: requiredText("Department", "Department is required."),

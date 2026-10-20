@@ -57,7 +57,15 @@ CREATE TABLE users (
   user_code VARCHAR(64) NOT NULL,
   username VARCHAR(255) NOT NULL,
   full_name VARCHAR(255) NOT NULL,
-  email VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NULL,
+  email_uniqueness_key VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    GENERATED ALWAYS AS (
+      CASE
+        WHEN email IS NULL OR TRIM(email) = '' THEN NULL
+        WHEN LOWER(TRIM(email)) COLLATE utf8mb4_bin IN ('wahyu.trisna100@gmail.com', 'beta.int100@gmail.com') THEN NULL
+        ELSE LOWER(TRIM(email))
+      END
+    ) STORED,
   department_id BIGINT UNSIGNED NULL,
   department_name_snapshot VARCHAR(255) NULL,
   position VARCHAR(255) NULL,
@@ -68,7 +76,8 @@ CREATE TABLE users (
   PRIMARY KEY (id),
   UNIQUE KEY uq_users_user_code (user_code),
   UNIQUE KEY uq_users_username (username),
-  UNIQUE KEY uq_users_email (email),
+  UNIQUE KEY uq_users_email_uniqueness_key (email_uniqueness_key),
+  KEY idx_users_email (email),
   KEY idx_users_role_id (role_id),
   KEY idx_users_department_id (department_id),
   KEY idx_users_status (status),

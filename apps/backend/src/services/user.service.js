@@ -1,4 +1,5 @@
 const bcrypt = require('bcrypt');
+const { normalizeUserEmail, requiresUniqueEmail, mapEmailDuplicateError } = require('../utils/userEmail');
 const env = require('../config/env');
 const {
   ADMIN_ROLE_CODE,
@@ -36,7 +37,7 @@ const assertUserExists = async (userId) => {
 const assertUniqueUserFields = async ({ currentUserId = null, email, username }) => {
   const [existingUsername, existingEmail] = await Promise.all([
     username ? userRepository.findUserByUsername(username) : Promise.resolve(null),
-    email ? userRepository.findUserByEmail(email) : Promise.resolve(null),
+    requiresUniqueEmail(email) ? userRepository.findUserByEmail(email) : Promise.resolve(null),
   ]);
   const errors = [];
 
@@ -44,7 +45,7 @@ const assertUniqueUserFields = async ({ currentUserId = null, email, username })
     errors.push({ field: 'username', message: 'Username Sudah Digunakan' });
   }
   if (existingEmail && String(existingEmail.id) !== String(currentUserId)) {
-    errors.push({ field: 'email', message: 'Email Sudah Digunakan' });
+    errors.push({ field: 'email', message: 'Email sudah digunakan.' });
   }
   if (errors.length > 0) {
     throw createHttpError('User Sudah Digunakan', 409, errors);
@@ -111,6 +112,7 @@ const listUsers = async (query) => {
 const getUserDetail = (userId) => assertUserExists(userId);
 
 const createUser = async (payload) => {
+  payload = { ...payload, email: normalizeUserEmail(payload.email) };
   const [department, defaultRole] = await Promise.all([
     resolveDepartment(payload),
     resolveDefaultCreateUserRbacRole(),
@@ -132,12 +134,13 @@ const createUser = async (payload) => {
       },
     });
   } catch (error) {
-    const duplicateError = mapDuplicateError(error, 'User Sudah Digunakan', 'username');
+    const duplicateError = mapEmailDuplicateError(error) || mapDuplicateError(error, 'User Sudah Digunakan', 'username');
     throw duplicateError || error;
   }
 };
 
 const updateUser = async ({ actorUserId, payload, userId }) => {
+  payload = { ...payload, email: normalizeUserEmail(payload.email) };
   const existingUser = await assertUserExists(userId);
   if (String(actorUserId) === String(userId) && payload.status === ENTITY_STATUS.INACTIVE) {
     throw createHttpError('User Sendiri Tidak Dapat Dinonaktifkan', 403);
@@ -165,7 +168,7 @@ const updateUser = async ({ actorUserId, payload, userId }) => {
       },
     });
   } catch (error) {
-    const duplicateError = mapDuplicateError(error, 'User Sudah Digunakan', 'username');
+    const duplicateError = mapEmailDuplicateError(error) || mapDuplicateError(error, 'User Sudah Digunakan', 'username');
     throw duplicateError || error;
   }
 };
