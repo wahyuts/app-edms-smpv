@@ -8,6 +8,7 @@ const {
   toIntegerOrNull,
 } = require('../utils/administration');
 
+const { normalizeUserEmail } = require('../utils/userEmail');
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const projectCodePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -48,14 +49,14 @@ const validateUserCreate = (body) => {
   const errors = [];
   const username = addRequiredText(errors, normalizedBody, 'username', 'Username');
   const fullName = addRequiredText(errors, normalizedBody, 'name', 'Nama');
-  const email = addRequiredText(errors, normalizedBody, 'email', 'Email');
+  const email = normalizeUserEmail(normalizedBody.email);
   const initialPassword = normalizeText(normalizedBody?.initialPassword ?? normalizedBody?.password);
   const departmentId = toIntegerOrNull(normalizedBody?.departmentId);
   const departmentName = normalizeText(normalizedBody?.department);
   const position = addOptionalText(normalizedBody, 'position') || null;
 
   if (email && !emailPattern.test(email)) {
-    errors.push({ field: 'email', message: 'Email Tidak Valid' });
+    errors.push({ field: 'email', message: 'Format email tidak valid.' });
   }
   if (!departmentId && !departmentName) {
     errors.push({ field: 'department', message: 'Department Wajib Diisi' });
@@ -86,14 +87,14 @@ const validateUserUpdate = (body) => {
     ? normalizeText(normalizedBody?.username)
     : null;
   const fullName = addRequiredText(errors, normalizedBody, 'name', 'Nama');
-  const email = addRequiredText(errors, normalizedBody, 'email', 'Email');
+  const email = normalizeUserEmail(normalizedBody.email);
   const departmentId = toIntegerOrNull(normalizedBody?.departmentId);
   const departmentName = normalizeText(normalizedBody?.department);
   const position = addOptionalText(normalizedBody, 'position') || null;
   const status = normalizeText(normalizedBody?.status);
 
   if (email && !emailPattern.test(email)) {
-    errors.push({ field: 'email', message: 'Email Tidak Valid' });
+    errors.push({ field: 'email', message: 'Format email tidak valid.' });
   }
   if (!departmentId && !departmentName) {
     errors.push({ field: 'department', message: 'Department Wajib Diisi' });

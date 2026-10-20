@@ -2,6 +2,7 @@ import { Edit3 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AuthService } from "@/features/auth/services/auth.service";
+import { validateProfileForm } from "@/features/auth/schemas/profile.schema";
 import { useToast } from "@/shared/components/toast";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
@@ -48,29 +49,6 @@ const getErrorMap = (errors = []) =>
       item.message,
     ]),
   );
-
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const validateProfileForm = (form = {}) => {
-  const errors = {};
-  const fullName = String(form.fullName ?? "").trim();
-  const email = String(form.email ?? "").trim();
-
-  if (!fullName) {
-    errors.fullName = "Nama wajib diisi";
-  }
-  if (!email) {
-    errors.email = "Email wajib diisi";
-  } else if (!emailPattern.test(email)) {
-    errors.email = "Format email tidak valid";
-  }
-
-  return {
-    errors,
-    isValid: Object.keys(errors).length === 0,
-    value: { email, fullName },
-  };
-};
 
 const FieldError = ({ message }) =>
   message ? <p className="text-xs font-medium text-[#FCA5A5]">{message}</p> : null;

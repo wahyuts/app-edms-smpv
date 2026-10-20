@@ -122,7 +122,7 @@ const findUserByUsername = async (username) => {
 };
 
 const findUserByEmail = async (email) => {
-  const [rows] = await pool.execute(`${baseSelect} WHERE users.email = ? LIMIT 1`, [email]);
+  const [rows] = await pool.execute(`${baseSelect} WHERE users.email_uniqueness_key = ? LIMIT 1`, [email]);
   return mapUserRow(rows[0]);
 };
 
