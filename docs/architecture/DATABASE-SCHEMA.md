@@ -260,7 +260,8 @@ Attributes:
 | `user_code` | Yes | `userCode`, generated `USR-000001`. |
 | `username` | Yes | Unique login identifier. |
 | `full_name` | Yes | `fullName/name` displayed and stored. |
-| `email` | Yes | Required and unique in user service. |
+| `email` | Yes | Nullable; blank input becomes NULL. Ordinary email remains unique; only `wahyu.trisna100@gmail.com` and `beta.int100@gmail.com` may be shared, case-insensitive after trim. Local preparation approved; runtime migration pending approval. |
+| `email_uniqueness_key` | Derived | STORED generated column; NULL for blank/NULL and the two exact shared emails, otherwise LOWER(TRIM(email)); protected by `uq_users_email_uniqueness_key`. |
 | `department_id` | Optional | Backend relation to departments. Frontend stores department name. |
 | `department_name_snapshot` | Optional | Preserves current frontend department string behavior and audit display. |
 | `position` | Optional | Present in seed/current user mapping. |
@@ -894,7 +895,8 @@ Attribute naming notes:
 | Constraint | Table | Evidence |
 |---|---|---|
 | Username must be unique | `users.username` | UserService `checkUsernameUniqueness`; IndexedDB unique username. |
-| Email must be unique | `users.email` | UserService `checkEmailUniqueness`. |
+| Legacy: Email must be unique without exceptions | `users.email` | Previous `uq_users_email` and UserService `checkEmailUniqueness`; retained as historical reference. |
+| Ordinary email must be unique; optional/shared email allowed | `users.email_uniqueness_key` | Approved local preparation: backend validation plus generated-column unique index; migration pending approval. |
 | User status must be Active/Inactive | `users.status` | User constants and service. |
 | Department name key must be unique | `departments.name_key` | IndexedDB unique `nameKey`; DepartmentService uniqueness. |
 | Department status must be Active/Inactive | `departments.status` | Department constants. |
@@ -1339,7 +1341,7 @@ Minimal index yang harus disiapkan pada implementasi MySQL:
 
 | Table | Index Strategy |
 |---|---|
-| `users` | unique username, unique email, role_id, department_id, status |
+| `users` | unique username, unique email_uniqueness_key, email lookup index, role_id, department_id, status |
 | `departments` | unique name_key, status |
 | `roles` | unique role_code, is_active |
 | `permissions` | unique permission_code |
@@ -1360,6 +1362,8 @@ Minimal index yang harus disiapkan pada implementasi MySQL:
 ## 15.7 Unique Strategy
 
 - Business uniqueness must be enforced both in service validation and database unique index.
+- Optional Email / Selective Uniqueness (2026-10-20): `users.email` becomes nullable; empty input is persisted as NULL. Replace legacy `uq_users_email` with `uq_users_email_uniqueness_key` and preserve lookup through `idx_users_email`. Generated expression retains `utf8mb4_unicode_ci` for ordinary-email uniqueness and uses binary comparison of LOWER(TRIM(email)) for the exact two shared addresses. Prepared files are under `database/migration/20261020_0001_email_optional_*`; no database migration has been executed during this preparation.
+- Forgot Password remains Username + Registered Email, with existing generic response and token lifecycle. NULL email cannot match a nonempty Registered Email; shared email does not replace Username as account identifier.
 - Document number is unique within project, not globally.
 - One project membership is allowed per user per project.
 - Only one workflow attachment is allowed per workflow comment.
