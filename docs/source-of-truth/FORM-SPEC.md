@@ -2215,7 +2215,10 @@ Form operasional resmi:
 - Approval C dapat menggunakan default reason `Document is not approved` apabila comment kosong.
 - File utama menerima `pdf`, `docx`, `xls`, `xlsx`, `jpg`, `jpeg`, dan `png` maksimum 100 MB.
 - Workflow attachment menerima `pdf`, `jpg`, `jpeg`, dan `png` maksimum 100 MB.
-- User email dan username wajib unik.
+- Legacy: User email dan username wajib unik tanpa pengecualian.
+- Approved local preparation (2026-10-20, migration pending approval): Email opsional pada Create User, Edit User, dan Edit Profile. Email kosong atau whitespace dinormalisasi menjadi `NULL`; Email yang diisi tetap wajib berformat valid.
+- Email biasa tetap unik secara case-insensitive. Hanya `wahyu.trisna100@gmail.com` dan `beta.int100@gmail.com` yang boleh digunakan beberapa akun, setelah trim dan normalisasi case-insensitive.
+- Username tetap wajib unik. Forgot Password tetap menggunakan pasangan Username + Registered Email; akun dengan Email `NULL` tidak dapat menggunakan recovery berbasis Email sampai alamat terdaftar. Implementasi Forgot Password tidak berubah.
 - Username hanya ditentukan pada Create User dan menjadi immutable setelah akun berhasil dibuat.
 - Department name key wajib unik.
 - Close Project membutuhkan validasi Active Project, Role Admin, project code confirmation, checkbox confirmation, dan tidak ada workflow aktif.
