@@ -17,6 +17,7 @@ const notificationService = require('./notification.service');
 const realtimeDocumentPublisher = require('./realtimeDocumentPublisher.service');
 const slaNotificationProducer = require('./slaNotificationProducer.service');
 const auditService = require('./audit.service');
+const revisionService = require('./revision.service');
 const {
   buildPagination,
   createEntityId,
@@ -318,6 +319,7 @@ const assertActorMembership = async ({ projectId, userId }) => {
 const assertDocumentProjectIsActive = async (document) => assertActiveProject(document.projectId);
 
 const updateDocument = async ({
+  activeProject,
   actorOfficialRole,
   actorUserFullName,
   actorUserId,
@@ -348,6 +350,21 @@ const updateDocument = async ({
     documentTypeId: documentType?.id || document.documentTypeId || null,
     drawing: nextDrawing,
   };
+
+  if (membership.officialRole === 'Admin') {
+    return revisionService.editDocumentAsAdmin({
+      activeProject,
+      actorOfficialRole: membership.officialRole,
+      actorUserFullName,
+      actorUserId,
+      documentId,
+      payload,
+      metadata: nextMetadata,
+    });
+  }
+  if (payload.temporaryFileId) {
+    throw createHttpError('Gunakan alur Upload Revision untuk role ini.', 403);
+  }
 
   await documentRepository.runInTransaction(async (connection) => {
     await documentRepository.updateDocumentMetadata(connection, {

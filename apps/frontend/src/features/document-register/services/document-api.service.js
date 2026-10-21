@@ -343,12 +343,19 @@ const createDocument = async ({ area, daysUntilValidation, description, document
   }
 };
 
-const updateDocument = async (documentId, { area, daysUntilValidation, description } = {}) => {
+const updateDocument = async (documentId, { area, daysUntilValidation, description, expectedState, file } = {}) => {
   try {
+    const temporaryUpload = file ? await uploadTemporaryFile(file) : null;
     return unwrapDocument(await apiClient.patch(`/v1/documents/${documentId}`, {
       area,
       daysUntilValidation,
       description,
+      ...(expectedState ? {
+        expectedActiveRevisionId: expectedState.activeRevisionId,
+        expectedCurrentAssigneeUserId: expectedState.currentAssigneeUserId,
+        expectedWorkflowStatus: expectedState.workflowStatus,
+      } : {}),
+      ...(temporaryUpload ? { temporaryFileId: temporaryUpload.temporaryFileId } : {}),
     }));
   } catch (error) {
     throwDocumentApiError(error, "Gagal memperbarui Document.");

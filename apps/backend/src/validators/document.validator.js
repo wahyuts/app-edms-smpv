@@ -80,6 +80,12 @@ const validateDocumentUpdate = (body = {}) => {
     errors.push({ field: 'document', message: 'Tidak ada metadata Document yang diperbarui' });
   }
 
+  for (const field of ['temporaryFileId', 'expectedActiveRevisionId', 'expectedWorkflowStatus', 'expectedCurrentAssigneeUserId']) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) {
+      value[field] = normalizeText(body[field]) || null;
+    }
+  }
+
   return {
     isValid: errors.length === 0,
     errors,

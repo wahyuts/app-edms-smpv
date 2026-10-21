@@ -985,6 +985,16 @@ const updateDocumentActivePointers = async (connection, { activeFileId, activeRe
   );
 };
 
+const lockDocumentForEdit = async (connection, documentId) => {
+  const [rows] = await connection.execute(
+    `SELECT id, workflow_status AS status, lifecycle_status AS lifecycle,
+            active_revision_id AS activeRevisionId, current_assignee_user_id AS currentAssigneeUserId
+     FROM engineering_documents WHERE id = ? FOR UPDATE`,
+    [documentId]
+  );
+  return rows[0] || null;
+};
+
 const updateDocumentMetadata = async (connection, {
   area,
   daysUntilValidation,
@@ -1373,6 +1383,7 @@ module.exports = {
   listWorkflowComments,
   markWorkflowCommentsReadForUser,
   runInTransaction,
+  lockDocumentForEdit,
   updateDocumentLifecycleStatus,
   updateDocumentMetadata,
   updateDocumentWorkflowState,
