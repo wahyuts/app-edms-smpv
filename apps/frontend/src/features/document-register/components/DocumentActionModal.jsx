@@ -1308,17 +1308,20 @@ export const CreateDocumentModal = ({
 
 export const EditDocumentModal = ({
   allowUploadRevision = false,
+  isProjectAdmin = false,
   documentItem,
   onCancel,
   onSubmit,
   onValidationFailed = () => {},
 }) => {
-  const isUploadRevision = allowUploadRevision && [
+  const isRevisionStatus = allowUploadRevision && [
     DOCUMENT_STATUS.PROCESS_COMMENT,
     DOCUMENT_STATUS.PROCESS_REJECT,
     DOCUMENT_STATUS.PROJECT_COMMENT,
     DOCUMENT_STATUS.PROJECT_REJECT,
   ].includes(documentItem.status);
+  const isUploadRevision = !isProjectAdmin && isRevisionStatus;
+  const showUploadField = isProjectAdmin || isUploadRevision;
   const [formValue, setFormValue] = useState({
     area: documentItem.area,
     daysUntilValidation: documentItem.daysUntilValidation,
@@ -1437,7 +1440,7 @@ export const EditDocumentModal = ({
       title="Edit Document"
     >
       <div className="space-y-4">
-        {isUploadRevision ? (
+        {isRevisionStatus ? (
           <div className="rounded-lg border border-[#FACC15]/40 bg-[#FACC15]/10 p-4 text-sm text-[#FDE68A]">
             Upload Revision will replace the Active File. Backend will determine
             the next workflow status.
@@ -1445,7 +1448,7 @@ export const EditDocumentModal = ({
         ) : null}
         <div
           className={
-            isUploadRevision
+            showUploadField
               ? "grid gap-4 md:grid-cols-2 md:items-start"
               : "block"
           }
@@ -1456,14 +1459,14 @@ export const EditDocumentModal = ({
               {documentItem.documentNumber}
             </p>
           </div>
-          {isUploadRevision ? (
+          {showUploadField ? (
             <FileUploadField
               errorMessage={fileErrorMessage || validationMessages.file}
               filePreview={filePreview}
               isDisabled={isSubmitting}
               onFileChange={handleFileChange}
               onFileSelectionError={handleFileSelectionError}
-              required
+              required={!isProjectAdmin}
             />
           ) : null}
         </div>
