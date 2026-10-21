@@ -921,6 +921,10 @@ export const DocumentActionGroup = ({
         area: formValue.area,
         daysUntilValidation: formValue.daysUntilValidation,
         description: formValue.description,
+        ...(projectRoleName === OFFICIAL_ROLE.ADMIN ? {
+          expectedState: createExpectedWorkflowState(detailDocument),
+          file: formValue.file,
+        } : {}),
       });
 
       closeModal();
@@ -1231,6 +1235,7 @@ export const DocumentActionGroup = ({
       ) : null}
       {activeModal === modalType.EDIT ? (
         <EditDocumentModal
+          isProjectAdmin={projectRoleName === OFFICIAL_ROLE.ADMIN}
           documentItem={detailDocument}
           onCancel={closeModal}
           onValidationFailed={(message) =>
