@@ -142,6 +142,7 @@ const updateDocument = async (req, res, next) => {
     return successResponse(res, {
       message: 'Document Berhasil Diperbarui',
       data: await documentService.updateDocument({
+        activeProject: req.activeProject,
         actorOfficialRole: req.officialRole,
         actorUserFullName: req.user.fullName,
         actorUserId: req.user.id,
@@ -281,6 +282,7 @@ const uploadRevision = async (req, res, next) => {
       statusCode: 201,
       message: 'Revision berhasil diunggah',
       data: await revisionService.uploadRevision({
+        activeProject: req.activeProject,
         actorOfficialRole: req.officialRole,
         actorUserFullName: req.user.fullName,
         actorUserId: req.user.id,
