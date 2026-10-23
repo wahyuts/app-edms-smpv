@@ -344,8 +344,8 @@ const saveDocumentRevision = async ({ activeProject, actorOfficialRole, actorUse
       document: updatedDocument,
       eventType: temporaryMetadata ? notificationService.NOTIFICATION_EVENT_TYPE.REVISION_UPLOADED : 'Document Updated',
       dictionaryOverride: temporaryMetadata ? undefined : {
-        title: 'Dokumen siap ditinjau kembali',
-        message: 'Admin telah memperbarui dokumen untuk ditinjau kembali tanpa file revisi baru.',
+        title: 'Metadata Document Updated',
+        message: 'Document metadata has been updated without uploading a new revised version of the document.',
       },
       identityBasis: revisionId || historyId,
       officialRoles: [updatedDocument.responsibleRole],
