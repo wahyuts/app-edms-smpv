@@ -573,6 +573,10 @@ export const ViewDocumentModal = ({
               <p className={fieldLabelClassName}>Uploaded By</p>
               <p className={valueClassName}>{metadata.uploadedBy ?? "-"}</p>
             </div>
+            <div>
+              <p className={fieldLabelClassName}>DATE UPLOADED</p>
+              <p className={valueClassName}>{formatCommentDateTime(metadata.uploadedAt)}</p>
+            </div>
             </div>
           ) : null}
           {documentItem.fileHistory?.length > 0 ? (
