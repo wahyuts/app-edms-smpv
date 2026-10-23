@@ -61,12 +61,73 @@ const createModalHarness = async (overrides = {}) => {
   return {
     submissions, warnings,
     render() { index = 0; return module.EditDocumentModal(props); },
+    renderView(documentItem, documentFile = {}) {
+      return module.ViewDocumentModal({ documentItem, documentFile, onClose() {}, onDownload() {} });
+    },
   };
 };
 const nodes = (node) => !node ? [] : Array.isArray(node) ? node.flatMap(nodes)
   : typeof node === 'object' ? [node, ...nodes(node.props?.children)] : [];
 const uploadField = (tree) => nodes(tree).find((node) => typeof node.props?.onFileChange === 'function');
 const submit = (tree) => tree.props.footer.props.children[1].props.onClick();
+
+const getUploadedDateField = (tree) => nodes(tree).find((node) =>
+  node.type === 'div' && node.props?.children?.[0]?.props?.children === 'DATE UPLOADED');
+
+test('View Document renders active file upload date in Jakarta directly after Uploaded By', async () => {
+  const harness = await createModalHarness();
+  const { mapDocumentRecord } = await load('services/document-api.service.js', {
+    '@/shared/api': { apiClient: {} }, './file.service': { FileService },
+  });
+  const initialFile = { fileId: 'FILE-1', originalFileName: 'Initial.pdf', extension: 'pdf', uploadedBy: 'Initial Uploader', uploadedAt: '2026-10-23T07:35:00.000Z' };
+  const record = mapDocumentRecord({
+    id: 'DOC-1', documentNumber: 'PFD-1', activeFileId: 'FILE-1', activeFile: initialFile,
+    updatedAt: '2026-10-25T00:00:00.000Z',
+  });
+  const preview = { objectUrl: 'blob:active-file' };
+  const tree = harness.renderView(record, preview);
+  const dateField = getUploadedDateField(tree);
+  assert.equal(dateField.props.children[1].props.children, '23 Oct 2026, 14:35');
+  const panel = nodes(tree).find((node) => node.type === 'div' && node.props.children?.includes(dateField));
+  assert.deepEqual(panel.props.children.map((field) => field.props.children[0].props.children), [
+    'Active File ID', 'Original File Name', 'File Extension', 'MIME Type', 'File Size', 'Uploaded By', 'DATE UPLOADED',
+  ]);
+  const uploader = panel.props.children[5];
+  assert.equal(dateField.props.children[0].props.className, uploader.props.children[0].props.className);
+  assert.equal(dateField.props.children[1].props.className, uploader.props.children[1].props.className);
+  assert.match(nodes(tree).find((node) => node.type === 'aside').props.className, /overflow-y-auto/);
+  assert.equal(nodes(tree).find((node) => node.type === 'iframe').props.src, preview.objectUrl);
+  assert.equal(tree.props.size, 'viewer');
+  assert.equal(tree.props.footer.props.children[1].props.children, 'Close');
+
+  const metadataOnly = mapDocumentRecord({ ...record, description: 'Metadata edited', updatedAt: '2026-10-26T10:00:00Z' });
+  assert.equal(getUploadedDateField(harness.renderView(metadataOnly)).props.children[1].props.children, '23 Oct 2026, 14:35');
+  assert.equal(metadataOnly.activeFileId, 'FILE-1');
+  for (const status of Object.values(constants.DOCUMENT_STATUS)) {
+    const revised = mapDocumentRecord({
+      ...record, status, activeFileId: 'FILE-2',
+      activeFile: { ...initialFile, fileId: 'FILE-2', originalFileName: 'Revision.pdf', uploadedBy: 'New Uploader', uploadedAt: '2026-10-24T02:15:00Z' },
+      fileHistory: [{ fileMetadata: initialFile }],
+    });
+    const revisedTree = harness.renderView(revised, preview);
+    assert.equal(getUploadedDateField(revisedTree).props.children[1].props.children, '24 Oct 2026, 09:15');
+    assert.equal(revised.fileMetadata.uploadedBy, 'New Uploader');
+    assert.equal(revised.status, status);
+  }
+});
+
+test('View Document upload date handles missing/invalid timestamps and UTC day rollover', async () => {
+  const harness = await createModalHarness();
+  for (const [uploadedAt, expected] of [
+    [undefined, '-'], [null, '-'], ['', '-'], ['not-a-date', '-'],
+    ['2026-10-23T18:05:00Z', '24 Oct 2026, 01:05'],
+    ['2026-10-23T00:00:00Z', '23 Oct 2026, 07:00'],
+    ['2026-10-23T14:35:00+07:00', '23 Oct 2026, 14:35'],
+  ]) {
+    const tree = harness.renderView({ activeFileId: 'FILE-1', fileMetadata: { originalFileName: 'File.pdf', uploadedAt } });
+    assert.equal(getUploadedDateField(tree).props.children[1].props.children, expected);
+  }
+});
 
 for (const status of [...Object.values(constants.DOCUMENT_STATUS), 'Future Authorized Status']) {
   test(`Admin modal: optional upload and metadata-only submit in ${status}`, async () => {
