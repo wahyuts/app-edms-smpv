@@ -974,6 +974,8 @@ Nama file, nama attachment, maupun versi file tidak pernah digunakan sebagai pen
 
 Workflow Comment merupakan hasil review yang dibuat oleh Reviewer saat melakukan Approval B (Approved with Comment) atau Approval C (Not Approved).
 
+Approval A tetap tidak memerlukan komentar manual, tetapi menghasilkan satu Workflow Comment otomatis ketika approval berhasil. Komentar otomatis disimpan dalam transaksi approval yang sama, menggunakan Full Name dari authenticated user dan Official Role snapshot dari Project Membership pelaku approval. Komentar Approval B/C beserta aturan attachment existing tidak berubah.
+
 Workflow Comment berfungsi sebagai media komunikasi antara Reviewer dan Document Owner selama proses Workflow berlangsung.
 
 Workflow Comment dapat berisi:
@@ -1444,7 +1446,13 @@ Approved
 
 Workflow Comment:
 
-Tidak diperlukan.
+Tidak diperlukan sebagai input manual. Sistem membuat satu Workflow Comment otomatis setelah Approval A berhasil, dalam transaksi database yang sama.
+
+- Team Process: `Approval A By Team Process` dengan pesan `This document has been approved by Team Process and can continue to the next workflow by Team Project`.
+- Team Project: `Approval A By Team Project` dengan pesan `This document has been fully approved by Team Project.`.
+- Author menggunakan Full Name dan Official Role snapshot; timestamp menggunakan waktu database dan formatter Comment Viewer existing.
+
+Legacy / Historical Baseline: Approval A sebelumnya tidak menghasilkan Workflow Comment. Ketentuan tidak membutuhkan komentar manual tetap berlaku. Transisi, authorization, SLA, Notification, dan Audit Trail tidak berubah.
 
 Hasil:
 
@@ -4897,7 +4905,7 @@ AI Coding Agent wajib mengikuti aturan berikut.
 - Gunakan Workflow Event sebagai pemicu Supporting Services.
 - Dashboard selalu menggunakan Dashboard Read Model.
 - History selalu menggunakan Document Timeline.
-- Workflow Comment mengikuti aturan Approval B dan Approval C.
+- Workflow Comment manual mengikuti aturan Approval B dan Approval C; Approval A menghasilkan komentar otomatis tanpa input manual.
 
 ---
 
