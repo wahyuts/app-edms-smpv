@@ -777,7 +777,10 @@ export const CommentViewerModal = ({
               >
                 <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                   <p className="text-sm font-semibold text-[#00C8FF]">
-                    {comment.workflowAction}
+                    {comment.workflowAction === "Approval A" &&
+                    ["Team Process", "Team Project"].includes(comment.createdByOfficialRole)
+                      ? `Approval A By ${comment.createdByOfficialRole}`
+                      : comment.workflowAction}
                   </p>
                   <p className="text-xs text-[#94A3B8]">
                     {formatCommentDateTime(comment.createdDate)}

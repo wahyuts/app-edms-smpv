@@ -64,6 +64,9 @@ const createModalHarness = async (overrides = {}) => {
     renderView(documentItem, documentFile = {}) {
       return module.ViewDocumentModal({ documentItem, documentFile, onClose() {}, onDownload() {} });
     },
+    renderComments(comments) {
+      return module.CommentViewerModal({ comments, documentItem: { documentNumber: 'PFD-1' }, onClose() {} });
+    },
   };
 };
 const nodes = (node) => !node ? [] : Array.isArray(node) ? node.flatMap(nodes)
@@ -73,6 +76,31 @@ const submit = (tree) => tree.props.footer.props.children[1].props.onClick();
 
 const getUploadedDateField = (tree) => nodes(tree).find((node) =>
   node.type === 'div' && node.props?.children?.[0]?.props?.children === 'DATE UPLOADED');
+
+test('Comment Viewer derives Approval A titles from role snapshots without changing B/C cards or ordering', async () => {
+  const harness = await createModalHarness();
+  const comments = [
+    { id: 'A-project', workflowAction: 'Approval A', workflowComment: 'This document has been fully approved by Team Project.', createdBy: 'Full Project Name', createdByOfficialRole: 'Team Project' },
+    { id: 'A-process', workflowAction: 'Approval A', workflowComment: 'This document has been approved by Team Process and can continue to the next workflow by Team Project', createdBy: 'Full Process Name', createdByOfficialRole: 'Team Process' },
+    { id: 'B', workflowAction: 'Approval B', workflowComment: 'Manual B', createdBy: 'Reviewer', createdByOfficialRole: 'Team Process', attachment: { attachmentId: 'ATT-1', originalFileName: 'Attachment.pdf' } },
+    { id: 'C', workflowAction: 'Approval C', workflowComment: 'Manual C', createdBy: 'Reviewer', createdByOfficialRole: 'Team Project' },
+  ].map((comment) => ({ ...comment, createdDate: '2026-10-24T05:00:00.123Z' }));
+  const tree = harness.renderComments(comments);
+  const cards = nodes(tree).filter((node) => node.type === 'article');
+  assert.equal(cards.length, 4);
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i]; const comment = comments[i];
+    const header = card.props.children[0];
+    assert.equal(header.props.children[0].props.children, comment.workflowAction === 'Approval A' ? `Approval A By ${comment.createdByOfficialRole}` : comment.workflowAction);
+    assert.equal(header.props.children[1].props.children, '24 Oct 2026, 12:00');
+    assert.equal(card.props.children[1].props.children, comment.workflowComment);
+    assert.equal(card.props.children[2].props.children.join(''), `By ${comment.createdBy} (${comment.createdByOfficialRole})`);
+    assert.equal(card.props.children[3].props.attachment, comment.attachment);
+    assert.equal(card.props.className, cards[0].props.className);
+  }
+  assert.equal(tree.props.title, 'Comment Viewer');
+  assert.equal(tree.props.footer.props.children, 'Close');
+});
 
 test('View Document renders active file upload date in Jakarta directly after Uploaded By', async () => {
   const harness = await createModalHarness();
