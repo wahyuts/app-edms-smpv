@@ -687,3 +687,19 @@ Keputusan setelah backend integration, storage hardening, realtime implementatio
 - SLA Monitoring Priority 3D menggunakan SLA-specific query path dan tidak lagi bergantung pada `listProjectDocumentRegister()`.
 - Shared legacy method `listProjectDocumentRegister()` tetap tidak boleh diubah destruktif karena masih menjadi dependency Escalation Alert legacy path sampai Priority 3E diputuskan/diimplementasikan.
 - Realtime event names `history.changed`, `sla.changed`, dan `escalation.changed` saat ini berstatus reserved apabila constant sudah tersedia tetapi producer runtime belum aktif.
+
+---
+
+# APPROVAL A AUTOMATIC WORKFLOW COMMENT DECISION
+
+Keputusan Phase B - Controlled Implementation:
+
+- Approval A tetap tidak membutuhkan komentar manual. Team Process dan Team Project menghasilkan satu komentar otomatis pada setiap Approval A yang sah dan berhasil.
+- Komentar menggunakan tabel `workflow_comments` existing, `workflow_action = 'Approval A'`, pesan sistem sesuai Official Role, Full Name dari authenticated user, serta Official Role snapshot dari membership project dokumen.
+- Title `Approval A By Team Process` atau `Approval A By Team Project` diturunkan saat rendering; title lengkap tidak disimpan sebagai workflow action.
+- Insert komentar berada dalam transaksi workflow existing setelah conditional UPDATE berhasil; kegagalan insert membatalkan approval. Expected-state guard tetap berlaku, tanpa deduplikasi berdasarkan teks dan tanpa pembatas authorization baru berdasarkan Current Assignee.
+- Komentar A dipisahkan dari komentar manual B/C agar identity key, payload dan recipient Notification serta semantics Audit Trail tetap mengikuti baseline sebelum perubahan.
+- Schema exception hanya memperluas `chk_workflow_comments_workflow_action` dari B/C menjadi A/B/C pada ketiga canonical schema. Tidak ada tabel, kolom, foreign key, index, atau constraint lain yang berubah.
+- Paket `database/migration/20261024_0001_approval_a_comments_*` disiapkan terpisah untuk MySQL dan MariaDB, dengan preflight, verification, dan rollback limitations. Status: **PREPARED ONLY - NOT EXECUTED**.
+- Migration database existing, termasuk Local dan Railway, membutuhkan persetujuan Phase C terpisah. Backend baru tidak boleh digunakan pada database yang masih menolak komentar A.
+- Legacy / Historical Baseline: Approval A sebelumnya tidak menghasilkan komentar persisten. Aturan tidak membutuhkan input manual, transisi workflow, authorization, Approval B/C, SLA, attachment dan Comment Read Receipts tetap dipertahankan.

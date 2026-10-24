@@ -356,7 +356,7 @@ const applyWorkflowTransition = async ({
         });
       }
       if (transactionHook) {
-        await transactionHook(connection);
+        await transactionHook(connection, { actorMembership });
       }
     });
   } catch (error) {

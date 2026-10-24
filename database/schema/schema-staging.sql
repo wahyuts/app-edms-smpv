@@ -374,7 +374,7 @@ CREATE TABLE workflow_comments (
   KEY idx_workflow_comments_revision_id (revision_id),
   KEY idx_workflow_comments_created_at (created_at),
   KEY idx_workflow_comments_created_by_user_id (created_by_user_id),
-  CONSTRAINT chk_workflow_comments_workflow_action CHECK (workflow_action IN ('Approval B', 'Approval C')),
+  CONSTRAINT chk_workflow_comments_workflow_action CHECK (workflow_action IN ('Approval A', 'Approval B', 'Approval C')),
   CONSTRAINT chk_workflow_comments_created_by_official_role CHECK (created_by_official_role_snapshot IS NULL OR created_by_official_role_snapshot IN ('Admin', 'Document Owner', 'Team Process', 'Team Project', 'Viewer')),
   CONSTRAINT fk_workflow_comments_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT fk_workflow_comments_document_id FOREIGN KEY (document_id) REFERENCES engineering_documents (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
