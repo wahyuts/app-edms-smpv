@@ -2385,6 +2385,10 @@ Comment Viewer menggunakan Comment History yang berkaitan dengan Document yang d
 
 Comment Viewer menampilkan nama User dan Official Role yang tersimpan pada Workflow Comment.
 
+Approval A tidak membutuhkan komentar manual, tetapi setiap approval yang berhasil menghasilkan satu komentar otomatis dalam transaksi workflow yang sama. Comment Viewer menampilkan `Approval A By Team Process` atau `Approval A By Team Project` berdasarkan Official Role snapshot, beserta pesan otomatis, Full Name, dan timestamp database. Title Approval B/C, attachment, sorting, dan read receipts existing tetap berlaku.
+
+Legacy / Historical Baseline: komentar workflow sebelumnya hanya dihasilkan Approval B/C. Penambahan komentar otomatis Approval A tidak mengubah transisi maupun authorization approval.
+
 Dashboard hanya menampilkan informasi Comment.
 
 Dashboard tidak melakukan perubahan terhadap Comment melalui halaman Dashboard.
@@ -23811,6 +23815,7 @@ Seluruh istilah pada bagian ini berlaku sebagai referensi resmi selama proses an
 | Revision | Identitas revisi dokumen yang menunjukkan tahapan perkembangan dokumen. |
 | Workflow Status | Status aktif dokumen pada Business Workflow. |
 | Workflow Comment | Hasil review yang dapat berisi komentar teks dan/atau Workflow Attachment pada Approval B atau Approval C. |
+| Approval A Automatic Workflow Comment | Komentar sistem tanpa attachment yang disimpan satu kali dalam transaksi Approval A; bukan input komentar manual dan bukan perubahan workflow. |
 | Workflow Attachment | File pendukung berupa PDF atau gambar yang dilampirkan Reviewer pada Approval B atau Approval C sebagai bagian dari Workflow Comment. Workflow Attachment bukan Document Revision maupun Active Engineering Document. |
 | SLA Monitoring | Mekanisme pemantauan waktu penyelesaian proses dokumen berdasarkan target yang ditentukan. |
 | Notification | Informasi yang dikirimkan sistem kepada pengguna mengenai aktivitas atau perubahan pada dokumen. |

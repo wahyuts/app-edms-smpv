@@ -77,6 +77,9 @@ const processApproval = async ({
         comment: reason,
       }
     : null;
+  // Keep automatic comments separate from the existing notification/audit identity basis.
+  const automaticCommentId = config.action === DOCUMENT_WORKFLOW_ACTION.APPROVAL_A
+    ? createEntityId('WFC') : null;
   let workflowAttachment = null;
   let finalized = false;
   let temporaryMetadata = null;
@@ -136,7 +139,29 @@ const processApproval = async ({
       document,
       expectedState,
       reason,
-      transactionHook: temporaryFileId ? async (connection) => {
+      transactionHook: automaticCommentId ? async (connection, { actorMembership }) => {
+        const fullName = String(actorUserFullName || '').trim();
+        if (!fullName) {
+          throw createHttpError('Nama lengkap pengguna wajib tersedia untuk approval.', 422);
+        }
+        const messages = {
+          'Team Process': 'This document has been approved by Team Process and can continue to the next workflow by Team Project',
+          'Team Project': 'This document has been fully approved by Team Project.',
+        };
+        const message = messages[actorMembership.officialRole];
+        if (!message) throw createHttpError('Official Role tidak sesuai untuk Approval A.', 403);
+        await documentRepository.insertWorkflowComment(connection, {
+          id: automaticCommentId,
+          projectId: document.projectId,
+          documentId: document.id,
+          revisionId: document.activeRevisionId,
+          workflowAction: config.action,
+          workflowComment: message,
+          createdByUserId: actorUserId,
+          createdByNameSnapshot: fullName,
+          createdByOfficialRoleSnapshot: actorMembership.officialRole,
+        });
+      } : temporaryFileId ? async (connection) => {
         const consumedRows = await uploadService.consumeTemporaryUploadMetadata(connection, temporaryFileId);
         if (consumedRows !== 1) {
           throw createHttpError('Temporary upload tidak ditemukan atau sudah digunakan', 409, [
@@ -243,10 +268,10 @@ const processApproval = async ({
       resourceType: 'Workflow Attachment',
     });
   }
-  if (workflowComment) {
+  if (workflowComment || automaticCommentId) {
     realtimeDocumentPublisher.publishCommentCreated({
       actorUserId,
-      commentId: workflowComment.id,
+      commentId: workflowComment?.id || automaticCommentId,
       document: updatedDocument,
     });
   }

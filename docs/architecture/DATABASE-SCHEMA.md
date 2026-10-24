@@ -593,12 +593,16 @@ Attributes:
 | `project_id` | Yes | Indexed project scope. |
 | `document_id` | Yes | Indexed child. |
 | `revision_id` | Optional | Current frontend does not always store it; useful when active revision exists. |
-| `workflow_action` | Yes | Approval B/C title/action. |
+| `workflow_action` | Yes | Canonical Approval A/B/C action; Approval A display title is derived from the stored role snapshot. |
 | `workflow_comment` | Optional | Required for B if no attachment; default for C possible. |
 | `created_by_user_id` | Optional | User identity of the comment author. |
 | `created_by_name_snapshot` | Yes | Comment author display name retained as historical snapshot. |
 | `created_by_official_role_snapshot` | Yes | Comment author project role retained as historical snapshot. |
 | `created_at` | Yes | Frontend `createdDate/createdAt`. |
+
+Approved schema exception - Approval A Automatic Workflow Comment: only `chk_workflow_comments_workflow_action` is expanded from Approval B/C to Approval A/B/C in all three canonical schemas. No columns, indexes, foreign keys, defaults, or other constraints change. Approval A text, author snapshots and database timestamp reuse this table; the insert and workflow update share one transaction.
+
+Legacy / Historical Baseline: this CHECK previously accepted only Approval B/C. Canonical changes and the prepared MySQL/MariaDB migration package do not migrate existing databases. Status: **PREPARED ONLY - NOT EXECUTED**; runtime migration and verification require separate Phase C approval.
 
 ### `workflow_attachments`
 
