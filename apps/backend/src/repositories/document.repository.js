@@ -1300,6 +1300,23 @@ const listDocumentHistory = async ({ documentId, projectId }) => {
   return rows.map(mapDocumentHistoryRow);
 };
 
+const findApprovalEmailEvent = async ({ approvalEventId, actorUserId, documentId, projectId }) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT workflow_action,
+        DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s.%f') AS approval_timestamp_utc
+      FROM workflow_comments
+      WHERE id = ? AND project_id = ? AND document_id = ? AND created_by_user_id = ?
+      LIMIT 1
+    `,
+    [approvalEventId, projectId, documentId, actorUserId]
+  );
+  return rows[0] ? {
+    workflowAction: rows[0].workflow_action,
+    approvalTimestamp: toExplicitUtcIsoString(rows[0].approval_timestamp_utc),
+  } : null;
+};
+
 const listWorkflowComments = async ({ documentId, projectId }) => {
   const [rows] = await pool.execute(
     `
@@ -1383,6 +1400,7 @@ module.exports = {
   listWorkflowComments,
   markWorkflowCommentsReadForUser,
   runInTransaction,
+  findApprovalEmailEvent,
   lockDocumentForEdit,
   updateDocumentLifecycleStatus,
   updateDocumentMetadata,

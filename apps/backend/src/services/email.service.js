@@ -76,7 +76,11 @@ const sendPasswordReset = async ({
   });
 };
 
+const sendApprovalNotification = ({ to, subject, html, text, requestId }) =>
+  resolveEmailProvider().send({ to, subject, html, text, requestId, template: 'approval-notification' });
+
 module.exports = {
   buildPasswordResetEmail,
+  sendApprovalNotification,
   sendPasswordReset,
 };
