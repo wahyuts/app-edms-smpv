@@ -10,6 +10,7 @@ const slaNotificationProducer = require('./slaNotificationProducer.service');
 const storageService = require('./storage.service');
 const uploadService = require('./upload.service');
 const workflowEngine = require('./workflowEngine.service');
+const approvalEmailDispatcher = require('./approvalEmailDispatcher.service');
 const { createEntityId, createHttpError } = require('../utils/administration');
 const {
   buildAttachmentPhysicalFileName,
@@ -19,16 +20,19 @@ const { validateStoredFileCapacity } = require('../utils/storageMetadataCapacity
 
 const approvalConfig = Object.freeze({
   approve: Object.freeze({
+    approvalCode: 'A',
     action: DOCUMENT_WORKFLOW_ACTION.APPROVAL_A,
     defaultReason: null,
     eventType: notificationService.NOTIFICATION_EVENT_TYPE.APPROVAL_A_COMPLETED,
   }),
   approveWithComment: Object.freeze({
+    approvalCode: 'B',
     action: DOCUMENT_WORKFLOW_ACTION.APPROVAL_B,
     defaultReason: null,
     eventType: notificationService.NOTIFICATION_EVENT_TYPE.APPROVAL_B_COMPLETED,
   }),
   reject: Object.freeze({
+    approvalCode: 'C',
     action: DOCUMENT_WORKFLOW_ACTION.APPROVAL_C,
     defaultReason: 'Document is not approved',
     eventType: notificationService.NOTIFICATION_EVENT_TYPE.APPROVAL_C_COMPLETED,
@@ -139,6 +143,18 @@ const processApproval = async ({
       document,
       expectedState,
       reason,
+      onCommitted: ({ actorMembership }) => approvalEmailDispatcher.dispatch({
+        approvalEventId: automaticCommentId || workflowComment.id,
+        approvalCode: config.approvalCode,
+        approverRole: actorMembership.officialRole,
+        actorUserId,
+        projectId: document.projectId,
+        projectCode: document.projectCode,
+        projectName: document.projectName,
+        documentId: document.id,
+        documentNumber: document.documentNumber,
+        approvalComment: config.action === DOCUMENT_WORKFLOW_ACTION.APPROVAL_A ? null : comment,
+      }),
       transactionHook: automaticCommentId ? async (connection, { actorMembership }) => {
         const fullName = String(actorUserFullName || '').trim();
         if (!fullName) {
