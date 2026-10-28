@@ -20,7 +20,7 @@ const send = async ({ to, subject, html, text }) => {
   try {
     const client = getClient();
 
-    await client.emails.send({
+    const result = await client.emails.send({
       from: env.email.from,
       to,
       subject,
@@ -28,15 +28,20 @@ const send = async ({ to, subject, html, text }) => {
       text,
     });
 
+    if (result?.error !== null || typeof result?.data?.id !== 'string' || !result.data.id.trim()) {
+      throw new Error('Invalid or unsuccessful email provider response');
+    }
+
     logger.log('[EMAIL] Resend provider accepted email delivery request');
 
     return {
       success: true,
       provider: 'resend',
+      messageId: result.data.id,
     };
   } catch (error) {
     logger.error('[EMAIL] Resend provider delivery failed');
-    logger.error(error.name || 'ResendProviderError');
+    logger.error(error?.name || 'ResendProviderError');
     throw new Error('Email delivery failed');
   }
 };

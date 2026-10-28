@@ -16,6 +16,7 @@ const {
   buildRevisionStorageKey,
 } = require('../utils/storageKeyBuilder');
 const { validateStoredFileCapacity } = require('../utils/storageMetadataCapacity');
+const logger = require('../config/logger');
 
 const workflowTransitionMatrix = Object.freeze({
   [DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW]: Object.freeze({
@@ -192,6 +193,7 @@ const applyWorkflowTransition = async ({
   expectedState,
   reason = null,
   transactionHook = null,
+  onCommitted = null,
   workflowAttachment = null,
   workflowComment = null,
 }) => {
@@ -364,6 +366,12 @@ const applyWorkflowTransition = async ({
       await storageService.move(revisionStorageMove.storageKey, revisionStorageMove.fromStorageKey).catch(() => {});
     }
     throw error;
+  }
+
+  if (onCommitted) {
+    void Promise.resolve().then(() => onCommitted({ actorMembership })).catch(() => {
+      logger.error('[APPROVAL_EMAIL] Post-commit dispatch failed');
+    }).catch(() => {});
   }
 
   return documentRepository.findDocumentRegisterById(document.id);

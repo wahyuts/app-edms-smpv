@@ -208,6 +208,24 @@ const listActiveMembershipsByProjectAndOfficialRoles = async ({ officialRoles = 
   return rows.map(mapMembershipRow);
 };
 
+const listApprovalEmailRecipients = async (projectId) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT DISTINCT users.id AS user_id, users.email
+      FROM project_memberships
+      INNER JOIN users ON users.id = project_memberships.user_id
+      INNER JOIN projects ON projects.id = project_memberships.project_id
+      WHERE project_memberships.project_id = ?
+        AND LOWER(TRIM(project_memberships.official_role)) IN ('admin', 'document owner')
+        AND LOWER(TRIM(project_memberships.status)) = 'active'
+        AND LOWER(TRIM(users.status)) = 'active'
+        AND LOWER(TRIM(projects.status)) = 'active'
+    `,
+    [projectId]
+  );
+  return rows.map((row) => ({ userId: row.user_id, email: row.email }));
+};
+
 const listAccessibleProjectsByUserId = async (userId) => {
   const [rows] = await pool.execute(
     `
@@ -355,6 +373,7 @@ module.exports = {
   findMembershipByProjectAndUser,
   getUserProjectPreference,
   listActiveMembershipsByProjectAndOfficialRoles,
+  listApprovalEmailRecipients,
   listAccessibleProjectsByUserId,
   listMemberships,
   setUserProjectPreference,
