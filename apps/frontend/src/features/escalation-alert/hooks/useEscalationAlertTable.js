@@ -7,6 +7,7 @@ import {
   resolveLiveSlaTimer,
 } from "@/features/sla-management/utils/sla-timer-display";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
+import { useRealtimePermanentDeleteSync } from "@/features/document-register/hooks/useRealtimePermanentDeleteSync";
 
 import { EscalationService } from "../services/escalation.service";
 
@@ -137,6 +138,7 @@ export const useEscalationAlertTable = ({ directSearchValue = "" } = {}) => {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  useRealtimePermanentDeleteSync(() => setRefreshKey((currentKey) => currentKey + 1));
   const hasLoadedOnceRef = useRef(false);
   const activeProjectIdRef = useRef(null);
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);

@@ -19,6 +19,7 @@ export const REALTIME_EVENT_TYPE = Object.freeze({
   CONNECTED: "connected",
   DOCUMENT_ARCHIVED: "document.archived",
   DOCUMENT_CREATED: "document.created",
+  DOCUMENT_DELETED: "document.deleted",
   DOCUMENT_RESTORED: "document.restored",
   DOCUMENT_UPDATED: "document.updated",
   ESCALATION_CHANGED: "escalation.changed",

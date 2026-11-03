@@ -3,8 +3,9 @@ const assert = require('node:assert/strict');
 const { createPermanentDeleteApi } = require('../../src/services/permanentDeleteApi.service');
 const { createController } = require('../../src/controllers/permanentDelete.controller');
 
-const fixture = ({ role = 'Admin', document = { id: 'D', project_id: 'P', document_number: 'PFD-1' }, state = 'COMPLETED' } = {}) => {
+const fixture = ({ role = 'Admin', document = { id: 'D', project_id: 'P', document_number: 'PFD-1' }, state = 'COMPLETED', engineState = state, publishError = false } = {}) => {
   let op; let resumed = 0; let reserved = 0;
+  const publications = [];
   const pool = { execute: async (sql) => {
     if (sql.startsWith('SELECT m.official_role')) return [[role ? { official_role: role } : undefined].filter(Boolean)];
     if (sql.startsWith('SELECT id,project_id')) return [[document].filter(Boolean)];
@@ -12,15 +13,24 @@ const fixture = ({ role = 'Admin', document = { id: 'D', project_id: 'P', docume
     if (sql.startsWith('SELECT phase')) return [[resumed && state === 'COMPLETED' ? { phase: 'COMPLETED', completion_snapshot: '{"completedAt":"2026-11-02T00:00:00Z"}' } : null].filter(Boolean)];
     if (sql.startsWith('SELECT a.state')) return [state === 'UNKNOWN' ? [{ state: 'UNKNOWN' }] : []];
     if (sql.startsWith('SELECT w.id')) return [[]];
+    if (sql.startsWith('SELECT DISTINCT m.user_id')) {
+      assert.match(sql, /m.status='Active' AND u.status='Active' AND p.status='Active'/);
+      return [[{ user_id: 1 }, { user_id: 2 }]];
+    }
     throw new Error(`Unexpected SQL ${sql}`);
   } };
   const service = createPermanentDeleteApi({ pool, coordination: {
     reserve: async (value) => { reserved += 1; op = { id: value.id, project_id: value.projectId, document_id: value.documentId,
       document_number_snapshot: value.documentNumber, initiated_by_user_id: value.userId, request_identity: value.requestIdentity, reason: value.reason }; },
     evaluateQuiescence: async () => ({ status: 'QUIESCENCE_CONFIRMED' }),
-  }, engine: { resume: async () => { resumed += 1; return { status: state }; } } });
+  }, engine: { resume: async () => { resumed += 1; return { status: engineState }; } },
+  publishCompleted: async (payload) => {
+    assert.ok(resumed > 0); assert.equal(state, 'COMPLETED');
+    publications.push(payload);
+    if (publishError) throw new Error('Synthetic SSE failure');
+  } });
   const args = { actorUserId: 1, activeProject: { id: 'P' }, projectId: 'P', documentId: 'D', requestKey: 'synthetic-request-1' };
-  return { service, args, op: () => op, counts: () => ({ reserved, resumed }) };
+  return { service, args, publications, op: () => op, counts: () => ({ reserved, resumed }) };
 };
 
 for (const role of ['Document Owner','Team Process','Team Project','Viewer',null]) test(`Permanent Delete rejects project role ${role}`, async () => {
@@ -66,4 +76,33 @@ test('Only durable Completed is labeled success, never Pending, Unknown, Failed 
     await createController({ status: async () => ({ status, message: 'Status operasi.' }) }).status({ query: {}, params: {}, get() {} }, res);
     assert.equal(body.success, status === 'COMPLETED');
   }
+});
+
+test('API publishes only after reading durable Completed and status lookup can recover missed publication', async () => {
+  const f = fixture();
+  assert.equal((await f.service.remove(f.args)).status, 'COMPLETED');
+  assert.equal(f.publications.length, 1);
+  assert.deepEqual(f.publications[0], { actorUserId: 1, document: { id: 'D', projectId: 'P' },
+    operationId: f.op().id, recipientUserIds: [1, 2] });
+  assert.equal((await f.service.status(f.args)).status, 'COMPLETED');
+  assert.equal(f.counts().resumed, 1);
+  assert.equal(f.publications[1].operationId, f.publications[0].operationId);
+});
+
+for (const state of ['PENDING', 'UNKNOWN', 'FAILED', 'CONFLICT']) test(`No completion event for durable state ${state}`, async () => {
+  const f = fixture({ state }); await f.service.remove(f.args);
+  await f.service.status(f.args); assert.equal(f.publications.length, 0);
+});
+
+test('An engine result alone is not completion evidence and cannot publish success', async () => {
+  const f = fixture({ state: 'PENDING', engineState: 'COMPLETED' });
+  assert.notEqual((await f.service.remove(f.args)).status, 'COMPLETED');
+  assert.equal(f.publications.length, 0);
+});
+
+test('SSE publisher failure does not turn durable Completed into Delete failure', async () => {
+  const f = fixture({ publishError: true });
+  assert.equal((await f.service.remove(f.args)).status, 'COMPLETED');
+  assert.equal((await f.service.status(f.args)).status, 'COMPLETED');
+  assert.equal(f.counts().reserved, 1);
 });

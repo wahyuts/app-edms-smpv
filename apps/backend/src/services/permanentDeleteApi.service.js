@@ -1,8 +1,10 @@
 const { randomUUID, createHash } = require('node:crypto');
 const { createRepository } = require('../repositories/permanentDeleteApi.repository');
+const realtimeDocumentPublisher = require('./realtimeDocumentPublisher.service');
+const logger = require('../config/logger');
 
 const fault = (statusCode, message, data = {}) => Object.assign(new Error(message), { statusCode, publicDeleteError: true, data });
-const createPermanentDeleteApi = ({ pool, coordination, engine }) => {
+const createPermanentDeleteApi = ({ pool, coordination, engine, publishCompleted = realtimeDocumentPublisher.publishDocumentDeleted }) => {
   const repository = createRepository({ pool });
   const authorize = async ({ actorUserId, activeProject, projectId, documentId }) => {
     if (!actorUserId) throw fault(401, 'Silakan login terlebih dahulu.');
@@ -18,6 +20,14 @@ const createPermanentDeleteApi = ({ pool, coordination, engine }) => {
     const base = { operationId: op.id, projectId: op.project_id, documentId: op.document_id, documentNumber: op.document_number_snapshot };
     if (execution?.phase === 'COMPLETED') {
       const completed = JSON.parse(execution.completion_snapshot);
+      try {
+        const recipientUserIds = await repository.realtimeRecipients(op.project_id);
+        await publishCompleted({ actorUserId: op.initiated_by_user_id,
+          document: { id: op.document_id, projectId: op.project_id }, operationId: op.id, recipientUserIds });
+      } catch {
+        // Completion is already durable. Realtime failure must not change its outcome.
+        logger.error('[REALTIME_PUBLISHER]', 'event=permanent_delete_publish_failed', `operationId=${op.id}`);
+      }
       return { ...base, status: 'COMPLETED', completedAt: completed.completedAt, message: 'Dokumen berhasil dihapus permanen.' };
     }
     if (uncertain || attempts.some((item) => ['UNKNOWN','IN_FLIGHT'].includes(item.state))) {
