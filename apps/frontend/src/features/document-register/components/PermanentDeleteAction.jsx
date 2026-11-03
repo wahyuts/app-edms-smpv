@@ -6,6 +6,7 @@ import { useToast } from "@/shared/components/toast";
 import { queryClient } from "@/shared/api/query-client";
 import { synchronizeDocumentRuntimeQueries } from "../utils/documentRuntimeQuerySync";
 import { PermanentDeleteService } from "../services/permanent-delete.service";
+import { reconcilePermanentDelete } from "../utils/permanentDeleteReconciliation";
 
 const secondary = "inline-flex h-9 items-center justify-center rounded-md border border-[#123A5A] px-4 text-sm font-semibold text-[#CBD5E1] transition-colors hover:border-[#0F7BFF] hover:bg-[#0B2B47] hover:text-white disabled:opacity-50";
 const danger = "inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#EF4444] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-50";
@@ -37,7 +38,7 @@ export const DeleteDocumentModal = ({ documentItem, reason, onReasonChange, busy
     return () => { dialog.removeEventListener("keydown", keyboard); if (previous?.isConnected) previous.focus(); };
   }, [titleId]);
   useEffect(() => { if (busy) body.current?.closest("section")?.focus(); }, [busy]);
-  const blocked = ["UNKNOWN", "CONFLICT", "COMPLETED"].includes(result?.status);
+  const blocked = ["PENDING", "UNKNOWN", "CONFLICT", "COMPLETED"].includes(result?.status);
   return (
     <DocumentActionModal title="Delete Document" onClose={onCancel} isCloseDisabled={busy} footer={<>
       <button className={secondary} data-delete-cancel disabled={busy} onClick={onCancel} type="button">Cancel</button>
@@ -89,9 +90,12 @@ const DeleteActionState = ({ documentItem, disabled, onRunAction, onComplete, pr
   const identity = useRef(null);
   const generation = useRef(0);
   const mounted = useRef(true);
+  const reconciliation = useRef(null);
+  const completed = useRef(false);
+  const submitted = useRef(false);
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; generation.current += 1; };
+    return () => { mounted.current = false; generation.current += 1; reconciliation.current?.abort(); };
   }, []);
   const cancel = useCallback(() => { if (!running.current) setOpen(false); }, []);
   const isCurrent = (scope, token) => {
@@ -99,35 +103,64 @@ const DeleteActionState = ({ documentItem, disabled, onRunAction, onComplete, pr
     return mounted.current && generation.current === token && current.activeProject?.id === scope && current.activeMembership?.officialRole === "Admin";
   };
   const run = async (refreshOnly = false) => {
-    if (running.current || disabled || role !== "Admin" || !projectId) return;
+    if (running.current || completed.current || disabled || role !== "Admin" || !projectId) return;
     const token = generation.current; const scope = projectId;
     if (!isCurrent(scope, token)) return;
-    if (!refreshOnly && ["UNKNOWN", "CONFLICT", "COMPLETED"].includes(result?.status)) return;
+    if (!refreshOnly && submitted.current) return;
+    if (!refreshOnly && ["PENDING", "UNKNOWN", "CONFLICT", "COMPLETED"].includes(result?.status)) return;
     running.current = true; setBusy(true); setError("");
+    const controller = new AbortController();
+    reconciliation.current = controller;
     try {
       await onRunAction(async () => {
         let response;
         try {
           identity.current ||= crypto.randomUUID();
-          response = await (refreshOnly ? PermanentDeleteService.status({ documentId: documentItem.id, projectId: scope, operationId: result?.operationId })
+          if (!refreshOnly) submitted.current = true;
+          response = await (refreshOnly ? PermanentDeleteService.status({ documentId: documentItem.id, projectId: scope, operationId: result?.operationId, signal: controller.signal, timeout: 5000 })
             : PermanentDeleteService.remove({ documentId: documentItem.id, projectId: scope, reason: reason.trim(), requestKey: identity.current }));
         } catch (failure) {
           if (!isCurrent(scope, token)) return;
           if ([401,403,404,422].includes(failure.status)) {
+            if (!refreshOnly) submitted.current = false;
             setError(failure.message);
             if (refreshOnly && failure.status === 404) setResult({ status: "FAILED", message: "Permintaan penghapusan belum tercatat." });
-          } else setResult({ status: "UNKNOWN", message: failure.message });
-          return;
+            return;
+          }
+          response = { status: "UNKNOWN", operationId: result?.operationId, message: failure.message };
         }
         if (!isCurrent(scope, token)) return;
-        if (response.status !== "COMPLETED") { setResult(response); return; }
+        if (!["COMPLETED", "FAILED"].includes(response.status)) {
+          setResult(response);
+          try {
+            response = await reconcilePermanentDelete({
+              status: PermanentDeleteService.status, documentId: documentItem.id, projectId: scope,
+              operationId: response.operationId, signal: controller.signal, isCurrent: () => isCurrent(scope, token),
+            });
+          } catch (failure) {
+            if (isCurrent(scope, token)) setError(failure.message);
+            return;
+          }
+        }
+        if (!response || !isCurrent(scope, token)) return;
+        if (response.status !== "COMPLETED") {
+          if (response.status === "FAILED") submitted.current = false;
+          setResult(response); return;
+        }
+        if (completed.current) return;
+        completed.current = true;
         setOpen(false);
         // Cache failures must not turn an acknowledged Delete into a retryable error.
         await Promise.allSettled([synchronizeDocumentRuntimeQueries({ refreshCurrentSurface: () => onComplete({ showLoading: true }) }),
           queryClient.invalidateQueries({ queryKey: ["notifications"] }), queryClient.invalidateQueries({ queryKey: ["audit-trail"] })]);
         if (useProjectContextStore.getState().activeProject?.id === scope) showToast({ message: "Dokumen berhasil dihapus permanen.", variant: "success" });
       });
-    } finally { running.current = false; if (isCurrent(scope, token)) setBusy(false); }
+    } finally {
+      controller.abort();
+      if (reconciliation.current === controller) reconciliation.current = null;
+      running.current = false;
+      if (isCurrent(scope, token)) setBusy(false);
+    }
   };
   if (role !== "Admin") return null;
   return <>
