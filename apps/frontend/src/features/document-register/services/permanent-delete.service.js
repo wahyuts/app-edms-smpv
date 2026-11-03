@@ -18,7 +18,7 @@ export const PermanentDeleteService = {
     `/v1/documents/${encodeURIComponent(documentId)}/permanent`,
     { params: { projectId }, data: { reason }, headers: { "Idempotency-Key": requestKey } },
   )),
-  status: ({ documentId, projectId, operationId }) => request(() => apiClient.get(
-    `/v1/documents/${encodeURIComponent(documentId)}/permanent`, { params: { projectId, operationId } },
+  status: ({ documentId, projectId, operationId, signal, timeout }) => request(() => apiClient.get(
+    `/v1/documents/${encodeURIComponent(documentId)}/permanent`, { params: { projectId, operationId }, signal, ...(timeout ? { timeout } : {}) },
   )),
 };

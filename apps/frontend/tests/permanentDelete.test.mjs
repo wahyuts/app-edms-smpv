@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SourceTextModule, SyntheticModule } from 'node:vm';
 import { transformWithOxc } from 'vite';
+import { reconcilePermanentDelete } from '../src/features/document-register/utils/permanentDeleteReconciliation.js';
 
 const base = new URL('../src/features/document-register/', import.meta.url);
 const source = await readFile(new URL('components/PermanentDeleteAction.jsx', base), 'utf8');
@@ -17,7 +18,7 @@ const load = async (code, imports) => {
 };
 const createHarness = async ({ role = 'Admin', status = 'Process Review', lifecycle = 'Active' } = {}) => {
   const h = { context: { activeProject: { id: 'P1' }, activeMembership: { officialRole: role } }, calls: [], toasts: [], invalidations: [], refreshed: 0,
-    response: async () => ({ status: 'COMPLETED', message: 'done' }), statusResponse: async () => ({ status: 'COMPLETED', message: 'done' }) };
+    clock: 0, response: async () => ({ status: 'COMPLETED', message: 'done' }), statusResponse: async () => ({ status: 'COMPLETED', message: 'done' }) };
   let states = []; let cursor = 0; let initialized = false; let effects = []; let cleanup = []; let key;
   const jsx = (type, props, key) => ({ type, props, key });
   const store = (selector) => selector(h.context); store.getState = () => h.context;
@@ -37,6 +38,9 @@ const createHarness = async ({ role = 'Admin', status = 'Process Review', lifecy
     '../utils/documentRuntimeQuerySync': { synchronizeDocumentRuntimeQueries: async ({ refreshCurrentSurface }) => {
       h.invalidations.push('documents','dashboard','sla-monitoring','escalation'); await refreshCurrentSurface();
     } },
+    '../utils/permanentDeleteReconciliation': { reconcilePermanentDelete: (args) => reconcilePermanentDelete(args, {
+      now: () => h.clock, wait: async (milliseconds) => { h.clock += milliseconds; },
+    }) },
     '../services/permanent-delete.service': { PermanentDeleteService: {
       remove: async (args) => { h.calls.push({ method: 'DELETE', ...args }); return h.response(args); },
       status: async (args) => { h.calls.push({ method: 'GET', ...args }); return h.statusResponse(args); },
@@ -92,16 +96,21 @@ test('Empty reason is valid; double submission and cancel during processing are 
   done({ status: 'COMPLETED' }); await pending;
 });
 for (const status of ['PENDING','UNKNOWN','FAILED','CONFLICT']) test(`${status} never shows success, removes a row or refreshes caches optimistically`, async () => {
-  const h = await createHarness(); h.response = async () => ({ status, operationId: 'OP', message: 'Status operasi' }); h.open();
-  await h.modal.props.onConfirm(); h.render(); assert.ok(h.modal); assert.equal(h.modal.props.result.status, status);
+  const h = await createHarness(); h.response = h.statusResponse = async () => ({ status, operationId: 'OP', message: 'Status operasi' }); h.open();
+  await h.modal.props.onConfirm(); h.render(); assert.ok(h.modal); assert.equal(h.modal.props.result.status, status === 'FAILED' ? 'FAILED' : 'UNKNOWN');
   assert.equal(h.toasts.length, 0); assert.equal(h.refreshed, 0); assert.equal(h.invalidations.length, 0);
-  if (['UNKNOWN','CONFLICT'].includes(status)) { await h.modal.props.onConfirm(); assert.equal(h.calls.length, 1); }
+  if (status !== 'FAILED') { await h.modal.props.onConfirm(); assert.equal(h.calls.filter(c => c.method === 'DELETE').length, 1); }
 });
-test('Pending explicit retry reuses the same operation identity; status refresh is GET only', async () => {
-  const h = await createHarness(); h.response = async () => ({ status: 'PENDING', operationId: 'OP' }); h.open();
-  await h.modal.props.onConfirm(); h.render(); await h.modal.props.onConfirm(); h.render();
-  assert.equal(h.calls[0].requestKey, h.calls[1].requestKey);
-  await h.modal.props.onRefresh(); assert.equal(h.calls[2].method, 'GET'); assert.equal(h.calls[2].operationId, 'OP');
+test('Pending reconciliation never repeats DELETE; exhausted polling retains manual GET fallback', async () => {
+  const h = await createHarness(); h.response = h.statusResponse = async () => ({ status: 'PENDING', operationId: 'OP' }); h.open();
+  const staleConfirm = h.modal.props.onConfirm;
+  await staleConfirm(); await staleConfirm(); h.render(); await h.modal.props.onConfirm(); h.render();
+  assert.equal(h.calls.filter(c => c.method === 'DELETE').length, 1);
+  assert.equal(h.calls.filter(c => c.method === 'GET').length, 15);
+  assert.equal(h.modal.props.result.status, 'UNKNOWN'); assert.equal(h.modal.props.busy, false);
+  h.statusResponse = async () => ({ status: 'COMPLETED', operationId: 'OP' });
+  await h.modal.props.onRefresh(); assert.equal(h.calls.at(-1).method, 'GET'); assert.equal(h.calls.at(-1).operationId, 'OP');
+  assert.equal(h.toasts.length, 1);
 });
 test('Project switch/role change clears selection and ignores late responses; stale callbacks cannot submit', async () => {
   const h = await createHarness(); let done; h.response = () => new Promise((resolve) => { done = resolve; }); h.open();
@@ -111,10 +120,101 @@ test('Project switch/role change clears selection and ignores late responses; st
   assert.equal(h.calls.length, 1); assert.equal(h.toasts.length, 0); assert.equal(h.invalidations.length, 0);
   h.context = { activeProject: { id: 'P2' }, activeMembership: { officialRole: 'Admin' } }; h.render(); assert.equal(h.modal, null);
 });
-test('Network failure remains Unknown until an authorized status lookup confirms completion', async () => {
+test('Network failure automatically reconciles completion without manual refresh', async () => {
   const h = await createHarness(); h.response = async () => { throw new Error('Koneksi terputus.'); }; h.open();
-  await h.modal.props.onConfirm(); h.render(); assert.equal(h.modal.props.result.status, 'UNKNOWN'); assert.equal(h.toasts.length, 0);
-  await h.modal.props.onRefresh(); assert.equal(h.calls[1].method, 'GET'); assert.equal(h.toasts.length, 1);
+  await h.modal.props.onConfirm(); h.render(); assert.equal(h.modal, null);
+  assert.equal(h.calls[1].method, 'GET'); assert.equal(h.toasts.length, 1); assert.equal(h.refreshed, 1);
+});
+
+test('Delayed completion pins operation identity and runs success flow exactly once', async () => {
+  const h = await createHarness(); let count = 0;
+  h.response = async () => ({ status: 'PENDING', operationId: 'OP' });
+  h.statusResponse = async () => ({ status: ++count === 3 ? 'COMPLETED' : 'UNKNOWN', operationId: 'OP' });
+  h.open(); const staleConfirm = h.modal.props.onConfirm;
+  await staleConfirm(); await staleConfirm(); h.render();
+  assert.equal(h.modal, null); assert.equal(count, 3);
+  assert.equal(h.calls.filter(c => c.method === 'DELETE').length, 1);
+  assert.ok(h.calls.slice(1).every(c => c.operationId === 'OP' && c.timeout <= 5000));
+  assert.equal(h.toasts.length, 1); assert.equal(h.refreshed, 1);
+  assert.deepEqual(h.invalidations.sort(), ['documents','dashboard','sla-monitoring','escalation','notifications','audit-trail'].sort());
+});
+
+for (const code of ['ECONNABORTED', 'ERR_CANCELED']) test(`${code} reconciles through GET, never another DELETE`, async () => {
+  const h = await createHarness();
+  h.response = async () => { throw Object.assign(new Error('Status penghapusan belum dapat dipastikan.'), { code }); };
+  h.open(); await h.modal.props.onConfirm(); h.render();
+  assert.equal(h.modal, null); assert.equal(h.calls.length, 2);
+  assert.equal(h.calls[1].method, 'GET'); assert.equal(h.toasts.length, 1);
+});
+
+test('Unmount/project change aborts an active reconciliation GET and ignores late completion', async () => {
+  const h = await createHarness(); let resolveStatus;
+  h.response = async () => ({ status: 'PENDING', operationId: 'OP' });
+  h.statusResponse = () => new Promise(resolve => { resolveStatus = resolve; });
+  h.open(); const pending = h.modal.props.onConfirm();
+  while (!resolveStatus) await Promise.resolve();
+  const signal = h.calls[1].signal;
+  h.context = { activeProject: { id: 'P2' }, activeMembership: { officialRole: 'Viewer' } }; h.render();
+  assert.equal(signal.aborted, true);
+  resolveStatus({ status: 'COMPLETED', operationId: 'OP' }); await pending;
+  assert.equal(h.calls.length, 2); assert.equal(h.toasts.length, 0); assert.equal(h.refreshed, 0);
+});
+
+test('Final failure discovered by polling never follows success flow', async () => {
+  const h = await createHarness(); h.response = async () => ({ status: 'PENDING', operationId: 'OP' });
+  h.statusResponse = async () => ({ status: 'FAILED', operationId: 'OP', message: 'Penyimpanan belum berhasil.' });
+  h.open(); await h.modal.props.onConfirm(); h.render();
+  assert.equal(h.modal.props.result.status, 'FAILED'); assert.equal(h.calls.length, 2);
+  assert.equal(h.toasts.length, 0); assert.equal(h.invalidations.length, 0);
+});
+
+test('Lost response discovers the existing operation after transient 404 and pins its ID', async () => {
+  const calls = []; const controller = new AbortController(); let clock = 0;
+  const response = await reconcilePermanentDelete({ documentId: 'D1', projectId: 'P1',
+    signal: controller.signal, isCurrent: () => true, status: async args => {
+      calls.push(args);
+      if (calls.length === 1) throw Object.assign(new Error('Not visible yet'), { status: 404 });
+      return { status: calls.length === 3 ? 'COMPLETED' : 'PENDING', operationId: 'OP' };
+    } }, { now: () => clock, wait: async ms => { clock += ms; } });
+  assert.equal(response.status, 'COMPLETED'); assert.equal(calls.length, 3);
+  assert.equal(calls[0].operationId, undefined); assert.equal(calls[2].operationId, 'OP');
+});
+
+test('Polling deadline bounds slow GETs and returns Unknown rather than leaving busy/pending state', async () => {
+  let clock = 0; let calls = 0;
+  const response = await reconcilePermanentDelete({ documentId: 'D1', projectId: 'P1', operationId: 'OP',
+    signal: new AbortController().signal, isCurrent: () => true, status: async args => {
+      calls++; clock += args.timeout;
+      throw new Error('Timeout');
+    } }, { now: () => clock, wait: async ms => { clock += ms; } });
+  assert.equal(response.status, 'UNKNOWN'); assert.equal(response.operationId, 'OP');
+  assert.ok(calls < 15); assert.equal(clock, 60000);
+});
+
+for (const changed of [{ operationId: 'OTHER' }, { projectId: 'P2' }, { documentId: 'D2' }]) {
+  test(`Mismatched operation scope cannot confirm completion: ${JSON.stringify(changed)}`, async () => {
+    const response = await reconcilePermanentDelete({ documentId: 'D1', projectId: 'P1', operationId: 'OP',
+      signal: new AbortController().signal, isCurrent: () => true,
+      status: async () => ({ status: 'COMPLETED', operationId: 'OP', ...changed }) });
+    assert.equal(response.status, 'UNKNOWN');
+  });
+}
+
+for (const status of [401, 403, 422]) test(`Polling stops on authorization/validation error ${status}`, async () => {
+  let calls = 0;
+  await assert.rejects(reconcilePermanentDelete({ documentId: 'D1', projectId: 'P1',
+    signal: new AbortController().signal, isCurrent: () => true,
+    status: async () => { calls++; throw Object.assign(new Error('Ditolak'), { status }); } }), error => error.status === status);
+  assert.equal(calls, 1);
+});
+
+test('Real polling wait is canceled promptly on unmount without another status request', async () => {
+  const controller = new AbortController(); let calls = 0;
+  const pending = reconcilePermanentDelete({ documentId: 'D1', projectId: 'P1',
+    signal: controller.signal, isCurrent: () => true,
+    status: async () => { calls++; return { status: 'PENDING' }; } });
+  await Promise.resolve(); controller.abort();
+  assert.equal(await pending, null); assert.equal(calls, 1);
 });
 test('Stale rows from a previous project never expose Trash under the new project Admin role', async () => {
   const h = await createHarness(); h.context.activeProject = { id: 'P2' }; h.render();
@@ -138,9 +238,11 @@ test('API adapter sends DELETE only on remove and GET only on status, with scope
     } },
   });
   await module.PermanentDeleteService.remove({ documentId: 'D1', projectId: 'P1', reason: '', requestKey: 'same-key' });
-  await module.PermanentDeleteService.status({ documentId: 'D1', projectId: 'P1', operationId: 'OP' });
+  const signal = new AbortController().signal;
+  await module.PermanentDeleteService.status({ documentId: 'D1', projectId: 'P1', operationId: 'OP', signal, timeout: 5000 });
   assert.equal(calls[0][2].headers['Idempotency-Key'], 'same-key'); assert.equal(calls[0][2].params.projectId, 'P1');
   assert.equal(calls[1][0], 'GET'); assert.equal(calls[1][2].params.operationId, 'OP');
+  assert.equal(calls[1][2].signal, signal); assert.equal(calls[1][2].timeout, 5000);
 });
 test('Authentication/authorization errors are presented in Bahasa Indonesia without changing shared auth', async () => {
   for (const status of [401,403]) {
