@@ -95,6 +95,60 @@ test('Empty reason is valid; double submission and cancel during processing are 
   assert.equal(h.calls.length, 1); assert.equal(h.calls[0].reason, ''); assert.ok(h.modal); assert.equal(h.modal.props.busy, true);
   done({ status: 'COMPLETED' }); await pending;
 });
+
+const statusPanel = (modal) => modal.props.children.props.children.find(child => child?.props?.role === 'status');
+const processingMessage = 'Penghapusan sedang diproses. Mohon tunggu sebentar...';
+const uncertainMessage = 'Status penghapusan belum dapat dipastikan. Silakan periksa kembali melalui tombol Refresh Status.';
+
+test('Initial DELETE displays processing message before any result; completion keeps the existing success toast', async () => {
+  const h = await createHarness(); let finish;
+  h.response = () => new Promise(resolve => { finish = resolve; });
+  h.open(); assert.equal(statusPanel(h.inspectModal()), undefined);
+  const pending = h.modal.props.onConfirm(); h.render();
+  assert.equal(h.modal.props.result, null); assert.equal(h.modal.props.busy, true);
+  const panel = statusPanel(h.inspectModal());
+  assert.equal(panel.props.children[0].props.children, processingMessage);
+  assert.equal(panel.props.children[1].props.disabled, true);
+  finish({ status: 'COMPLETED' }); await pending; h.render();
+  assert.equal(h.modal, null); assert.equal(h.toasts.length, 1);
+  assert.equal(h.toasts[0].message, 'Dokumen berhasil dihapus permanen.');
+  assert.equal(h.refreshed, 1);
+});
+
+test('Initial UNKNOWN stays processing during polling, then shows uncertain message and manual Refresh fallback', async () => {
+  const h = await createHarness(); let finishStatus;
+  h.response = async () => ({ status: 'UNKNOWN', operationId: 'OP', message: 'Status penghapusan belum dapat dipastikan.' });
+  h.statusResponse = () => new Promise(resolve => { finishStatus = resolve; });
+  h.open(); const pending = h.modal.props.onConfirm();
+  while (!finishStatus) await Promise.resolve();
+  h.render();
+  assert.equal(h.modal.props.result.status, 'UNKNOWN'); assert.equal(h.modal.props.busy, true);
+  const processing = statusPanel(h.inspectModal());
+  assert.equal(processing.props.children[0].props.children, processingMessage);
+  assert.equal(processing.props.children[1].props.disabled, true);
+  h.statusResponse = async () => ({ status: 'UNKNOWN', operationId: 'OP' });
+  finishStatus({ status: 'UNKNOWN', operationId: 'OP' }); await pending; h.render();
+  const uncertain = statusPanel(h.inspectModal());
+  assert.equal(h.modal.props.busy, false);
+  assert.equal(uncertain.props.children[0].props.children, uncertainMessage);
+  assert.equal(uncertain.props.children[1].props.disabled, false);
+  assert.equal(uncertain.props.children[1].props['aria-label'], 'Periksa status penghapusan');
+  assert.equal(h.toasts.length, 0); assert.equal(h.invalidations.length, 0);
+  h.statusResponse = async () => ({ status: 'COMPLETED', operationId: 'OP' });
+  await uncertain.props.children[1].props.onClick(); h.render();
+  assert.equal(h.modal, null); assert.equal(h.toasts.length, 1);
+  assert.equal(h.toasts[0].message, 'Dokumen berhasil dihapus permanen.');
+  assert.equal(h.calls.filter(call => call.method === 'DELETE').length, 1);
+});
+
+test('Terminal failure preserves its existing message instead of showing processing or uncertain text', async () => {
+  const h = await createHarness();
+  h.response = async () => ({ status: 'FAILED', message: 'Penyimpanan hasil penghapusan belum berhasil.' });
+  h.open(); await h.modal.props.onConfirm(); h.render();
+  assert.equal(statusPanel(h.inspectModal()).props.children[0].props.children, 'Penyimpanan hasil penghapusan belum berhasil.');
+  assert.equal(h.toasts.length, 0);
+});
+
 for (const status of ['PENDING','UNKNOWN','FAILED','CONFLICT']) test(`${status} never shows success, removes a row or refreshes caches optimistically`, async () => {
   const h = await createHarness(); h.response = h.statusResponse = async () => ({ status, operationId: 'OP', message: 'Status operasi' }); h.open();
   await h.modal.props.onConfirm(); h.render(); assert.ok(h.modal); assert.equal(h.modal.props.result.status, status === 'FAILED' ? 'FAILED' : 'UNKNOWN');

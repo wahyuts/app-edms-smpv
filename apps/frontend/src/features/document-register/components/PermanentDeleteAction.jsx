@@ -39,6 +39,11 @@ export const DeleteDocumentModal = ({ documentItem, reason, onReasonChange, busy
   }, [titleId]);
   useEffect(() => { if (busy) body.current?.closest("section")?.focus(); }, [busy]);
   const blocked = ["PENDING", "UNKNOWN", "CONFLICT", "COMPLETED"].includes(result?.status);
+  const statusMessage = busy
+    ? "Penghapusan sedang diproses. Mohon tunggu sebentar..."
+    : result?.status === "UNKNOWN"
+      ? "Status penghapusan belum dapat dipastikan. Silakan periksa kembali melalui tombol Refresh Status."
+      : result?.message;
   return (
     <DocumentActionModal title="Delete Document" onClose={onCancel} isCloseDisabled={busy} footer={<>
       <button className={secondary} data-delete-cancel disabled={busy} onClick={onCancel} type="button">Cancel</button>
@@ -68,8 +73,8 @@ export const DeleteDocumentModal = ({ documentItem, reason, onReasonChange, busy
           <textarea className="mt-2 min-h-24 w-full rounded-md border border-[#123A5A] bg-[#08233B] px-3 py-2 text-sm text-[#F8FAFC] outline-none placeholder:text-[#64748B] focus:border-[#0F7BFF]"
             disabled={busy} maxLength={1000} value={reason} onChange={(event) => onReasonChange(event.target.value)} placeholder="Add delete reason..." />
         </label>
-        {result ? <div className="flex items-center justify-between gap-3 text-sm text-[#FACC15]" role="status">
-          <p className="min-w-0 break-words">{result.message}</p>
+        {busy || result ? <div className="flex items-center justify-between gap-3 text-sm text-[#FACC15]" role="status">
+          <p className="min-w-0 break-words">{statusMessage}</p>
           <button className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#123A5A] text-[#CBD5E1] disabled:opacity-50"
             aria-label="Periksa status penghapusan" title="Periksa status penghapusan" type="button" disabled={busy} onClick={onRefresh}><RefreshCw className="h-4 w-4" /></button>
         </div> : null}
