@@ -1,4 +1,5 @@
 const { pool } = require('../config/database');
+const admission = require('../services/documentAdmission.service');
 
 const mapProjectRow = (row) => row && ({
   id: row.id,
@@ -251,6 +252,22 @@ const closeProject = async ({ projectId, userId }) => {
 
   try {
     await connection.beginTransaction();
+    const [targets] = await connection.execute(
+      'SELECT id FROM engineering_documents WHERE project_id = ? ORDER BY id', [projectId]
+    );
+    // Lock coordinators before the bulk business UPDATE, in deterministic order.
+    targets.sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+    for (const document of targets) {
+      await admission.guardBulkDocument(connection, { projectId, documentId: document.id });
+    }
+    const [currentTargets] = await connection.execute(
+      'SELECT id FROM engineering_documents WHERE project_id = ? ORDER BY id FOR UPDATE', [projectId]
+    );
+    const expectedIds = new Set(targets.map((document) => document.id));
+    if (currentTargets.length !== targets.length || currentTargets.some((document) => !expectedIds.has(document.id))) {
+      throw Object.assign(new Error('Daftar dokumen berubah. Silakan ulangi penutupan project.'),
+        { statusCode: 409, code: 'PROJECT_DOCUMENTS_CHANGED' });
+    }
     const [archiveResult] = await connection.execute(
       `
         UPDATE engineering_documents
@@ -261,8 +278,9 @@ const closeProject = async ({ projectId, userId }) => {
         WHERE project_id = ?
           AND workflow_status = 'Approved'
           AND lifecycle_status = 'Active'
+          AND id IN (${targets.length ? targets.map(() => '?').join(', ') : 'NULL'})
       `,
-      [userId, projectId]
+      [userId, projectId, ...targets.map((document) => document.id)]
     );
     await connection.execute(
       `

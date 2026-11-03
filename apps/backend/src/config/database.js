@@ -61,6 +61,7 @@ const checkDatabaseHealth = async () => {
 };
 
 const closeDatabasePool = async () => {
+  await require('./documentCoordinationDatabase').pool.end();
   await pool.end();
   logger.log('[DATABASE] MySQL pool closed');
 };

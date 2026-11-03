@@ -1,0 +1,56 @@
+{
+  "run": "SB-mvzbgwos-720e7d",
+  "database": "edms_sprint_b_isolated",
+  "tests": [
+    {
+      "name": "Expected watchdog cancellation probe; no mutation",
+      "result": "FAIL",
+      "code": "TEST_DEADLINE",
+      "error": "Test deadline: Expected watchdog cancellation probe; no mutation"
+    }
+  ],
+  "startedAt": "2026-11-02T13:50:43.325Z",
+  "lastSql": "SELECT * FROM sprint_a_test_ownership WHERE id=?",
+  "server": {
+    "version": "10.4.32-MariaDB",
+    "hostname": "DESKTOP-3DFA1TA",
+    "port": 13317,
+    "datadir": "D:\\Project\\app-edms-smpv\\tmp\\mariadb-sprint-b-20261102\\data\\",
+    "sql_mode": "NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION",
+    "time_zone": "SYSTEM",
+    "autocommit": 1
+  },
+  "preflightActiveCommands": [],
+  "processes": [
+    {
+      "ID": 60,
+      "COMMAND": "Query",
+      "TIME": 0,
+      "STATE": "Filling schema table"
+    },
+    {
+      "ID": 59,
+      "COMMAND": "Sleep",
+      "TIME": 0,
+      "STATE": ""
+    }
+  ],
+  "fatal": {
+    "code": "TEST_DEADLINE",
+    "error": "Test deadline: Expected watchdog cancellation probe; no mutation",
+    "stack": "Error: Test deadline: Expected watchdog cancellation probe; no mutation\n    at Timeout.<anonymous> (D:\\Project\\app-edms-smpv\\apps\\backend\\tests\\helpers\\isolatedMariaDb.cjs:66:120)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)"
+  },
+  "shutdown": {
+    "poolsClosed": true,
+    "unresolvedTasks": 1,
+    "cleanupErrors": [
+      {
+        "stage": "tasks",
+        "code": "TEST_DEADLINE"
+      }
+    ]
+  },
+  "finishedAt": "2026-11-02T13:50:45.511Z",
+  "passed": 0,
+  "failed": 3
+}

@@ -1,0 +1,172 @@
+{
+  "run": "SB-mvzbkbsm-d43113",
+  "database": "edms_sprint_b_isolated",
+  "tests": [
+    {
+      "name": "MariaDB migration: four InnoDB sidecars and FK enforcement enabled",
+      "result": "PASS"
+    },
+    {
+      "name": "Complete archived document: active/history/attachment/out-of-prefix/direct files; audit retained; repeated resume exactly once",
+      "result": "PASS"
+    },
+    {
+      "name": "Existing unbound files remain untouched and no manifest is finalized",
+      "result": "PASS"
+    },
+    {
+      "name": "Cross-document shared file blocks the entire cleanup without reassigning metadata",
+      "result": "PASS"
+    },
+    {
+      "name": "Different legacy alias blocks cleanup; document number is never sufficient",
+      "result": "PASS"
+    },
+    {
+      "name": "Crash after manifest; wrong namespace pending; fresh engine reads identical manifest and completes in correct bucket",
+      "result": "PASS"
+    },
+    {
+      "name": "Finalized manifest tamper is rejected before IO",
+      "result": "PASS"
+    },
+    {
+      "name": "Crash before manifest is non-destructive and safely resumable",
+      "result": "PASS"
+    },
+    {
+      "name": "Partial provider timeout remains durable UNKNOWN; repeated resume cannot repeat unknown delete or hard delete DB",
+      "result": "PASS"
+    },
+    {
+      "name": "Two workers: connection-owned advisory claim allows only one external destructive step",
+      "result": "PASS"
+    },
+    {
+      "name": "DB rollback restores all metadata and final audit; retry needs no duplicate storage IO",
+      "result": "PASS"
+    },
+    {
+      "name": "Lost response after DB commit: durable completion and final audit are read without duplicate IO",
+      "result": "PASS"
+    },
+    {
+      "name": "Crash after durable IN_FLIGHT but before IO remains Pending; expired worker is not proof of completion",
+      "result": "PASS"
+    },
+    {
+      "name": "Crash after provider ACK but before durable evidence remains UNKNOWN; never infer success from absence",
+      "result": "PASS"
+    },
+    {
+      "name": "Local sandbox: unsupported race-safe deletion persists REJECTED and retains all metadata/files",
+      "result": "PASS"
+    },
+    {
+      "name": "Evidence and diagnostic connections remain independent when all business slots are occupied",
+      "result": "PASS",
+      "evidence": {
+        "businessSlotsHeld": 5,
+        "evidenceLimit": 2,
+        "diagnosticLimit": 1
+      }
+    },
+    {
+      "name": "Concurrent reservation identities are idempotent or rejected, never duplicated",
+      "result": "PASS"
+    },
+    {
+      "name": "Crash after storage before database transaction resumes without duplicate external IO",
+      "result": "PASS"
+    },
+    {
+      "name": "Owned missing object remains safely idempotent through exact-key provider ACK",
+      "result": "PASS"
+    },
+    {
+      "name": "Normalized cross-document key alias blocks cleanup even when raw storage keys differ",
+      "result": "PASS"
+    },
+    {
+      "name": "No unrelated baseline business row changed or disappeared; globals/FK checks remain unchanged",
+      "result": "PASS"
+    }
+  ],
+  "startedAt": "2026-11-02T13:53:22.870Z",
+  "lastSql": "SELECT @@GLOBAL.sql_mode sql_mode,@@GLOBAL.time_zone time_zone,@@foreign_key_checks fk",
+  "server": {
+    "version": "10.4.32-MariaDB",
+    "hostname": "DESKTOP-3DFA1TA",
+    "port": 13317,
+    "datadir": "D:\\Project\\app-edms-smpv\\tmp\\mariadb-sprint-b-20261102\\data\\",
+    "sql_mode": "NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION",
+    "time_zone": "SYSTEM",
+    "autocommit": 1
+  },
+  "preflightActiveCommands": [],
+  "migration": {
+    "executed": false,
+    "hash": "7302ef31b9f58c094532f1e8c5f3574d8de6f351a282f608d89136c7f9071e75",
+    "tables": [
+      "storage_namespaces",
+      "stored_file_namespace_bindings",
+      "document_delete_executions",
+      "document_delete_attempts"
+    ]
+  },
+  "localSandbox": "C:\\Users\\ThinkPad\\AppData\\Local\\Temp\\edms-sprint-b-db-b7iRqx",
+  "processes": [
+    {
+      "ID": 67,
+      "COMMAND": "Query",
+      "TIME": 0,
+      "STATE": "Filling schema table"
+    },
+    {
+      "ID": 66,
+      "COMMAND": "Sleep",
+      "TIME": 0,
+      "STATE": ""
+    },
+    {
+      "ID": 65,
+      "COMMAND": "Sleep",
+      "TIME": 0,
+      "STATE": ""
+    },
+    {
+      "ID": 64,
+      "COMMAND": "Sleep",
+      "TIME": 0,
+      "STATE": ""
+    },
+    {
+      "ID": 63,
+      "COMMAND": "Sleep",
+      "TIME": 0,
+      "STATE": ""
+    },
+    {
+      "ID": 62,
+      "COMMAND": "Sleep",
+      "TIME": 0,
+      "STATE": ""
+    },
+    {
+      "ID": 61,
+      "COMMAND": "Sleep",
+      "TIME": 0,
+      "STATE": ""
+    }
+  ],
+  "baselineRowsPreserved": true,
+  "fixturePolicy": "Only this run synthetic target documents were hard-deleted; surviving fixtures and sandbox intentionally retained. No DROP/TRUNCATE/reset.",
+  "shutdown": {
+    "poolsClosed": true,
+    "unresolvedTasks": 0,
+    "cleanupErrors": []
+  },
+  "finishedAt": "2026-11-02T13:53:27.171Z",
+  "passed": 21,
+  "failed": 0
+}

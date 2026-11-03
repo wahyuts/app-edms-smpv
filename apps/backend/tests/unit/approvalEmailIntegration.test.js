@@ -102,6 +102,7 @@ const fixture = (options = {}) => {
     staged.comments.push({ ...value }); trace.push('COMMENT');
   };
   repo.insertStoredFile = async () => { trace.push('STORED ATTACHMENT'); };
+  repo.completeStoredFileProvenance = async () => { trace.push('PROVENANCE'); };
   const service = loader.load('services/approval.service.js');
   if (options.dispatchThrows) loader.load('services/approvalEmailDispatcher.service.js').dispatch = () => { throw new Error('Dispatch failed'); };
   const args = { actorUserId: 1, actorUserFullName: 'Real Personal Name Must Not Be Emailed', actorOfficialRole: role === 'Team Process' ? 'Team Project' : 'Team Process',
@@ -208,6 +209,8 @@ test('Approval B/C attachment processing remains in the existing transaction', a
     await settle();
     assert.ok(result.workflowComment.attachment);
     assert.ok(f.trace.indexOf('FINALIZE') < f.trace.indexOf('COMMIT ACK'));
+    assert.ok(f.trace.indexOf('FINALIZE') < f.trace.indexOf('PROVENANCE'));
+    assert.ok(f.trace.indexOf('PROVENANCE') < f.trace.indexOf('COMMIT ACK'));
     assert.equal(f.sent.length, 2);
     assert.ok(f.sent[0].text.includes('Comment: Manual attachment comment'));
   }
