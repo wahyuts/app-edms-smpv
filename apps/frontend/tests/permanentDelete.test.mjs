@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { SourceTextModule, SyntheticModule } from 'node:vm';
 import { transformWithOxc } from 'vite';
 import { reconcilePermanentDelete } from '../src/features/document-register/utils/permanentDeleteReconciliation.js';
+import { beginPermanentDeleteConfirmation, waitForPermanentDeleteConfirmations } from '../src/features/document-register/utils/permanentDeleteConfirmation.js';
 
 const base = new URL('../src/features/document-register/', import.meta.url);
 const source = await readFile(new URL('components/PermanentDeleteAction.jsx', base), 'utf8');
@@ -41,6 +42,7 @@ const createHarness = async ({ role = 'Admin', status = 'Process Review', lifecy
     '../utils/permanentDeleteReconciliation': { reconcilePermanentDelete: (args) => reconcilePermanentDelete(args, {
       now: () => h.clock, wait: async (milliseconds) => { h.clock += milliseconds; },
     }) },
+    '../utils/permanentDeleteConfirmation': { beginPermanentDeleteConfirmation },
     '../services/permanent-delete.service': { PermanentDeleteService: {
       remove: async (args) => { h.calls.push({ method: 'DELETE', ...args }); return h.response(args); },
       status: async (args) => { h.calls.push({ method: 'GET', ...args }); return h.statusResponse(args); },
@@ -178,6 +180,25 @@ test('Network failure automatically reconciles completion without manual refresh
   const h = await createHarness(); h.response = async () => { throw new Error('Koneksi terputus.'); }; h.open();
   await h.modal.props.onConfirm(); h.render(); assert.equal(h.modal, null);
   assert.equal(h.calls[1].method, 'GET'); assert.equal(h.toasts.length, 1); assert.equal(h.refreshed, 1);
+});
+
+test('SSE refresh waiting on the actual action is released only after Sprint A success toast and cache flow', async () => {
+  const h = await createHarness(); let finish;
+  h.response = () => new Promise(resolve => { finish = resolve; }); h.open();
+  const deleting = h.modal.props.onConfirm(); let refreshed = false;
+  const realtimeRefresh = waitForPermanentDeleteConfirmations('P1').then(() => {
+    assert.equal(h.toasts.length, 1); assert.equal(h.refreshed, 1); refreshed = true;
+  });
+  await Promise.resolve(); assert.equal(refreshed, false);
+  finish({ status: 'COMPLETED' }); await deleting; await realtimeRefresh;
+  assert.equal(refreshed, true);
+});
+
+test('Rejected DELETE releases confirmation guard so realtime cannot remain blocked', async () => {
+  const h = await createHarness();
+  h.response = async () => { throw Object.assign(new Error('Akses ditolak.'), { status: 403 }); };
+  h.open(); await h.modal.props.onConfirm(); await waitForPermanentDeleteConfirmations('P1');
+  assert.equal(h.toasts.length, 0); assert.equal(h.calls.length, 1);
 });
 
 test('Delayed completion pins operation identity and runs success flow exactly once', async () => {

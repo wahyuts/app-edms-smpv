@@ -7,6 +7,7 @@ import { queryClient } from "@/shared/api/query-client";
 import { synchronizeDocumentRuntimeQueries } from "../utils/documentRuntimeQuerySync";
 import { PermanentDeleteService } from "../services/permanent-delete.service";
 import { reconcilePermanentDelete } from "../utils/permanentDeleteReconciliation";
+import { beginPermanentDeleteConfirmation } from "../utils/permanentDeleteConfirmation";
 
 const secondary = "inline-flex h-9 items-center justify-center rounded-md border border-[#123A5A] px-4 text-sm font-semibold text-[#CBD5E1] transition-colors hover:border-[#0F7BFF] hover:bg-[#0B2B47] hover:text-white disabled:opacity-50";
 const danger = "inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#EF4444] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-50";
@@ -114,6 +115,7 @@ const DeleteActionState = ({ documentItem, disabled, onRunAction, onComplete, pr
     if (!refreshOnly && submitted.current) return;
     if (!refreshOnly && ["PENDING", "UNKNOWN", "CONFLICT", "COMPLETED"].includes(result?.status)) return;
     running.current = true; setBusy(true); setError("");
+    const finishConfirmation = beginPermanentDeleteConfirmation(scope);
     const controller = new AbortController();
     reconciliation.current = controller;
     try {
@@ -161,6 +163,7 @@ const DeleteActionState = ({ documentItem, disabled, onRunAction, onComplete, pr
         if (useProjectContextStore.getState().activeProject?.id === scope) showToast({ message: "Dokumen berhasil dihapus permanen.", variant: "success" });
       });
     } finally {
+      finishConfirmation();
       controller.abort();
       if (reconciliation.current === controller) reconciliation.current = null;
       running.current = false;

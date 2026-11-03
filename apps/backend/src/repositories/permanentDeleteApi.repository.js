@@ -14,7 +14,13 @@ const createRepository = ({ pool }) => {
     [op.project_id, op.document_id]);
     return { execution, attempts, uncertain };
   };
-  return { authorize, document, operation, state };
+  const realtimeRecipients = async (projectId) => {
+    const [rows] = await pool.execute(`SELECT DISTINCT m.user_id FROM project_memberships m
+      JOIN users u ON u.id=m.user_id JOIN projects p ON p.id=m.project_id
+      WHERE m.project_id=? AND m.status='Active' AND u.status='Active' AND p.status='Active'`, [projectId]);
+    return rows.map((row) => row.user_id);
+  };
+  return { authorize, document, operation, state, realtimeRecipients };
 };
 
 module.exports = { createRepository };
