@@ -15,6 +15,7 @@ const slaNotificationProducer = require('./slaNotificationProducer.service');
 const storageService = require('./storage.service');
 const uploadService = require('./upload.service');
 const workflowEngine = require('./workflowEngine.service');
+const admission = require('./documentAdmission.service');
 const { createEntityId, createHttpError } = require('../utils/administration');
 const {
   buildCanonicalPhysicalFileName,
@@ -325,6 +326,7 @@ const saveDocumentRevision = async ({ activeProject, actorOfficialRole, actorUse
         }
         await storageService.finalize(temporaryMetadata.storageKey, storageKey);
         finalized = true;
+        await documentRepository.completeStoredFileProvenance(connection, fileId);
       }
     });
   } catch (error) {
@@ -396,7 +398,7 @@ const saveDocumentRevision = async ({ activeProject, actorOfficialRole, actorUse
 };
 
 module.exports = {
-  uploadRevision: (args) => saveDocumentRevision(args),
-  editDocumentAsAdmin: (args) => saveDocumentRevision(args, true),
+  uploadRevision: admission.documentWriter((args) => saveDocumentRevision(args), 'UPLOAD_REVISION'),
+  editDocumentAsAdmin: admission.documentWriter((args) => saveDocumentRevision(args, true), 'ADMIN_EDIT'),
   uploadRevisionTransitionMatrix,
 };

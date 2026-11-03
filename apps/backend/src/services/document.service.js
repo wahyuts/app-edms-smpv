@@ -18,6 +18,7 @@ const realtimeDocumentPublisher = require('./realtimeDocumentPublisher.service')
 const slaNotificationProducer = require('./slaNotificationProducer.service');
 const auditService = require('./audit.service');
 const revisionService = require('./revision.service');
+const admission = require('./documentAdmission.service');
 const {
   buildPagination,
   createEntityId,
@@ -158,149 +159,155 @@ const createDocument = async ({ activeProject, actorOfficialRole, actorUserFullN
   });
   const documentType = await documentRepository.findDocumentTypeByDrawing(payload.drawing);
   const documentId = createEntityId(payload.drawing === 'PFD' ? 'DOC-PFD' : 'DOC-PID');
-  const revisionId = createEntityId('REV');
-  const fileId = createEntityId('FILE');
-  const revisionLabel = DOCUMENT_REVISION_LABEL.IFR_SUBMITTED;
-  const submittedAt = new Date();
-  const physicalFileName = buildCanonicalPhysicalFileName({
-    documentNumber: payload.documentNumber,
-    fileId,
-    originalFileName: temporaryMetadata.originalFileName,
-    revisionLabel,
-    submittedAt,
-  });
-  const permanentStorageKey = buildRevisionStorageKey({
-    documentNumber: payload.documentNumber,
-    physicalFileName,
-    projectCode: project.projectCode,
-    revisionLabel,
-  });
-  validateStoredFileCapacity({
-    originalFileName: temporaryMetadata.originalFileName,
-    physicalFileName,
-    relativePath: permanentStorageKey,
-    storageKey: permanentStorageKey,
-  });
-
-  let finalized = false;
-
-  try {
-    await documentRepository.runInTransaction(async (connection) => {
-      await documentRepository.insertDocument(connection, {
-        id: documentId,
-        projectId,
-        documentTypeId: documentType?.id || null,
-        documentNumber: payload.documentNumber,
-        description: payload.description,
-        drawing: payload.drawing,
-        area: payload.area,
-        daysUntilValidation: payload.daysUntilValidation,
-        workflowStatus: DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW,
-        lifecycleStatus: DOCUMENT_LIFECYCLE_STATUS.ACTIVE,
-        revisionLabel,
-        responsibleRole: DOCUMENT_RESPONSIBLE_ROLE.TEAM_PROCESS,
-        currentAssigneeUserId: initialAssignee.userId,
-        createdByUserId: actorUserId,
-      });
-      await documentRepository.insertStoredFile(connection, {
-        fileId,
-        projectId,
-        documentId,
-        originalFileName: temporaryMetadata.originalFileName,
-        physicalFileName,
-        extension: temporaryMetadata.extension,
-        mimeType: temporaryMetadata.mimeType,
-        fileSize: temporaryMetadata.fileSize,
-        storageKey: permanentStorageKey,
-        relativePath: permanentStorageKey,
-        fileCategory: STORED_FILE_CATEGORY.REVISION_FILE,
-        checksum: temporaryMetadata.checksum || null,
-        uploadedByUserId: actorUserId,
-        isActive: true,
-      });
-      await documentRepository.insertRevision(connection, {
-        id: revisionId,
-        projectId,
-        documentId,
-        revisionLabel,
-        revisionSequence: 1,
-        fileId,
-        storagePathLegacy: permanentStorageKey,
-        isActive: true,
-        sourceStatus: null,
-        resultStatus: DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW,
-        createdByUserId: actorUserId,
-      });
-      await documentRepository.updateDocumentActivePointers(connection, {
-        activeFileId: fileId,
-        activeRevisionId: revisionId,
-        documentId,
-        updatedByUserId: actorUserId,
-      });
-      await documentRepository.insertDocumentHistory(connection, {
-        id: createEntityId('DTH'),
-        projectId,
-        documentId,
-        workflowEvent: 'Upload Document',
-        activity: 'Upload Document',
-        workflowStatus: DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW,
-        revisionLabel,
-        lifecycleStatus: DOCUMENT_LIFECYCLE_STATUS.ACTIVE,
-        reason: null,
-        createdByUserId: actorUserId,
-        createdByNameSnapshot: actorUserFullName || null,
-        createdByOfficialRoleSnapshot: actorOfficialRole || DOCUMENT_RESPONSIBLE_ROLE.DOCUMENT_OWNER,
-      });
-
-      const consumedRows = await uploadService.consumeTemporaryUploadMetadata(connection, payload.temporaryFileId);
-      if (consumedRows !== 1) {
-        throw createHttpError(DOCUMENT_MESSAGES.TEMPORARY_NOT_FOUND, 409, [
-          { field: 'temporaryFileId', message: DOCUMENT_MESSAGES.TEMPORARY_NOT_FOUND },
-        ]);
-      }
-      await storageService.finalize(temporaryMetadata.storageKey, permanentStorageKey);
-      finalized = true;
+  return admission.runWriter({ projectId, documentId, type: 'CREATE_DOCUMENT',
+    temporaryFileId: payload.temporaryFileId }, async () => {
+    // Revalidate after the durable claim; cleanup may have won during pre-validation.
+    await assertTemporaryUploadAvailable({ actorUserId, temporaryFileId: payload.temporaryFileId });
+    const revisionId = createEntityId('REV');
+    const fileId = createEntityId('FILE');
+    const revisionLabel = DOCUMENT_REVISION_LABEL.IFR_SUBMITTED;
+    const submittedAt = new Date();
+    const physicalFileName = buildCanonicalPhysicalFileName({
+      documentNumber: payload.documentNumber,
+      fileId,
+      originalFileName: temporaryMetadata.originalFileName,
+      revisionLabel,
+      submittedAt,
     });
-  } catch (error) {
-    if (finalized) {
-      await storageService.delete(permanentStorageKey).catch(() => {});
+    const permanentStorageKey = buildRevisionStorageKey({
+      documentNumber: payload.documentNumber,
+      physicalFileName,
+      projectCode: project.projectCode,
+      revisionLabel,
+    });
+    validateStoredFileCapacity({
+      originalFileName: temporaryMetadata.originalFileName,
+      physicalFileName,
+      relativePath: permanentStorageKey,
+      storageKey: permanentStorageKey,
+    });
+
+    let finalized = false;
+
+    try {
+      await documentRepository.runInTransaction(async (connection) => {
+        await documentRepository.insertDocument(connection, {
+          id: documentId,
+          projectId,
+          documentTypeId: documentType?.id || null,
+          documentNumber: payload.documentNumber,
+          description: payload.description,
+          drawing: payload.drawing,
+          area: payload.area,
+          daysUntilValidation: payload.daysUntilValidation,
+          workflowStatus: DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW,
+          lifecycleStatus: DOCUMENT_LIFECYCLE_STATUS.ACTIVE,
+          revisionLabel,
+          responsibleRole: DOCUMENT_RESPONSIBLE_ROLE.TEAM_PROCESS,
+          currentAssigneeUserId: initialAssignee.userId,
+          createdByUserId: actorUserId,
+        });
+        await documentRepository.insertStoredFile(connection, {
+          fileId,
+          projectId,
+          documentId,
+          originalFileName: temporaryMetadata.originalFileName,
+          physicalFileName,
+          extension: temporaryMetadata.extension,
+          mimeType: temporaryMetadata.mimeType,
+          fileSize: temporaryMetadata.fileSize,
+          storageKey: permanentStorageKey,
+          relativePath: permanentStorageKey,
+          fileCategory: STORED_FILE_CATEGORY.REVISION_FILE,
+          checksum: temporaryMetadata.checksum || null,
+          uploadedByUserId: actorUserId,
+          isActive: true,
+        });
+        await documentRepository.insertRevision(connection, {
+          id: revisionId,
+          projectId,
+          documentId,
+          revisionLabel,
+          revisionSequence: 1,
+          fileId,
+          storagePathLegacy: permanentStorageKey,
+          isActive: true,
+          sourceStatus: null,
+          resultStatus: DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW,
+          createdByUserId: actorUserId,
+        });
+        await documentRepository.updateDocumentActivePointers(connection, {
+          activeFileId: fileId,
+          activeRevisionId: revisionId,
+          documentId,
+          updatedByUserId: actorUserId,
+        });
+        await documentRepository.insertDocumentHistory(connection, {
+          id: createEntityId('DTH'),
+          projectId,
+          documentId,
+          workflowEvent: 'Upload Document',
+          activity: 'Upload Document',
+          workflowStatus: DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW,
+          revisionLabel,
+          lifecycleStatus: DOCUMENT_LIFECYCLE_STATUS.ACTIVE,
+          reason: null,
+          createdByUserId: actorUserId,
+          createdByNameSnapshot: actorUserFullName || null,
+          createdByOfficialRoleSnapshot: actorOfficialRole || DOCUMENT_RESPONSIBLE_ROLE.DOCUMENT_OWNER,
+        });
+
+        const consumedRows = await uploadService.consumeTemporaryUploadMetadata(connection, payload.temporaryFileId);
+        if (consumedRows !== 1) {
+          throw createHttpError(DOCUMENT_MESSAGES.TEMPORARY_NOT_FOUND, 409, [
+            { field: 'temporaryFileId', message: DOCUMENT_MESSAGES.TEMPORARY_NOT_FOUND },
+          ]);
+        }
+        await storageService.finalize(temporaryMetadata.storageKey, permanentStorageKey);
+        finalized = true;
+        await documentRepository.completeStoredFileProvenance(connection, fileId);
+      });
+    } catch (error) {
+      if (finalized) {
+        await storageService.delete(permanentStorageKey).catch(() => {});
+      }
+
+      const duplicateError = mapDuplicateError(error, DOCUMENT_MESSAGES.DUPLICATE_DOCUMENT, 'documentNumber');
+      throw duplicateError || error;
     }
 
-    const duplicateError = mapDuplicateError(error, DOCUMENT_MESSAGES.DUPLICATE_DOCUMENT, 'documentNumber');
-    throw duplicateError || error;
-  }
+    const createdDocument = await documentRepository.findDocumentRegisterById(documentId);
+    await notificationService.createDocumentNotificationsForOfficialRoles({
+      document: {
+        ...createdDocument,
+        currentAssigneeUserId: initialAssignee.userId,
+        responsibleRole: DOCUMENT_RESPONSIBLE_ROLE.TEAM_PROCESS,
+        status: DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW,
+      },
+      eventType: notificationService.NOTIFICATION_EVENT_TYPE.DOCUMENT_UPLOADED,
+      officialRoles: [DOCUMENT_RESPONSIBLE_ROLE.TEAM_PROCESS],
+    });
+    await slaNotificationProducer.evaluateDocumentForSlaNotifications({
+      document: createdDocument,
+      triggerSource: 'document_create',
+    });
+    await auditService.recordActivitySafely({
+      action: 'Upload Document',
+      actorOfficialRole,
+      actorUserFullName,
+      actorUserId,
+      projectId: createdDocument.projectId,
+      reference: createdDocument.documentNumber,
+      resourceId: createdDocument.id,
+      resourceType: 'Document',
+    });
+    realtimeDocumentPublisher.publishDocumentCreated({
+      actorUserId,
+      document: createdDocument,
+    });
 
-  const createdDocument = await documentRepository.findDocumentRegisterById(documentId);
-  await notificationService.createDocumentNotificationsForOfficialRoles({
-    document: {
-      ...createdDocument,
-      currentAssigneeUserId: initialAssignee.userId,
-      responsibleRole: DOCUMENT_RESPONSIBLE_ROLE.TEAM_PROCESS,
-      status: DOCUMENT_WORKFLOW_STATUS.PROCESS_REVIEW,
-    },
-    eventType: notificationService.NOTIFICATION_EVENT_TYPE.DOCUMENT_UPLOADED,
-    officialRoles: [DOCUMENT_RESPONSIBLE_ROLE.TEAM_PROCESS],
+    return createdDocument;
   });
-  await slaNotificationProducer.evaluateDocumentForSlaNotifications({
-    document: createdDocument,
-    triggerSource: 'document_create',
-  });
-  await auditService.recordActivitySafely({
-    action: 'Upload Document',
-    actorOfficialRole,
-    actorUserFullName,
-    actorUserId,
-    projectId: createdDocument.projectId,
-    reference: createdDocument.documentNumber,
-    resourceId: createdDocument.id,
-    resourceType: 'Document',
-  });
-  realtimeDocumentPublisher.publishDocumentCreated({
-    actorUserId,
-    document: createdDocument,
-  });
-
-  return createdDocument;
 };
 
 const assertActorMembership = async ({ projectId, userId }) => {
@@ -598,6 +605,7 @@ const getDocumentDetail = async ({ documentId, userId }) => {
     queryProjectId: document.projectId,
     userId,
   });
+  await admission.assertReadable({ projectId: document.projectId, documentId });
 
   return document;
 };
@@ -649,7 +657,7 @@ const listDocumentRevisions = async ({ documentId, userId }) => {
 };
 
 module.exports = {
-  archiveDocument,
+  archiveDocument: admission.documentWriter(archiveDocument, 'ARCHIVE_DOCUMENT'),
   createDocument,
   getDocumentDetail,
   getDocumentHistory,
@@ -657,6 +665,6 @@ module.exports = {
   listDocumentRevisions,
   listDocuments,
   markWorkflowCommentsRead,
-  restoreDocument,
-  updateDocument,
+  restoreDocument: admission.documentWriter(restoreDocument, 'RESTORE_DOCUMENT'),
+  updateDocument: admission.documentWriter(updateDocument, 'EDIT_DOCUMENT'),
 };

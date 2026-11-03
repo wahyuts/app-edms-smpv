@@ -1,0 +1,185 @@
+{
+  "run": "SA-1793627420320-d28d95",
+  "database": "edms_sprint_b_isolated",
+  "startedAt": "2026-11-02T13:50:20.320Z",
+  "tests": [
+    {
+      "name": "Migration: five InnoDB tables, generated claim, indexes and schema equivalence",
+      "result": "PASS",
+      "milliseconds": 35,
+      "evidence": {
+        "tables": [
+          {
+            "TABLE_NAME": "document_admission_coordinators",
+            "ENGINE": "InnoDB"
+          },
+          {
+            "TABLE_NAME": "document_delete_file_manifest",
+            "ENGINE": "InnoDB"
+          },
+          {
+            "TABLE_NAME": "document_delete_operations",
+            "ENGINE": "InnoDB"
+          },
+          {
+            "TABLE_NAME": "document_storage_io_steps",
+            "ENGINE": "InnoDB"
+          },
+          {
+            "TABLE_NAME": "document_writer_operations",
+            "ENGINE": "InnoDB"
+          }
+        ],
+        "generated": {
+          "EXTRA": "STORED GENERATED",
+          "GENERATION_EXPRESSION": "case when `lifecycle_state` <> 'SETTLED' then `temporary_file_id` else NULL end"
+        },
+        "verifiedIndexes": 12,
+        "canonicalBusinessTables": 24
+      }
+    },
+    {
+      "name": "Constraints: invalid states and missing fields are rejected",
+      "result": "PASS",
+      "milliseconds": 18,
+      "evidence": {
+        "rejectedStates": 7
+      }
+    },
+    {
+      "name": "Unique constraints: active temp claim, operation target and manifest exact-key identity",
+      "result": "PASS",
+      "milliseconds": 61
+    },
+    {
+      "name": "Atomic ordering: admitted writer drains; new writer after reservation is rejected",
+      "result": "PASS",
+      "milliseconds": 87
+    },
+    {
+      "name": "Lock contention: reservation waits for a held coordinator lock without bypass",
+      "result": "PASS",
+      "milliseconds": 129
+    },
+    {
+      "name": "Simultaneous admission/reservation: 20 real multi-connection races serialize safely",
+      "result": "PASS",
+      "milliseconds": 711,
+      "evidence": {
+        "writerBefore": 8,
+        "writerRejected": 12
+      }
+    },
+    {
+      "name": "Concurrent Admin reservation: same identity idempotent, different identity conflicts",
+      "result": "PASS",
+      "milliseconds": 40
+    },
+    {
+      "name": "Writer lifecycle: SQL/IO/post-commit drain and no detached mutation after confirmed",
+      "result": "PASS",
+      "milliseconds": 81
+    },
+    {
+      "name": "Unknown simulated COPY survives rollback and process/module restart",
+      "result": "PASS",
+      "milliseconds": 64
+    },
+    {
+      "name": "Rollback admission/reservation/business mutation does not leave false completion",
+      "result": "PASS",
+      "milliseconds": 50
+    },
+    {
+      "name": "Connection loss during simulated COPY releases SQL lock but cannot prove quiescence",
+      "result": "PASS",
+      "milliseconds": 75,
+      "evidence": {
+        "killedTestConnectionId": 36,
+        "io": "SUCCEEDED"
+      }
+    },
+    {
+      "name": "Project Close: reservation conflict rolls back all archives; normal close retains business result",
+      "result": "PASS",
+      "milliseconds": 38
+    },
+    {
+      "name": "Project Close sorted locks overlap a concurrent reservation without partial commit",
+      "result": "PASS",
+      "milliseconds": 134
+    },
+    {
+      "name": "Notification bulk/SLA overlap: stale writers cannot bypass a reserved document",
+      "result": "PASS",
+      "milliseconds": 30
+    },
+    {
+      "name": "Intentional inverse-order deadlock safely selects a victim; clean retry preserves gate safety",
+      "result": "PASS",
+      "milliseconds": 40,
+      "evidence": {
+        "expectedVictim": "ER_LOCK_DEADLOCK"
+      }
+    },
+    {
+      "name": "Real pool starvation: business limit 1 does not prevent independent IO evidence",
+      "result": "PASS",
+      "milliseconds": 50
+    },
+    {
+      "name": "Cross-document/project isolation: a held target gate does not block unrelated writers",
+      "result": "PASS",
+      "milliseconds": 29
+    },
+    {
+      "name": "UTC technical timestamps remain UTC under a non-UTC session",
+      "result": "PASS",
+      "milliseconds": 45
+    }
+  ],
+  "connectionIds": [
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51
+  ],
+  "server": {
+    "version": "10.4.32-MariaDB",
+    "hostname": "DESKTOP-3DFA1TA",
+    "port": 13317,
+    "isolation_level": "REPEATABLE-READ",
+    "sql_mode": "IGNORE_SPACE,NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION",
+    "global_sql_mode": "NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION",
+    "page_size": 16384,
+    "time_zone": "SYSTEM",
+    "global_time_zone": "SYSTEM"
+  },
+  "createdDatabase": false,
+  "schemaHash": "fc12ac89ef376ffcf4991d57fd65d4fe8758d5510f5cd51a44e0c88a51ab018e",
+  "migrationHash": "b773d65372b6a60a0f5b8e1b619e9ddd8be53dd4dc3f87e5bdc2f68a21ee3865",
+  "testSessionSettings": {
+    "sql_mode": "IGNORE_SPACE,NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION",
+    "isolation_level": "REPEATABLE-READ",
+    "time_zone": "+00:00"
+  },
+  "currentTest": "UTC technical timestamps remain UTC under a non-UTC session",
+  "globalSettingsUnchanged": true,
+  "finishedAt": "2026-11-02T13:50:22.120Z",
+  "passed": 18,
+  "failed": 0,
+  "fixturePolicy": "Synthetic rows retained; no DROP/TRUNCATE/DELETE cleanup",
+  "poolsClosed": true
+}

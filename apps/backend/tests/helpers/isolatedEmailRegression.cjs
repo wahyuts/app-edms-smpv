@@ -19,8 +19,10 @@ const env = {
 const stubs = new Map([
   [path.join(root, 'config/env.js'), env],
   [path.join(root, 'config/database.js'), { pool: { execute: forbidden, query: forbidden, getConnection: forbidden, end: async () => {} } }],
+  [path.join(root, 'config/documentCoordinationDatabase.js'), { pool: { execute: forbidden, query: forbidden, getConnection: forbidden, end: async () => {} } }],
   [path.join(root, 'services/storage.service.js'), {
     finalize: forbidden, delete: forbidden, move: forbidden, exists: forbidden, getStream: forbidden,
+    deleteTemporary: forbidden, getActiveStorageDriver: forbidden,
   }],
   [path.join(root, 'services/approvalEmailDispatcher.service.js'), { dispatch() {} }],
 ]);

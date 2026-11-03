@@ -1,0 +1,17 @@
+{
+  "environment": "development",
+  "database": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "serverPort": 3306,
+    "name": "edms_smpv_dev",
+    "versionPrefix": "10.4.32-MariaDB",
+    "dataDirectory": "D:/xampp/mysql/data"
+  },
+  "namespaces": [
+    {
+      "provider": "local",
+      "root": "D:/Project/app-edms-smpv/apps/backend/storage"
+    }
+  ]
+}

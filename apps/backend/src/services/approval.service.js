@@ -11,6 +11,7 @@ const storageService = require('./storage.service');
 const uploadService = require('./upload.service');
 const workflowEngine = require('./workflowEngine.service');
 const approvalEmailDispatcher = require('./approvalEmailDispatcher.service');
+const admission = require('./documentAdmission.service');
 const { createEntityId, createHttpError } = require('../utils/administration');
 const {
   buildAttachmentPhysicalFileName,
@@ -186,6 +187,7 @@ const processApproval = async ({
         }
         await storageService.finalize(temporaryMetadata.storageKey, workflowAttachment.storageKey);
         finalized = true;
+        await documentRepository.completeStoredFileProvenance(connection, workflowAttachment.fileId);
       } : null,
       workflowAttachment,
       workflowComment,
@@ -316,5 +318,5 @@ const processApproval = async ({
 };
 
 module.exports = {
-  processApproval,
+  processApproval: admission.documentWriter(processApproval, 'APPROVAL'),
 };

@@ -1,0 +1,13 @@
+{
+  "database": "edms_sprint_a_test",
+  "scope": "Read-only PROCESSLIST joined to INNODB_TRX, filtered to the isolated test database only",
+  "observations": [
+    { "connectionId": 59, "command": "Execute", "seconds": 178, "state": "Update", "transactionState": "RUNNING", "waitStarted": null, "rowsLocked": 0, "rowsModified": 0 },
+    { "connectionId": 56, "command": "Execute", "seconds": 255, "state": "Update", "transactionState": "RUNNING", "waitStarted": null, "rowsLocked": 0, "rowsModified": 0 },
+    { "connectionId": 53, "command": "Execute", "seconds": 323, "state": "Update", "transactionState": "RUNNING", "waitStarted": null, "rowsLocked": 0, "rowsModified": 0 },
+    { "connectionId": 48, "command": "Execute", "seconds": 408, "state": "Update", "transactionState": "RUNNING", "waitStarted": null, "rowsLocked": 0, "rowsModified": 0 },
+    { "connectionId": 46, "command": "Execute", "seconds": 461, "state": "Update", "transactionState": "RUNNING", "waitStarted": null, "rowsLocked": 0, "rowsModified": 0 }
+  ],
+  "interpretation": "Statements remain running after client watchdog exit. Root cause is not established; this does not prove corruption or a particular MariaDB bug.",
+  "action": "Further DB mutations stopped. No KILL, restart, repair, reset, force-unlock or automatic retry performed after this diagnostic. Owner review required."
+}

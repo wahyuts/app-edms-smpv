@@ -9,11 +9,15 @@ const {
   ListObjectsV2Command,
 } = require('@aws-sdk/client-s3');
 const { Upload } = require('@aws-sdk/lib-storage');
+const { createHash } = require('node:crypto');
 const logger = require('../../config/logger');
 const { STORAGE_DIRECTORIES } = require('../../constants/storage.constants');
 const { StorageError, normalizeStorageError } = require('../storage.errors');
 
 const R2_STREAM_UPLOAD_PART_SIZE_BYTES = 8 * 1024 * 1024;
+const { r2Namespace, sameNamespace, pending } = require('../../utils/storageNamespace');
+const { validateStorageKey } = require('../../validators/storage.validator');
+const { validateDocumentPrefix } = require('../../utils/documentFolder');
 const R2_STREAM_UPLOAD_QUEUE_SIZE = 1;
 
 const streamToBuffer = async (stream) => {
@@ -58,6 +62,7 @@ class R2StorageDriver {
   constructor(config) {
     this.name = 'r2';
     this.config = config.r2;
+    this.cleanupConfig = Object.freeze({ accountId: this.config.accountId, endpoint: this.config.endpoint, bucketName: this.config.bucketName });
     this.client = new S3Client({
       region: this.config.region,
       endpoint: this.config.endpoint,
@@ -69,8 +74,66 @@ class R2StorageDriver {
     });
   }
 
+  async inspectOwnedExact(storageKey, boundNamespace) {
+    if (!sameNamespace(await this.captureNamespace(), boundNamespace)) throw pending('NAMESPACE_MISMATCH');
+    const key = validateStorageKey(storageKey);
+    let response;
+    try { response = await this.client.send(new GetObjectCommand({ Bucket: boundNamespace.descriptor.bucket, Key: key })); }
+    catch (error) {
+      if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) return { exists: false };
+      throw error;
+    }
+    const hash = createHash('sha256'); let size = 0;
+    for await (const chunk of response.Body) { const bytes = Buffer.from(chunk); hash.update(bytes); size += bytes.length; }
+    return { exists: true, size, sha256: hash.digest('hex') };
+  }
+
   async initialize() {
     await this.exists('__edms-storage-initialization-probe__');
+  }
+
+  async captureNamespace() {
+    return r2Namespace(this.cleanupConfig);
+  }
+
+  async inspectDocumentFolders(prefix, boundNamespace) {
+    validateDocumentPrefix(prefix);
+    if (!sameNamespace(await this.captureNamespace(), boundNamespace)) throw pending('NAMESPACE_MISMATCH');
+    const objects = []; const tokens = new Set(); let token; let pages = 0;
+    do {
+      if (++pages > 1000) throw pending('FOLDER_INSPECTION_LIMIT');
+      const response = await this.client.send(new ListObjectsV2Command({ Bucket: boundNamespace.descriptor.bucket,
+        Prefix: prefix, ...(token ? { ContinuationToken: token } : {}) }));
+      for (const object of response.Contents || []) {
+        if (typeof object.Key !== 'string' || !object.Key.startsWith(prefix)) throw pending('FOLDER_SCOPE_INVALID');
+        objects.push({ key: object.Key, size: object.Size, etag: object.ETag });
+      }
+      if (objects.length > 100000) throw pending('FOLDER_INSPECTION_LIMIT');
+      if (!response.IsTruncated) break;
+      token = response.NextContinuationToken;
+      if (!token || tokens.has(token)) throw pending('FOLDER_LIST_INCOMPLETE');
+      tokens.add(token);
+    } while (true);
+    objects.sort((a, b) => a.key.localeCompare(b.key));
+    return { exists: objects.length > 0, objects, directories: [] };
+  }
+
+  async cleanupDocumentFolders(plan) {
+    const current = await this.inspectDocumentFolders(plan.prefix, plan.namespace);
+    // A zero-byte trailing-slash key is not, by itself, authorized marker provenance.
+    // This adapter has no verified conditional-delete capability for R2 markers.
+    // Keep even owner-reviewed markers rather than risk deleting a replaced object.
+    if (current.objects.length) throw pending(current.objects.some((o) => o.key.endsWith('/'))
+      ? 'R2_MARKER_SAFE_DELETE_UNAVAILABLE' : 'FOLDER_UNKNOWN_OBJECT');
+    return { clean: true };
+  }
+
+  async deleteOwnedExact(storageKey, boundNamespace) {
+    if (!sameNamespace(await this.captureNamespace(), boundNamespace)) throw pending('NAMESPACE_MISMATCH');
+    if (validateStorageKey(storageKey) !== storageKey) throw pending('STORAGE_INVALID_KEY');
+    // Reuse the configured SDK client, but pin the request's bucket to the manifest.
+    await this.client.send(new DeleteObjectCommand({ Bucket: boundNamespace.descriptor.bucket, Key: storageKey }));
+    return { terminal: true, outcome: 'DELETE_ACKNOWLEDGED' };
   }
 
   async putTemporary(storageKey, content) {

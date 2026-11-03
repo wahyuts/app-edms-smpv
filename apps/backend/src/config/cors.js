@@ -21,7 +21,7 @@ const corsConfig = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Idempotency-Key'],
   exposedHeaders: ['Content-Disposition', 'Content-Length', 'Content-Type'],
   optionsSuccessStatus: 204,
 };

@@ -2,6 +2,7 @@ const logger = require('../config/logger');
 const { STORAGE_DIRECTORIES } = require('../constants/storage.constants');
 const temporaryUploadRepository = require('../repositories/temporaryUpload.repository');
 const storageService = require('./storage.service');
+const admission = require('./documentAdmission.service');
 
 const isTemporaryStorageKey = (storageKey) => (
   typeof storageKey === 'string' && storageKey.startsWith(`${STORAGE_DIRECTORIES.TEMPORARY}/`)
@@ -41,8 +42,22 @@ const cleanupExpiredTemporaryUploads = async ({ limit = 100, dryRun = false } = 
         continue;
       }
 
-      const deletedObject = await storageService.deleteTemporary(candidate.storageKey);
-      const deletedRows = await temporaryUploadRepository.deleteExpiredTemporaryUploadById(candidate.id);
+      const { deletedObject, deletedRows } = await admission.runWriter({ type: 'TEMPORARY_CLEANUP',
+        temporaryFileId: candidate.temporaryFileId }, async () => {
+        const fresh = await temporaryUploadRepository.findExpiredTemporaryUploadById(candidate.id);
+        if (!fresh) {
+          return { deletedObject: false, deletedRows: 0 };
+        }
+        const deletedObject = await storageService.deleteTemporary(candidate.storageKey);
+        let deletedRows;
+        try {
+          deletedRows = await temporaryUploadRepository.deleteExpiredTemporaryUploadById(candidate.id);
+        } catch (error) {
+          admission.noteDbOutcome('UNKNOWN');
+          throw error;
+        }
+        return { deletedObject, deletedRows };
+      });
 
       summary.deletedObjects += deletedObject ? 1 : 0;
       summary.deletedMetadata += deletedRows;
