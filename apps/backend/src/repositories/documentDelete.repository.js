@@ -1,5 +1,5 @@
 const { randomUUID } = require('node:crypto');
-const { digest, pending } = require('../utils/storageNamespace');
+const { digest, pending, isCancelledDelete } = require('../utils/storageNamespace');
 const { validateStorageKey } = require('../validators/storage.validator');
 const { captureRecipients } = require('./documentDeleteNotification.repository');
 
@@ -18,6 +18,7 @@ const createRepository = ({ coordination, storage }) => {
   const lockOperation = async (c, id) => {
     const [op] = await rows(c, 'SELECT * FROM document_delete_operations WHERE id = ?', [id]);
     if (!op) throw pending('DELETE_OPERATION_NOT_FOUND');
+    if (isCancelledDelete(op)) throw pending('DELETE_RESERVATION_CANCELLED');
     const gate = await coordination.lockGate(c, { projectId: op.project_id, documentId: op.document_id });
     if (gate.gate_state !== 'CLOSED' || gate.delete_operation_id !== id) throw pending('DELETE_GATE_INVALID');
     const [locked] = await rows(c, 'SELECT * FROM document_delete_operations WHERE id = ? FOR UPDATE', [id]);

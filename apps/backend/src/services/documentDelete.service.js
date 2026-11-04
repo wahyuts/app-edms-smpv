@@ -1,5 +1,5 @@
 const { randomUUID } = require('node:crypto');
-const { digest, sameNamespace, pending } = require('../utils/storageNamespace');
+const { digest, sameNamespace, pending, isCancelledDelete } = require('../utils/storageNamespace');
 const { createRepository } = require('../repositories/documentDelete.repository');
 const { createDeleteNotificationDispatcher } = require('./documentDeleteNotification.service');
 const logger = require('../config/logger');
@@ -33,6 +33,9 @@ const createDeleteEngine = ({ pool, coordination, storage, hooks = {}, repositor
       const [[claim]] = await c.execute('SELECT GET_LOCK(?,0) AS acquired', [lockName]);
       if (Number(claim.acquired) !== 1) return { status: 'PENDING', reason: 'DELETE_WORKER_BUSY' };
       acquired = true;
+      const [[operation]] = await c.execute('SELECT * FROM document_delete_operations WHERE id=?', [operationId]);
+      // Check under the same named lock as recovery, before execution/manifest writes or storage IO.
+      if (isCancelledDelete(operation)) return { status: 'CONFLICT', reason: 'DELETE_RESERVATION_CANCELLED' };
       const [[prior]] = await c.execute('SELECT * FROM document_delete_executions WHERE operation_id=?', [operationId]);
       if (prior?.phase === 'COMPLETED') {
         const snapshot = JSON.parse(prior.completion_snapshot);

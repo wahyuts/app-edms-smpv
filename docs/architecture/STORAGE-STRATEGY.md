@@ -3,9 +3,15 @@
 > **Document Status:** Draft  
 > **Phase:** Storage Strategy Design  
 > **Part:** 1 — Storage Philosophy  
-> **Version:** v0.1  
-> **Last Updated:** 2026-07-21  
+> **Version:** v0.2\
+> **Last Updated:** 2026-11-04\
 > **Status:** Draft for Review
+
+**Catatan Penyelarasan Implementasi**
+
+Dokumen ini mempertahankan konsep desain awal. Bagian bertanda **Legacy** merupakan konsep lama dan harus dibaca bersama penjelasan **Kondisi Saat Ini** pada bagian yang sama.
+
+Penyelarasan ini mendokumentasikan implementasi repository, bukan persetujuan perubahan Business Workflow, Database Schema, atau penghapusan requirement yang belum diimplementasikan.
 
 ---
 
@@ -278,12 +284,22 @@ Storage tidak melakukan reorganisasi file.
 
 ## PH-009 — Storage Is Immutable
 
+**Legacy — Konsep Awal**
+
 Setelah file berhasil disimpan secara permanen:
 
 - isi file tidak boleh diubah
 - lokasi file tidak boleh berubah oleh proses bisnis biasa
 
 Perubahan dokumen dilakukan melalui Revision baru, bukan mengubah file lama.
+
+**Kondisi Saat Ini**
+
+Isi file tetap tidak diubah. Upload Revision menghasilkan File Identity baru dan mempertahankan file revisi sebelumnya.
+
+Perubahan revision stage pada workflow dapat memindahkan file aktif dan membentuk ulang Physical File Name. File Identity tetap sama, sedangkan metadata lokasi dan namespace binding diperbarui melalui mekanisme provenance existing.
+
+Archive, Restore, dan Project Close tetap tidak memindahkan file.
 
 ---
 
@@ -299,7 +315,15 @@ Business Workflow menggunakan:
 
 bukan penghapusan file.
 
+**Legacy — Konsep Awal**
+
 Kebijakan penghapusan fisik hanya dapat dilakukan melalui kebijakan retensi atau administrasi sistem di masa depan.
+
+**Kondisi Saat Ini**
+
+Permanent Delete sudah tersedia sebagai aksi administratif terpisah bagi Official Role Admin pada project aktif. Penghapusan memerlukan verifikasi ownership, writer quiescence, manifest file, dan durable cleanup evidence.
+
+Permanent Delete bukan bagian dari Archive, Restore, atau Project Close. File legacy tanpa ownership binding yang dapat diverifikasi tetap ditolak.
 
 ---
 
@@ -470,8 +494,8 @@ Seluruh keputusan pada Part berikutnya wajib mengikuti filosofi yang telah ditet
 > **Document Status:** Draft  
 > **Phase:** Storage Strategy Design  
 > **Part:** 2 — Storage Architecture  
-> **Version:** v0.1  
-> **Last Updated:** 2026-07-21  
+> **Version:** v0.2\
+> **Last Updated:** 2026-11-04\
 > **Status:** Draft for Review
 
 ---
@@ -772,12 +796,20 @@ File Identity digunakan sebagai referensi utama pada Metadata Layer.
 
 File Identity:
 
+**Legacy — Konsep Awal**
+
 - tidak ditampilkan kepada pengguna,
 - tidak digunakan sebagai nama download,
 - tidak digunakan sebagai nama file fisik,
 - dan tidak berubah selama umur file.
 
 Format teknis File Identity akan ditentukan pada tahap Database Schema dan implementasi Backend.
+
+**Kondisi Saat Ini**
+
+File Identity disimpan pada `stored_files.file_id` dan dapat ditampilkan sebagai Active File ID pada modal View Document. Short File ID juga menjadi bagian dari Physical File Name.
+
+File Identity tetap merupakan referensi internal permanen, bukan nama download. Original File Name tetap digunakan untuk display nama file dan download.
 
 ---
 
@@ -824,6 +856,8 @@ Hybrid Human Readable + Unique Identifier
 
 Format konseptual:
 
+**Legacy — Format Konseptual Awal**
+
 ```text
 {DOCUMENT_NUMBER}_{REVISION}_{SHORT_FILE_ID}_{SANITIZED_ORIGINAL_FILE_NAME}
 ```
@@ -849,6 +883,10 @@ Physical File Name tidak boleh ditampilkan kepada pengguna sebagai nama download
 ---
 
 ## Filename Normalization
+
+**Kondisi Saat Ini**
+
+Format Physical File Name pada contoh sebelumnya merupakan konsep awal. Format canonical revision filename yang digunakan backend juga memuat `SUBMIT_DATE_YYYYMMDD`, sebagaimana dijelaskan pada SR-022 dan Permanent Storage dalam Backend Storage Blueprint.
 
 Original File Name dapat dinormalisasi ketika digunakan sebagai bagian dari Physical File Name.
 
@@ -878,6 +916,8 @@ Original File Name yang asli tetap disimpan utuh pada Metadata Layer.
 
 ## Physical Filename Lifecycle
 
+**Legacy — Konsep Awal**
+
 Setelah file berhasil disimpan pada Permanent Storage, Physical File Name tidak boleh berubah selama lifecycle normal.
 
 Perubahan berikut tidak mengubah Physical File Name:
@@ -889,6 +929,12 @@ Perubahan berikut tidak mengubah Physical File Name:
 - Project Close.
 
 Apabila dilakukan Upload Revision, sistem akan membuat File Identity dan Physical File Name baru untuk Revision tersebut.
+
+**Kondisi Saat Ini**
+
+Perubahan workflow yang mengganti revision stage dapat membentuk ulang Physical File Name dan Storage Key pada file aktif yang sama. Perubahan ini tidak membuat File Identity atau isi file baru.
+
+Format aktual mengikuti pola dengan submit date pada bagian Permanent Storage dalam Backend Storage Blueprint. Archive, Restore, dan Project Close tidak mengganti Physical File Name.
 
 ---
 
@@ -1118,8 +1164,8 @@ Seluruh keputusan pada Part berikutnya wajib mengikuti arsitektur yang telah dit
 > **Document Status:** Draft  
 > **Phase:** Storage Strategy Design  
 > **Part:** 3 — File Lifecycle  
-> **Version:** v0.1  
-> **Last Updated:** 2026-07-21  
+> **Version:** v0.2\
+> **Last Updated:** 2026-11-04\
 > **Status:** Draft for Review
 
 ---
@@ -1574,6 +1620,8 @@ Seluruh penggantian menghasilkan file baru.
 
 # 14. File Movement Policy
 
+**Legacy — Konsep Awal**
+
 Selama lifecycle normal:
 
 File tidak dipindahkan.
@@ -1582,9 +1630,30 @@ Storage tetap stabil.
 
 Perubahan status bisnis tidak memengaruhi lokasi file.
 
+**Kondisi Saat Ini**
+
+Workflow menentukan revision stage tujuan. Jika stage berubah dan menghasilkan Storage Key yang berbeda, file aktif dipindahkan ke canonical revision directory tujuan.
+
+Contoh Approval A:
+
+- Team Process: `IFR-Submitted` menuju `IFA-Submitted`.
+- Team Project: `IFA-Submitted` menuju `AS-Built`.
+
+Rules:
+
+- File Identity dan isi file tetap dipertahankan.
+- Physical File Name, `stored_files.storage_key`, relative path, dan revision storage path diselaraskan dengan tujuan.
+- Namespace binding dan source provenance diverifikasi sebelum move; destination provenance dilengkapi setelah move dan sebelum commit.
+- File legacy tanpa binding valid dapat ditolak dengan `FILE_NAMESPACE_UNVERIFIED`. Restorasi physical move khusus legacy belum diimplementasikan; dokumen ini tidak menyatakan masalah tersebut telah selesai.
+- Izin workflow move tidak boleh dianggap sebagai bukti ownership historis atau izin Permanent Delete.
+- R2 move menggunakan copy kemudian delete. Batasan kegagalan parsial mengikuti bagian Rollback Rule.
+- Archive, Restore, dan Project Close tetap tidak memindahkan file.
+
 ---
 
 # 15. File Deletion Policy
+
+**Legacy — Konsep Awal**
 
 Penghapusan file fisik bukan bagian dari lifecycle normal.
 
@@ -1601,6 +1670,22 @@ Selama operasi normal:
 tidak ada file yang dihapus.
 
 Penghapusan fisik hanya dapat dilakukan melalui kebijakan retensi yang akan didefinisikan pada masa depan.
+
+**Kondisi Saat Ini**
+
+Permanent Delete merupakan aksi administratif yang sudah diimplementasikan. File revisi dan attachment milik dokumen dapat dihapus melalui manifest yang telah diverifikasi, bukan melalui penghapusan prefix secara massal.
+
+Rules:
+
+- Official Role Admin harus berlaku pada project aktif yang sesuai.
+- Writer baru ditolak setelah Delete reservation; writer yang telah admitted dapat menyelesaikan lifecycle yang diizinkan selama `QUIESCENCE_PENDING`.
+- Cleanup menunggu `QUIESCENCE_CONFIRMED` berdasarkan durable completion evidence.
+- Namespace, exact Storage Key, referensi file, dan ownership harus sesuai.
+- Outcome pending atau unknown tidak boleh dianggap `COMPLETED`.
+- Audit Trail dan durable operation evidence dipertahankan sesuai mekanisme Permanent Delete.
+- Legacy yang terkonfirmasi belum memiliki ownership storage terverifikasi ditolak dengan pesan existing. Tidak ada binding atau provenance palsu yang dibuat agar Delete diizinkan.
+
+Delete object sumber pada R2 workflow move merupakan bagian relokasi copy + delete, bukan aksi Permanent Delete dokumen. Cleanup temporary upload juga merupakan operasi terpisah.
 
 ---
 
@@ -1736,8 +1821,8 @@ Seluruh keputusan pada Part berikutnya wajib mengikuti File Lifecycle yang telah
 > **Document Status:** Draft  
 > **Phase:** Storage Strategy Design  
 > **Part:** 4 — Security & Access  
-> **Version:** v0.1  
-> **Last Updated:** 2026-07-21  
+> **Version:** v0.2\
+> **Last Updated:** 2026-11-04\
 > **Status:** Draft for Review
 
 ---
@@ -2138,8 +2223,8 @@ Seluruh keputusan pada Part berikutnya wajib mengikuti prinsip Security & Access
 > **Document Status:** Draft  
 > **Phase:** Storage Strategy Design  
 > **Part:** 5 — Storage Rules & Design Decisions  
-> **Version:** v0.1  
-> **Last Updated:** 2026-07-21  
+> **Version:** v0.2\
+> **Last Updated:** 2026-11-04\
 > **Status:** Draft for Review
 
 ---
@@ -2363,6 +2448,8 @@ Business Layer hanya mengetahui metadata.
 
 ## SR-020 — Physical File Deletion Is Not Normal Business Process
 
+**Legacy — Konsep Awal**
+
 Create
 
 Review
@@ -2378,6 +2465,12 @@ Restore
 Project Close
 
 tidak pernah menghapus file fisik.
+
+**Kondisi Saat Ini**
+
+Archive, Restore, dan Project Close tetap tidak menghapus file. Upload Revision mempertahankan file lama.
+
+Workflow move pada R2 dapat menghapus source object setelah copy; compensation dapat membersihkan file hasil finalize yang gagal secara bisnis. Permanent Delete merupakan aksi administratif terpisah dengan safety gate pada File Deletion Policy.
 
 ---
 
@@ -2408,7 +2501,7 @@ Document Number dan Original File Name tidak boleh diasumsikan selalu memiliki n
 
 Physical File Name menggunakan konsep **Hybrid Human Readable + Unique Identifier**.
 
-Format konseptual:
+**Legacy — Format Konseptual Awal**
 
 ```text
 {DOCUMENT_NUMBER}_{REVISION}_{SHORT_FILE_ID}_{SANITIZED_ORIGINAL_FILE_NAME}
@@ -2419,6 +2512,16 @@ Contoh:
 ```text
 PFD-EDMS-0002_REV03_FILE-d77eaf41_Drawing_Final_Approved.pdf
 ```
+
+**Kondisi Saat Ini**
+
+Format canonical revision filename:
+
+```text
+{DOCUMENT_NUMBER}_{REVISION}_{SUBMIT_DATE_YYYYMMDD}_{SHORT_FILE_ID}_{SANITIZED_ORIGINAL_FILE_NAME}
+```
+
+Revision label mengikuti `IFR-Submitted`, `IFA-Submitted`, atau `AS-Built`. Short File ID berasal dari File Identity, dan submit date menggunakan tanggal UTC dari timestamp backend. Pada workflow move, tanggal berasal dari upload timestamp file existing.
 
 Pendekatan ini dipilih untuk:
 
@@ -2453,6 +2556,8 @@ Physical File Name, File Identity, Storage Key, maupun identifier internal lainn
 
 ## SR-024 — Physical Filename Is Immutable
 
+**Legacy — Konsep Awal**
+
 Setelah file berhasil disimpan pada Permanent Storage, Physical File Name tidak boleh diubah selama lifecycle normal.
 
 Perubahan berikut tidak mengubah Physical File Name:
@@ -2465,6 +2570,12 @@ Perubahan berikut tidak mengubah Physical File Name:
 - maupun perubahan metadata bisnis lainnya.
 
 Apabila dilakukan Upload Revision, sistem akan membuat File Identity dan Physical File Name baru untuk Revision tersebut, sedangkan Physical File Name milik Revision sebelumnya tetap dipertahankan sebagai bagian dari histori penyimpanan.
+
+**Kondisi Saat Ini**
+
+Immutability berlaku terhadap isi file. Workflow revision-stage movement dapat mengganti Physical File Name dan lokasi file yang sama, mengikuti File Movement Policy.
+
+Upload Revision tetap membuat File Identity baru. Perubahan metadata tanpa upload tidak membuat revisi baru; apabila transisi workflow juga mengganti revision stage, aturan movement existing tetap berlaku.
 
 ---
 
@@ -2548,13 +2659,17 @@ Storage selalu bersifat deterministic.
 | Project Close | Tidak memindahkan file |
 | Viewer | Membaca Active File |
 | Download | Membaca Active File atau Revision |
-| File Deletion | Tidak dilakukan pada proses bisnis normal |
+| File Deletion — Legacy | Tidak dilakukan pada proses bisnis normal |
+| File Deletion — Kondisi Saat Ini | Permanent Delete administratif dengan ownership verification; Archive/Restore/Project Close tidak menghapus file |
 | Metadata | Satu file satu metadata |
 | File Identity | Identitas internal unik dan permanen |
 | Original File Name | Nama yang ditampilkan dan digunakan saat download |
 | Physical File Name | Hybrid Human Readable + Unique Identifier |
 | Filename Relationship | Document Number dan Original File Name tidak diasumsikan sama |
 | Storage Provider | Independen |
+| Workflow Movement | Relokasi terkontrol ketika revision stage berubah, dengan binding dan provenance validation |
+| Physical Filename Lifecycle | Dapat berubah pada workflow stage movement; isi file dan File Identity dipertahankan |
+| Namespace & Provenance | Binding exact key dan namespace; legacy tanpa bukti valid tetap fail-closed |
 
 ---
 
@@ -2575,13 +2690,20 @@ Implementasi Backend wajib memenuhi batasan berikut.
 - Tidak mengasumsikan Document Number selalu sama dengan Original File Name.
 - Tidak menggunakan Physical File Name sebagai nama download pengguna.
 - Tidak mengekspos File Identity atau Storage Key sebagai nama download.
-- Tidak mengganti Physical File Name setelah file masuk ke Permanent Storage.
+- **Legacy:** Tidak mengganti Physical File Name setelah file masuk ke Permanent Storage.
+- **Kondisi Saat Ini:** Perubahan Physical File Name melalui workflow movement yang berlaku, dengan metadata dan provenance yang diselaraskan.
 
 ---
 
 # 7. Future Extensions
 
 Storage Architecture dirancang agar dapat dikembangkan tanpa mengubah prinsip dasar.
+
+**Kondisi Saat Ini**
+
+Local Storage dan Cloudflare R2 sudah memiliki driver existing. Pemilihan provider menggunakan `STORAGE_DRIVER`; keberadaan driver bukan bukti provider aktif pada environment tertentu.
+
+**Legacy — Daftar Rencana Awal**
 
 Kemungkinan pengembangan di masa depan meliputi:
 
@@ -2597,6 +2719,8 @@ Kemungkinan pengembangan di masa depan meliputi:
 - Retention Policy
 - Automatic File Purging
 - File Version Comparison
+
+Cloud Object Storage pada daftar di atas sudah direalisasikan melalui adapter Cloudflare R2. Item lain tidak dinyatakan telah diimplementasikan hanya karena tercantum sebagai rencana.
 
 Seluruh pengembangan tersebut harus tetap mematuhi filosofi Storage yang telah ditetapkan pada Part 1.
 
@@ -2670,6 +2794,8 @@ Seluruh desain database dan implementasi backend wajib mengacu pada keputusan ya
 
 Backend storage implementation wajib menggunakan alur berikut:
 
+**Legacy — Blueprint Target Awal**
+
 ```text
 Upload Temporary
   -> Virus Scan
@@ -2682,6 +2808,24 @@ Upload Temporary
 ```
 
 Jika salah satu tahap gagal, proses wajib rollback.
+
+**Kondisi Saat Ini**
+
+```text
+Upload Metadata Validation
+  -> Temporary Storage Streaming + Signature / Size Validation + SHA-256
+  -> Temporary Upload Metadata
+  -> Business Validation + Writer Admission
+  -> Database Transaction + Stored File Metadata / Namespace Binding
+  -> Permanent Storage Finalize
+  -> Provenance Completion
+  -> Database Commit
+  -> Post-Commit Processing sesuai service existing
+```
+
+Audit Trail, History, dan Notification mengikuti transaction boundary masing-masing service; diagram ini tidak memindahkan seluruh side effect ke transaksi yang sama. Virus scan pada blueprint awal belum tersedia pada jalur upload existing.
+
+Database transaction tidak mencakup transaksi atomik bersama physical storage. Kegagalan ditangani melalui SQL rollback, storage compensation, dan durable outcome tracking dengan batasan pada Rollback Rule.
 
 ## Temporary Upload
 
@@ -2698,6 +2842,8 @@ Rules:
 
 ## Virus Scan
 
+**Legacy — Requirement Blueprint, Belum Diimplementasikan**
+
 Virus scan adalah tahap wajib sebelum file dipindahkan ke permanent storage.
 
 Rules:
@@ -2707,6 +2853,12 @@ Rules:
 - Hasil scan dapat dicatat sebagai technical metadata atau audit/security event.
 - Detail internal scanner tidak boleh diekspos kepada pengguna.
 
+**Kondisi Saat Ini**
+
+Jalur upload existing memeriksa MIME metadata, extension, signature, ukuran, serta SHA-256. Pemeriksaan tersebut bukan antivirus dan tidak membuktikan file bebas malware.
+
+Requirement virus scan tetap dicatat sebagai gap implementasi. Penyelarasan dokumentasi ini tidak menghapus requirement atau mengklaim scanning telah berjalan.
+
 ## Checksum
 
 Checksum digunakan untuk integritas file.
@@ -2715,7 +2867,8 @@ Rules:
 
 - Checksum dihitung sebelum permanent storage finalize.
 - Checksum disimpan pada metadata file.
-- Algorithm ditetapkan pada backend implementation phase sebagai keputusan teknis.
+- **Legacy:** Algorithm ditetapkan pada backend implementation phase sebagai keputusan teknis.
+- **Kondisi Saat Ini:** Algorithm menggunakan SHA-256 yang dihitung selama streaming upload.
 - Checksum tidak digunakan sebagai pengganti File Identity.
 
 ## Metadata Validation
@@ -2735,12 +2888,19 @@ Metadata validation wajib memeriksa:
 
 ## Permanent Storage
 
+**Legacy — Blueprint Target Awal**
+
 Permanent storage hanya terjadi setelah temporary upload, virus scan, checksum, dan metadata validation berhasil.
+
+**Kondisi Saat Ini**
+
+Finalize menggunakan temporary upload yang telah divalidasi, kemudian provenance file permanen dilengkapi sebelum business transaction commit. Virus scan belum diimplementasikan.
 
 Rules:
 
 - Permanent file immutable.
-- Physical File Name immutable.
+- **Legacy:** Physical File Name immutable.
+- **Kondisi Saat Ini:** Physical File Name dapat berubah pada workflow revision-stage movement; File Identity dan isi file tetap.
 - File Identity permanent.
 - Storage Key unique.
 - Original File Name tetap digunakan untuk download/display.
@@ -2768,6 +2928,8 @@ Physical filename:
 
 Rollback wajib menjaga konsistensi database dan file storage.
 
+**Legacy — Target Rollback Blueprint**
+
 | Failure Point | Rollback Action |
 |---|---|
 | Temporary upload fails | Return validation/storage error; no database write |
@@ -2778,6 +2940,22 @@ Rollback wajib menjaga konsistensi database dan file storage.
 | Permanent storage fails | Rollback DB transaction; delete temporary/permanent partial file |
 | Audit trail fails | Rollback business DB writes and storage finalize if still in transaction boundary |
 | Notification fails | Rollback when notification is part of required transaction; otherwise persist notification retry marker according to Notification Blueprint |
+
+**Kondisi Saat Ini**
+
+Tabel di atas merupakan target desain, bukan jaminan bahwa seluruh perubahan R2 dapat dibatalkan secara atomik.
+
+Rules:
+
+- SQL rollback hanya membatalkan perubahan dalam transaksi database yang belum committed.
+- Storage finalize dan move merupakan external IO; compensation dapat gagal.
+- R2 move menggunakan copy kemudian delete. Destination existence check sebelum copy belum merupakan atomic no-overwrite guarantee.
+- Jika copy berhasil tetapi source delete gagal, destination dapat tertinggal. Workflow baru menandai `storageMoved` setelah seluruh move berhasil, sehingga kegagalan parsial tidak otomatis menjalankan reverse move.
+- Jika move berhasil tetapi transaksi gagal, workflow mencoba reverse move secara best-effort; kegagalan compensation tidak menjamin lokasi file pulih.
+- COMMIT acknowledgement failure dapat menghasilkan database outcome `UNKNOWN`, bukan bukti transaksi pasti rollback.
+- Writer admission mencatat IO intent dan outcome secara durable. Outcome tidak pasti dapat mempertahankan writer sebagai unresolved dan menghalangi quiescence; pencatatan tersebut bukan automatic repair.
+- Retry tidak boleh diperlakukan aman hanya karena destination ada atau checksum cocok. Pemulihan outcome tidak pasti memerlukan evidence dan prosedur yang sesuai.
+- Kegagalan side effect setelah commit tidak berarti transaksi bisnis yang sudah committed dapat di-rollback.
 
 ## Storage Category Mapping
 
@@ -2790,6 +2968,8 @@ Rollback wajib menjaga konsistensi database dan file storage.
 | Archive | No new storage category | Does not move file |
 | Restore | No new storage category | Does not move file |
 | Project Close | No new storage category | Does not move file |
+| Workflow Stage Movement | Existing active revision file | May move/rename the same active file without creating a new File Identity |
+| Permanent Delete | Verified document-owned files and attachments | Removes document from active operations after confirmed cleanup |
 
 ## Storage Job
 
@@ -2800,6 +2980,48 @@ Storage cleanup job:
 - Never deletes permanent storage.
 - Uses temporary upload age and finalize status.
 - Is idempotent and retry-safe.
+
+**Kondisi Saat Ini**
+
+Temporary Upload Cleanup Scheduler berjalan melalui timer backend jika diaktifkan konfigurasi. Kandidat berasal dari temporary upload expired yang belum consumed; service memeriksa ulang kandidat dan membatasi key pada `temporary/`.
+
+Cleanup ini tidak melakukan general bucket scan untuk menjamin seluruh orphan object ditemukan. Pembersihan direktori temporary kosong bergantung pada kemampuan driver. Permanent Delete dan residual document folder cleanup menggunakan mekanisme terpisah, bukan job temporary cleanup.
+
+## Storage Provider & Upload Configuration
+
+Rules:
+
+- Provider existing: `local` dan `r2`, dipilih melalui `STORAGE_DRIVER` dengan default `local`.
+- Local Storage menggunakan configured storage root; metadata bisnis tetap menyimpan normalized relative key.
+- R2 menggunakan configured account, endpoint, dan bucket. Konfigurasi namespace harus cocok dengan binding sebelum operasi yang memerlukan ownership verification.
+- Jalur temporary upload menggunakan streaming dengan size/signature inspection dan checksum, bukan keharusan menampung seluruh file di memory.
+- Default `UPLOAD_MAX_FILE_SIZE_BYTES` adalah `26214400` bytes atau 25 MiB, dan dapat dioverride environment.
+- Owner melaporkan override Railway sebesar 100 MB. Nilai environment aktif bukan hasil verifikasi repository; nilai bytes aktual mengikuti konfigurasi deployment.
+
+## Namespace Binding & File Provenance
+
+Metadata file saja tidak otomatis membuktikan ownership physical storage.
+
+Rules:
+
+- `storage_namespaces` menyimpan descriptor namespace; `stored_file_namespace_bindings` menghubungkan File Identity dengan namespace dan exact Storage Key snapshot.
+- Upload dokumen, revision baru, dan workflow attachment melengkapi provenance setelah finalize dan sebelum commit.
+- Provenance verification memeriksa namespace, ukuran, serta SHA-256; Local Storage juga menggunakan native identity evidence.
+- Workflow move memverifikasi source binding/provenance, menyiapkan destination binding dalam transaksi, kemudian melengkapi destination provenance setelah physical move.
+- Legacy yang belum memiliki binding tidak boleh diberi provenance palsu atau otomatis dianggap eligible Permanent Delete.
+- Upload Revision yang menghasilkan active file dengan binding baru tidak membuktikan seluruh file historis pada dokumen sudah memiliki binding valid.
+
+## Permanent Delete & Folder Cleanup
+
+Permanent Delete menggunakan reservation, writer admission fencing, quiescence, manifest ownership, durable attempt tracking, dan finalization. Unknown storage outcome tetap unresolved; status `COMPLETED` tidak boleh disimpulkan hanya dari request awal atau hilangnya satu object.
+
+Rules:
+
+- Cleanup hanya mencakup exact files dan folder scope yang telah diverifikasi untuk dokumen/project terkait.
+- Local empty-folder cleanup menggunakan native directory identity dan tidak boleh menghapus unknown files, symlink, atau junction sebagai shortcut.
+- R2 menggunakan object keys dan prefix, bukan physical directories. Adapter memeriksa remaining objects; marker object tidak dihapus hanya karena namanya berakhir dengan `/`.
+- Adapter R2 saat ini menolak marker cleanup ketika safe deletion tidak dapat dibuktikan dengan `R2_MARKER_SAFE_DELETE_UNAVAILABLE`.
+- Residual cleanup dan historical reconciliation merupakan operasi terkontrol terpisah; bukan automatic bypass terhadap ledger, approval, atau ownership validation.
 
 ## Backend Boundary
 

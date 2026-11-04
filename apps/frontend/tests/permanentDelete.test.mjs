@@ -331,6 +331,23 @@ test('Authentication/authorization errors are presented in Bahasa Indonesia with
 });
 
 const legacyResponse = { status: 'CONFLICT', reasonCode: 'LEGACY_STORAGE_OWNERSHIP_UNVERIFIED', projectId: 'P1', documentId: 'D1' };
+for (const lostResponse of [false, true]) test(`Possible legacy stays definitive inline, exact copy, one toast, no cache mutation (lost response=${lostResponse})`, async () => {
+  const response = { ...legacyResponse, reasonCode: 'DELETE_OWNERSHIP_UNVERIFIED' };
+  const h = await createHarness(); h.response = async () => lostResponse ? { status: 'UNKNOWN' } : response;
+  h.statusResponse = async () => response; h.open(); await h.modal.props.onConfirm(); h.render();
+  const expected = 'Dokumen Tidak Dapat Dihapus Permanen\n\nKemungkinan dokumen ini merupakan dokumen lama yang dibuat sebelum fitur Permanent Delete diterapkan. Karena informasi penyimpanannya belum dapat diverifikasi, dokumen tidak dapat dihapus secara permanen.\n\nDokumen tetap dapat digunakan dan dikelola seperti biasa.';
+  assert.equal(statusPanel(h.inspectModal()).props.children[0].props.children, expected);
+  assert.equal(h.modal.props.result.status, 'CONFLICT'); assert.equal(h.refreshed, 0); assert.deepEqual(h.invalidations, []);
+  assert.equal(h.toasts.length, 1); assert.equal(h.toasts[0].message, 'Dokumen lama tidak dapat dihapus permanen.');
+  await h.modal.props.onConfirm(); await h.modal.props.onRefresh(); h.render();
+  assert.equal(h.calls.filter(c => c.method === 'DELETE').length, 1); assert.equal(h.toasts.length, 1);
+});
+test('Cancelled reservation is definitive and cannot start automatic polling or another Delete', async () => {
+  const h = await createHarness(); h.response = async () => ({ status: 'CONFLICT', reasonCode: 'DELETE_RESERVATION_CANCELLED', message: 'Reservation dibatalkan.' });
+  h.open(); await h.modal.props.onConfirm(); h.render();
+  assert.equal(statusPanel(h.inspectModal()).props.children[0].props.children, 'Reservation dibatalkan.');
+  await h.modal.props.onConfirm(); assert.equal(h.calls.length, 1); assert.deepEqual(h.invalidations, []);
+});
 test('Confirmed legacy restriction stays inline, toasts once, keeps modal/document and prevents retry or refresh', async () => {
   const h = await createHarness(); h.response = async () => legacyResponse; h.open();
   await h.modal.props.onConfirm(); h.render();

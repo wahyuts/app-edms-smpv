@@ -17,5 +17,10 @@ const r2Namespace = (config) => {
 };
 const sameNamespace = (left, right) => Boolean(left && right && left.id === right.id && left.encoded === right.encoded);
 const pending = (code) => Object.assign(new Error('Penghapusan tertunda; bukti keamanan belum lengkap.'), { code, pending: true });
+const isCancelledDelete = operation => {
+  const metadata = operation?.pending_metadata;
+  const value = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+  return value?.reservationRecovery?.state === 'CANCELLED_BEFORE_IO';
+};
 
-module.exports = { digest, serialize, namespace, r2Namespace, sameNamespace, pending };
+module.exports = { digest, serialize, namespace, r2Namespace, sameNamespace, pending, isCancelledDelete };

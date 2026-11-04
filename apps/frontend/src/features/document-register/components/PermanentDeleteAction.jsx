@@ -14,7 +14,9 @@ const danger = "inline-flex h-9 items-center justify-center gap-2 rounded-md bg-
 const legacyReason = "LEGACY_STORAGE_OWNERSHIP_UNVERIFIED";
 const legacyTitle = "Dokumen Tidak Dapat Dihapus Permanen";
 const legacyMessage = "Dokumen ini merupakan dokumen lama yang dibuat sebelum fitur Permanent Delete diterapkan. Karena informasi penyimpanannya belum dapat diverifikasi, dokumen tidak dapat dihapus secara permanen.\n\nDokumen tetap dapat digunakan dan dikelola seperti biasa.";
-const isLegacyRestriction = (value) => value?.status === "CONFLICT" && value?.reasonCode === legacyReason;
+const isLegacyRestriction = (value) => value?.status === "CONFLICT" && [legacyReason, "DELETE_OWNERSHIP_UNVERIFIED"].includes(value?.reasonCode);
+const isDefinitiveRejection = (value) => isLegacyRestriction(value)
+  || (value?.status === "CONFLICT" && value?.reasonCode === "DELETE_RESERVATION_CANCELLED");
 
 export const DeleteDocumentModal = ({ documentItem, reason, onReasonChange, busy, result, error, onCancel, onConfirm, onRefresh }) => {
   const body = useRef(null);
@@ -44,8 +46,11 @@ export const DeleteDocumentModal = ({ documentItem, reason, onReasonChange, busy
   }, [titleId]);
   useEffect(() => { if (busy) body.current?.closest("section")?.focus(); }, [busy]);
   const blocked = ["PENDING", "UNKNOWN", "CONFLICT", "COMPLETED"].includes(result?.status);
-  const legacy = isLegacyRestriction(result);
-  const statusMessage = legacy ? `${legacyTitle}\n\n${legacyMessage}` : busy
+  const legacy = isDefinitiveRejection(result);
+  const restrictionMessage = result?.reasonCode === "DELETE_OWNERSHIP_UNVERIFIED"
+    ? `Kemungkinan ${legacyMessage.charAt(0).toLowerCase()}${legacyMessage.slice(1)}` : legacyMessage;
+  const statusMessage = isLegacyRestriction(result) ? `${legacyTitle}\n\n${restrictionMessage}`
+    : legacy ? result.message : busy
     ? "Penghapusan sedang diproses. Mohon tunggu sebentar..."
     : result?.status === "UNKNOWN"
       ? "Status penghapusan belum dapat dipastikan. Silakan periksa kembali melalui tombol Refresh Status."
@@ -144,8 +149,9 @@ const DeleteActionState = ({ documentItem, disabled, onRunAction, onComplete, pr
         }
         if (!isCurrent(scope, token)) return;
         const acceptLegacy = (value) => {
-          if (!isLegacyRestriction(value)) return false;
-          if (!legacyConfirmed.current && !refreshOnly) showToast({ message: "Dokumen lama tidak dapat dihapus permanen.", variant: "error" });
+          if (!isDefinitiveRejection(value)) return false;
+          if (!legacyConfirmed.current && !refreshOnly) showToast({ message: isLegacyRestriction(value)
+            ? "Dokumen lama tidak dapat dihapus permanen." : value.message, variant: "error" });
           legacyConfirmed.current = true;
           setResult(value);
           return true;
