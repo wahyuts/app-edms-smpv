@@ -50,6 +50,7 @@ const fixture = ({ role = 'Team Process', revision, failure = null } = {}) => {
       if (s.startsWith('SELECT f.*')) {
         const f = staged.files.find((v) => v.file_id === values[0]);
         const b = staged.bindings.find((v) => v.file_id === values[0]);
+        if (!f || !b) return [[]];
         return [[{ ...f, ...b, descriptor: ns.encoded }]];
       }
       if (s.startsWith('UPDATE stored_file_namespace_bindings SET storage_key_snapshot=')) {
@@ -127,9 +128,18 @@ const fixture = ({ role = 'Team Process', revision, failure = null } = {}) => {
     get state() { return committed; },
     changeNamespace() { activeNamespace = namespace({ ...ns.descriptor, inode: 'different-root' }); },
     staleBinding() { committed.bindings[0].storage_key_snapshot = 'other/source.pdf'; },
+    removeActiveBinding() { committed.bindings = committed.bindings.filter(b => b.file_id !== committed.document.activeFileId); },
     replaceSourceIdentity() { objects.get(key).identity = 'replaced-file'; },
   };
 };
+
+test('existing limitation: workflow revision move without legacy binding fails closed and rolls back, not repaired by Delete UX patch', async () => {
+  const f = fixture({ role: 'Team Process', revision: 'IFR-Submitted' });
+  f.removeActiveBinding(); const before = structuredClone(f.state);
+  await assert.rejects(f.engine.applyWorkflowTransition(f.args('Approval A')), { code: 'FILE_NAMESPACE_UNVERIFIED' });
+  assert.deepEqual(f.state, before); assert.ok(f.trace.includes('rollback'));
+  assert.ok(!f.trace.includes('move')); assert.equal(f.objects.size, f.objectsBefore.size);
+});
 
 for (const scenario of [
   { role: 'Team Process', revision: 'IFR-Submitted', action: 'Approval A', target: 'IFA-Submitted' },

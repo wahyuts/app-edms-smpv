@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SourceTextModule, SyntheticModule } from 'node:vm';
+import { execFileSync } from 'node:child_process';
 import { transformWithOxc } from 'vite';
 import { reconcilePermanentDelete } from '../src/features/document-register/utils/permanentDeleteReconciliation.js';
 import { beginPermanentDeleteConfirmation, waitForPermanentDeleteConfirmations } from '../src/features/document-register/utils/permanentDeleteConfirmation.js';
@@ -17,7 +18,7 @@ const load = async (code, imports) => {
   });
   await module.evaluate(); return module.namespace;
 };
-const createHarness = async ({ role = 'Admin', status = 'Process Review', lifecycle = 'Active' } = {}) => {
+const createHarness = async ({ role = 'Admin', status = 'Process Review', lifecycle = 'Active', componentCode = code } = {}) => {
   const h = { context: { activeProject: { id: 'P1' }, activeMembership: { officialRole: role } }, calls: [], toasts: [], invalidations: [], refreshed: 0,
     clock: 0, response: async () => ({ status: 'COMPLETED', message: 'done' }), statusResponse: async () => ({ status: 'COMPLETED', message: 'done' }) };
   let states = []; let cursor = 0; let initialized = false; let effects = []; let cleanup = []; let key;
@@ -31,7 +32,7 @@ const createHarness = async ({ role = 'Admin', status = 'Process Review', lifecy
     useCallback: (callback) => callback,
     useEffect: (callback) => { if (!initialized) effects.push(callback); }, useId: () => 'test-delete-title',
   };
-  const module = await load(code, {
+  const module = await load(componentCode, {
     react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
     'lucide-react': { Loader2: 'Loader2', RefreshCw: 'RefreshCw', Trash2: 'Trash2' }, './DocumentActionModal': { default: 'Modal' },
     '@/shared/stores/project-context.store': { useProjectContextStore: store }, '@/shared/components/toast': { useToast: () => ({ showToast: (toast) => h.toasts.push(toast) }) },
@@ -50,7 +51,7 @@ const createHarness = async ({ role = 'Admin', status = 'Process Review', lifecy
   });
   const dispose = () => { cleanup.forEach((fn) => fn?.()); cleanup = []; states = []; initialized = false; effects = []; };
   h.render = () => {
-    const element = module.PermanentDeleteAction({ documentItem: { id: 'D1', projectId: 'P1', documentNumber: 'PFD-EDMS-123', status, lifecycle },
+    const element = module.PermanentDeleteAction({ documentItem: { id: h.documentId || 'D1', projectId: 'P1', documentNumber: 'PFD-EDMS-123', status, lifecycle },
       disabled: false, onRunAction: (fn) => fn(), onComplete: async () => { h.refreshed += 1; } });
     if (!element) { dispose(); key = null; h.tree = null; h.modal = null; h.button = null; return; }
     if (key !== element.key) { dispose(); key = element.key; }
@@ -326,5 +327,90 @@ test('Authentication/authorization errors are presented in Bahasa Indonesia with
     });
     await assert.rejects(module.PermanentDeleteService.remove({ documentId: 'D', projectId: 'P', requestKey: 'same-key' }),
       (error) => error.status === status && /login|ditolak/.test(error.message));
+  }
+});
+
+const legacyResponse = { status: 'CONFLICT', reasonCode: 'LEGACY_STORAGE_OWNERSHIP_UNVERIFIED', projectId: 'P1', documentId: 'D1' };
+test('Confirmed legacy restriction stays inline, toasts once, keeps modal/document and prevents retry or refresh', async () => {
+  const h = await createHarness(); h.response = async () => legacyResponse; h.open();
+  await h.modal.props.onConfirm(); h.render();
+  assert.ok(h.modal); assert.equal(h.calls.length, 1); assert.equal(h.refreshed, 0); assert.deepEqual(h.invalidations, []);
+  assert.equal(h.toasts.length, 1); assert.equal(h.toasts[0].message, 'Dokumen lama tidak dapat dihapus permanen.');
+  assert.equal(h.toasts[0].variant, 'error');
+  const panel = statusPanel(h.inspectModal());
+  const text = panel.props.children[0].props.children;
+  assert.ok(text.includes('Dokumen Tidak Dapat Dihapus Permanen'));
+  assert.ok(text.includes('Dokumen ini merupakan dokumen lama yang dibuat sebelum fitur Permanent Delete diterapkan.'));
+  assert.ok(text.includes('Dokumen tetap dapat digunakan dan dikelola seperti biasa.'));
+  assert.equal(panel.props.children[1].props.disabled, true);
+  await h.modal.props.onConfirm(); await h.modal.props.onRefresh(); h.render();
+  assert.equal(h.calls.length, 1); assert.equal(h.toasts.length, 1);
+  assert.equal(statusPanel(h.inspectModal()).props.children[0].props.children, text);
+  h.modal.props.onCancel(); h.render(); assert.equal(h.modal, null);
+});
+test('Closing and reopening a legacy rejection reinitializes the no-operation restriction', async () => {
+  const h = await createHarness(); h.response = async () => legacyResponse; h.open();
+  await h.modal.props.onConfirm(); h.render(); h.modal.props.onCancel(); h.render();
+  h.open(); assert.equal(h.modal.props.result, null); assert.equal(h.modal.props.error, '');
+  await h.modal.props.onConfirm(); h.render(); assert.equal(h.calls.length, 2); assert.equal(h.toasts.length, 2);
+  assert.notEqual(h.calls[0].requestKey, h.calls[1].requestKey);
+});
+test('Generic conflict/unknown never becomes a legacy message even with a misleading code', async () => {
+  const h = await createHarness();
+  h.response = async () => ({ status: 'UNKNOWN', reasonCode: legacyResponse.reasonCode });
+  h.statusResponse = async () => ({ status: 'UNKNOWN' }); h.open();
+  await h.modal.props.onConfirm(); h.render();
+  assert.ok(!JSON.stringify(h.inspectModal()).includes('Dokumen Tidak Dapat Dihapus Permanen'));
+  assert.equal(h.toasts.length, 0);
+});
+test('Polling can detect legacy rejection after lost initial response without repeating DELETE or toast', async () => {
+  const h = await createHarness(); h.response = async () => ({ status: 'UNKNOWN' });
+  h.statusResponse = async () => legacyResponse; h.open();
+  await h.modal.props.onConfirm(); h.render();
+  assert.equal(h.calls.filter(c => c.method === 'DELETE').length, 1);
+  assert.equal(h.calls.filter(c => c.method === 'GET').length, 1);
+  assert.equal(h.toasts.length, 1); assert.ok(h.modal);
+  assert.equal(h.modal.props.result.reasonCode, legacyResponse.reasonCode);
+});
+test('A refresh-only legacy response does not generate a delete-attempt toast', async () => {
+  const h = await createHarness(); h.open(); h.statusResponse = async () => legacyResponse;
+  await h.modal.props.onRefresh(); h.render();
+  assert.equal(h.toasts.length, 0); assert.ok(h.modal);
+  assert.equal(h.modal.props.result.reasonCode, legacyResponse.reasonCode);
+});
+test('Changing selected document clears a confirmed legacy message and request state', async () => {
+  const h = await createHarness(); h.response = async () => legacyResponse; h.open();
+  await h.modal.props.onConfirm(); h.render();
+  h.documentId = 'D2'; h.render(); assert.equal(h.modal, null);
+  h.open(); assert.equal(h.modal.props.result, null); assert.equal(h.modal.props.documentItem.id, 'D2');
+});
+test('Confirmed legacy copy takes precedence over generic busy feedback in the existing status area', async () => {
+  const h = await createHarness(); h.response = async () => legacyResponse; h.open();
+  await h.modal.props.onConfirm(); h.render(); h.modal.props.busy = true;
+  const panel = statusPanel(h.inspectModal());
+  assert.ok(panel.props.children[0].props.children.includes('Dokumen Tidak Dapat Dihapus Permanen'));
+  assert.ok(!panel.props.children[0].props.children.includes(processingMessage));
+});
+
+test('Non-legacy modal tree, status text, polling, toast and cache flow match actual pre-patch source', async () => {
+  const original = execFileSync('git', ['show', '549623517000410b87a9e73a99ca48899dd3cbc6:apps/frontend/src/features/document-register/components/PermanentDeleteAction.jsx'],
+    { cwd: new URL('../../..', import.meta.url), encoding: 'utf8' });
+  const baselineCode = (await transformWithOxc(original, 'permanent-baseline.jsx', { jsx: { runtime: 'automatic' } })).code;
+  for (const outcome of ['COMPLETED','PENDING','UNKNOWN','CONFLICT','FAILED']) {
+    const baseline = await createHarness({ componentCode: baselineCode }); const current = await createHarness();
+    for (const h of [baseline, current]) {
+      h.response = async () => ({ status: outcome, message: 'Original status message' });
+      h.statusResponse = h.response; h.open();
+    }
+    assert.equal(JSON.stringify(current.inspectModal()), JSON.stringify(baseline.inspectModal()));
+    await baseline.modal.props.onConfirm(); baseline.render();
+    await current.modal.props.onConfirm(); current.render();
+    assert.equal(Boolean(current.modal), Boolean(baseline.modal), outcome);
+    if (current.modal) assert.equal(JSON.stringify(current.inspectModal()), JSON.stringify(baseline.inspectModal()), outcome);
+    assert.deepEqual(current.toasts, baseline.toasts, outcome);
+    assert.deepEqual(current.invalidations, baseline.invalidations, outcome);
+    assert.equal(current.refreshed, baseline.refreshed, outcome);
+    const calls = h => h.calls.map(({ requestKey: _key, signal: _signal, ...rest }) => rest);
+    assert.deepEqual(calls(current), calls(baseline), outcome);
   }
 });

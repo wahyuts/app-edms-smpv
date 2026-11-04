@@ -1,0 +1,13 @@
+{
+  "environment": "development",
+  "mappingReviewedByOwner": false,
+  "projectId": "REPLACE_WITH_ACTUAL_PROJECT_UUID",
+  "environmentId": "REPLACE_WITH_ACTUAL_DEVELOPMENT_ENVIRONMENT_UUID",
+  "serviceId": "REPLACE_WITH_ACTUAL_MYSQL_SERVICE_UUID",
+  "serviceInstanceId": "REPLACE_WITH_ACTUAL_MYSQL_SERVICE_INSTANCE_UUID",
+  "localPort": 13306,
+  "executable": "C:/Windows/System32/OpenSSH/ssh.exe",
+  "identityFile": "C:/Users/YOUR_USER/.ssh/railway_ed25519",
+  "knownHostsFile": "C:/Users/YOUR_USER/.ssh/railway_verified_known_hosts",
+  "hostKeyFingerprint": "SHA256:REPLACE_WITH_INDEPENDENTLY_VERIFIED_RELAY_FINGERPRINT"
+}

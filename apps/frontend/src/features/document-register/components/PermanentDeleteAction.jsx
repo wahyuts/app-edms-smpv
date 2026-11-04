@@ -11,6 +11,10 @@ import { beginPermanentDeleteConfirmation } from "../utils/permanentDeleteConfir
 
 const secondary = "inline-flex h-9 items-center justify-center rounded-md border border-[#123A5A] px-4 text-sm font-semibold text-[#CBD5E1] transition-colors hover:border-[#0F7BFF] hover:bg-[#0B2B47] hover:text-white disabled:opacity-50";
 const danger = "inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#EF4444] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-50";
+const legacyReason = "LEGACY_STORAGE_OWNERSHIP_UNVERIFIED";
+const legacyTitle = "Dokumen Tidak Dapat Dihapus Permanen";
+const legacyMessage = "Dokumen ini merupakan dokumen lama yang dibuat sebelum fitur Permanent Delete diterapkan. Karena informasi penyimpanannya belum dapat diverifikasi, dokumen tidak dapat dihapus secara permanen.\n\nDokumen tetap dapat digunakan dan dikelola seperti biasa.";
+const isLegacyRestriction = (value) => value?.status === "CONFLICT" && value?.reasonCode === legacyReason;
 
 export const DeleteDocumentModal = ({ documentItem, reason, onReasonChange, busy, result, error, onCancel, onConfirm, onRefresh }) => {
   const body = useRef(null);
@@ -40,7 +44,8 @@ export const DeleteDocumentModal = ({ documentItem, reason, onReasonChange, busy
   }, [titleId]);
   useEffect(() => { if (busy) body.current?.closest("section")?.focus(); }, [busy]);
   const blocked = ["PENDING", "UNKNOWN", "CONFLICT", "COMPLETED"].includes(result?.status);
-  const statusMessage = busy
+  const legacy = isLegacyRestriction(result);
+  const statusMessage = legacy ? `${legacyTitle}\n\n${legacyMessage}` : busy
     ? "Penghapusan sedang diproses. Mohon tunggu sebentar..."
     : result?.status === "UNKNOWN"
       ? "Status penghapusan belum dapat dipastikan. Silakan periksa kembali melalui tombol Refresh Status."
@@ -75,9 +80,9 @@ export const DeleteDocumentModal = ({ documentItem, reason, onReasonChange, busy
             disabled={busy} maxLength={1000} value={reason} onChange={(event) => onReasonChange(event.target.value)} placeholder="Add delete reason..." />
         </label>
         {busy || result ? <div className="flex items-center justify-between gap-3 text-sm text-[#FACC15]" role="status">
-          <p className="min-w-0 break-words">{statusMessage}</p>
+          <p className={legacy ? "min-w-0 whitespace-pre-line break-words" : "min-w-0 break-words"}>{statusMessage}</p>
           <button className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#123A5A] text-[#CBD5E1] disabled:opacity-50"
-            aria-label="Periksa status penghapusan" title="Periksa status penghapusan" type="button" disabled={busy} onClick={onRefresh}><RefreshCw className="h-4 w-4" /></button>
+            aria-label="Periksa status penghapusan" title="Periksa status penghapusan" type="button" disabled={busy || legacy} onClick={onRefresh}><RefreshCw className="h-4 w-4" /></button>
         </div> : null}
         {error ? <p className="text-sm font-semibold text-[#FCA5A5]" role="alert">{error}</p> : null}
       </div>
@@ -99,6 +104,7 @@ const DeleteActionState = ({ documentItem, disabled, onRunAction, onComplete, pr
   const reconciliation = useRef(null);
   const completed = useRef(false);
   const submitted = useRef(false);
+  const legacyConfirmed = useRef(false);
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; generation.current += 1; reconciliation.current?.abort(); };
@@ -109,7 +115,7 @@ const DeleteActionState = ({ documentItem, disabled, onRunAction, onComplete, pr
     return mounted.current && generation.current === token && current.activeProject?.id === scope && current.activeMembership?.officialRole === "Admin";
   };
   const run = async (refreshOnly = false) => {
-    if (running.current || completed.current || disabled || role !== "Admin" || !projectId) return;
+    if (running.current || completed.current || legacyConfirmed.current || disabled || role !== "Admin" || !projectId) return;
     const token = generation.current; const scope = projectId;
     if (!isCurrent(scope, token)) return;
     if (!refreshOnly && submitted.current) return;
@@ -137,6 +143,14 @@ const DeleteActionState = ({ documentItem, disabled, onRunAction, onComplete, pr
           response = { status: "UNKNOWN", operationId: result?.operationId, message: failure.message };
         }
         if (!isCurrent(scope, token)) return;
+        const acceptLegacy = (value) => {
+          if (!isLegacyRestriction(value)) return false;
+          if (!legacyConfirmed.current && !refreshOnly) showToast({ message: "Dokumen lama tidak dapat dihapus permanen.", variant: "error" });
+          legacyConfirmed.current = true;
+          setResult(value);
+          return true;
+        };
+        if (acceptLegacy(response)) return;
         if (!["COMPLETED", "FAILED"].includes(response.status)) {
           setResult(response);
           try {
@@ -150,6 +164,7 @@ const DeleteActionState = ({ documentItem, disabled, onRunAction, onComplete, pr
           }
         }
         if (!response || !isCurrent(scope, token)) return;
+        if (acceptLegacy(response)) return;
         if (response.status !== "COMPLETED") {
           if (response.status === "FAILED") submitted.current = false;
           setResult(response); return;
@@ -170,10 +185,17 @@ const DeleteActionState = ({ documentItem, disabled, onRunAction, onComplete, pr
       if (isCurrent(scope, token)) setBusy(false);
     }
   };
+  const openModal = () => {
+    if (legacyConfirmed.current && !result?.operationId) {
+      legacyConfirmed.current = false; submitted.current = false; identity.current = null;
+      setResult(null); setError("");
+    }
+    setOpen(true);
+  };
   if (role !== "Admin") return null;
   return <>
     <button className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#123A5A] bg-[#0B1F38] text-[#EF4444] transition-colors hover:border-[#EF4444] hover:bg-[#450A0A] disabled:opacity-50"
-      aria-label="Delete Document" title="Delete Document" type="button" disabled={disabled || busy} onClick={() => setOpen(true)}><Trash2 className="h-4 w-4" /></button>
+      aria-label="Delete Document" title="Delete Document" type="button" disabled={disabled || busy} onClick={openModal}><Trash2 className="h-4 w-4" /></button>
     {open ? <DeleteDocumentModal documentItem={documentItem} reason={reason} onReasonChange={setReason} busy={busy} result={result} error={error}
       onCancel={cancel} onConfirm={() => run(false)} onRefresh={() => run(true)} /> : null}
   </>;

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "profiles": {
+    "development": {
+      "database": {
+        "name": "YOUR_SCHEMA",
+        "serverUuid": "00000000-0000-0000-0000-000000000001",
+        "hostname": "YOUR_INTERNAL_SERVER_HOSTNAME",
+        "port": 3306,
+        "versionPrefix": "9.7."
+      },
+      "r2": {
+        "accountId": "YOUR_ACCOUNT",
+        "endpoint": "https://YOUR_ACCOUNT.r2.cloudflarestorage.com",
+        "bucketName": "YOUR_DEVELOPMENT_BUCKET"
+      },
+      "maxRows": 10000,
+      "maxAgeMinutes": 60
+    },
+    "staging": null,
+    "production": null
+  }
+}
