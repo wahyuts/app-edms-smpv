@@ -34,6 +34,7 @@ export const reconcilePermanentDelete = async ({
         || (response.projectId && response.projectId !== projectId)
         || (response.documentId && response.documentId !== documentId)) return uncertain(knownOperationId);
       knownOperationId ||= response.operationId;
+      if (response.status === "CONFLICT" && response.reasonCode === "LEGACY_STORAGE_OWNERSHIP_UNVERIFIED") return response;
       if (["COMPLETED", "FAILED"].includes(response.status)) return response;
     } catch (error) {
       if (signal.aborted || !isCurrent()) return null;

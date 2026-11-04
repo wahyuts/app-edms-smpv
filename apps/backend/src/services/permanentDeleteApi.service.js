@@ -1,11 +1,18 @@
 const { randomUUID, createHash } = require('node:crypto');
 const { createRepository } = require('../repositories/permanentDeleteApi.repository');
+const { createOwnershipPreflight } = require('./legacyDeleteRestriction.service');
 const realtimeDocumentPublisher = require('./realtimeDocumentPublisher.service');
 const logger = require('../config/logger');
 
 const fault = (statusCode, message, data = {}) => Object.assign(new Error(message), { statusCode, publicDeleteError: true, data });
+const LEGACY_REASON = 'LEGACY_STORAGE_OWNERSHIP_UNVERIFIED';
+const LEGACY_TITLE = 'Dokumen Tidak Dapat Dihapus Permanen';
+const LEGACY_MESSAGE = 'Dokumen ini merupakan dokumen lama yang dibuat sebelum fitur Permanent Delete diterapkan. Karena informasi penyimpanannya belum dapat diverifikasi, dokumen tidak dapat dihapus secara permanen.\n\nDokumen tetap dapat digunakan dan dikelola seperti biasa.';
+const restrictionResult = (args) => ({ status: 'CONFLICT', reasonCode: LEGACY_REASON,
+  projectId: args.projectId, documentId: args.documentId, title: LEGACY_TITLE, message: LEGACY_MESSAGE });
 const createPermanentDeleteApi = ({ pool, coordination, engine, publishCompleted = realtimeDocumentPublisher.publishDocumentDeleted }) => {
   const repository = createRepository({ pool });
+  const ownershipPreflight = createOwnershipPreflight({ repository });
   const authorize = async ({ actorUserId, activeProject, projectId, documentId }) => {
     if (!actorUserId) throw fault(401, 'Silakan login terlebih dahulu.');
     if (typeof projectId !== 'string' || !projectId || projectId.length > 64 || typeof documentId !== 'string' || !documentId || documentId.length > 64) {
@@ -42,6 +49,19 @@ const createPermanentDeleteApi = ({ pool, coordination, engine, publishCompleted
   const status = async (args) => {
     await authorize(args);
     const op = await repository.operation(args.projectId, args.documentId);
+    if (!op && !args.operationId) {
+      const document = await repository.document(args.documentId);
+      if (document?.project_id === args.projectId) {
+        // A lost rejection response has no operation to poll. Recalculate only
+        // through reads; never reserve/resume or release an existing operation.
+        let check;
+        try { check = await repository.readOwnershipSnapshot(c => ownershipPreflight(c, args.projectId, args.documentId)); }
+        catch { /* An unconfirmed legacy hint must preserve the original 404 response. */ }
+        const raced = await repository.operation(args.projectId, args.documentId);
+        if (raced) return describe(raced);
+        if (check?.reasonCode === LEGACY_REASON) return restrictionResult(args);
+      }
+    }
     if (!op || (args.operationId && op.id !== args.operationId)) throw fault(404, 'Operasi penghapusan tidak ditemukan.');
     return describe(op);
   };
@@ -62,7 +82,14 @@ const createPermanentDeleteApi = ({ pool, coordination, engine, publishCompleted
       if (document.project_id !== args.projectId) throw fault(403, 'Dokumen tidak termasuk project aktif.');
       try {
         await coordination.reserve({ id: randomUUID(), projectId: args.projectId, documentId: args.documentId,
-          documentNumber: document.document_number, userId: args.actorUserId, reason, requestIdentity });
+          documentNumber: document.document_number, userId: args.actorUserId, reason, requestIdentity }, {
+          beforeReserve: async connection => {
+            const check = await ownershipPreflight(connection, args.projectId, args.documentId);
+            if (check.reasonCode !== LEGACY_REASON) return;
+            const result = restrictionResult(args);
+            throw fault(409, result.message, result);
+          },
+        });
       } catch (error) {
         op = await repository.operation(args.projectId, args.documentId);
         if (!op) throw error;

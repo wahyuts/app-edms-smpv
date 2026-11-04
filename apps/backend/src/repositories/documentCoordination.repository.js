@@ -108,7 +108,7 @@ const finishWriter = async ({ id, scope, dbOutcome, uncertain }) => transaction(
   return settled;
 });
 
-const reserve = async (operation) => transaction(async (connection) => {
+const reserve = async (operation, { beforeReserve } = {}) => transaction(async (connection) => {
   const gate = await lockGate(connection, operation);
   const [prior] = await connection.execute(
     `SELECT * FROM document_delete_operations
@@ -117,6 +117,9 @@ const reserve = async (operation) => transaction(async (connection) => {
   );
   if (prior[0]) return prior[0];
   if (gate.gate_state !== 'OPEN') throw conflict();
+  // A rejected preflight rolls back even a newly inserted OPEN coordinator.
+  // Holding the gate keeps writer admission/commit serialized with this check.
+  if (beforeReserve) await beforeReserve(connection);
   await connection.execute(
     `INSERT INTO document_delete_operations
      (id, project_id, document_id, document_number_snapshot, initiated_by_user_id, reason, request_identity, created_at, updated_at)
