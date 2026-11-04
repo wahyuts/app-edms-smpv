@@ -174,7 +174,7 @@ const fixture = (state = {}) => {
     ['validators/storage.validator.js', { validateStorageKey: (key) => key }],
   ]);
   const allowed = new Set(['services/documentAdmission.service.js', 'repositories/documentCoordination.repository.js',
-    'repositories/documentGate.repository.js', 'services/storage.service.js']);
+    'repositories/documentGate.repository.js', 'services/storage.service.js', 'utils/storageNamespace.js']);
   const load = (file) => {
     if (mocks.has(file)) return mocks.get(file);
     assert.ok(allowed.has(file), `Blocked runtime module: ${file}`);

@@ -8,6 +8,22 @@ const reservation = (f, identity = 'request-1', documentId = 'D1', projectId = '
 });
 const conflict = (error) => error.statusCode === 409 && error.code === 'DOCUMENT_DELETION_IN_PROGRESS';
 
+test('cancelled operation cannot be reserved again or reconfirmed, while new normal writers remain admitted', async () => {
+  const f = fixture(); const op = await reservation(f);
+  Object.assign(f.state.operations.get(op.id), { pending_metadata: JSON.stringify({ reservationRecovery: { state: 'CANCELLED_BEFORE_IO' } }) });
+  Object.assign(f.state.gates.get('P1:D1'), { gate_state: 'OPEN', delete_operation_id: null, generation: 2 });
+  await assert.rejects(reservation(f), error => error.code === 'DELETE_RESERVATION_CANCELLED');
+  await assert.rejects(f.repository.evaluateQuiescence(op.id), error => error.code === 'DELETE_RESERVATION_CANCELLED');
+  await f.service.assertReadable(scope);
+  for (const type of ['EDIT_DOCUMENT','UPLOAD_REVISION','APPROVAL','WORKFLOW_ATTACHMENT','COMMENT_READ','ARCHIVE_DOCUMENT','RESTORE_DOCUMENT','SLA']) {
+    await f.service.runWriter({ ...scope, type }, async () => {
+      await f.service.mutate(scope, c => c.execute('TEST MUTATION'));
+      f.service.noteDbOutcome('COMMITTED');
+    });
+  }
+  assert.equal(f.state.operations.size, 1); assert.equal(f.state.gates.get('P1:D1').gate_state, 'OPEN');
+});
+
 test('permanent storage facade cannot bypass writer admission', async () => {
   const f = fixture(); let calls = 0;
   f.driver.copy = async () => { calls += 1; };

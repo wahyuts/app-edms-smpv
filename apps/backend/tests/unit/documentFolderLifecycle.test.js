@@ -19,6 +19,8 @@ const make = () => {
       if (sql.startsWith('SELECT GET_LOCK')) return [[{ acquired: 1 }]];
       if (sql.startsWith('SELECT IS_USED_LOCK')) return [[{ owned: 1 }]];
       if (sql.startsWith('SELECT RELEASE_LOCK')) return [[{}]];
+      if (sql.startsWith('SELECT * FROM document_delete_operations')) return [[{ id: 'OP', pending_metadata: state.cancelled
+        ? JSON.stringify({ reservationRecovery: { state: 'CANCELLED_BEFORE_IO' } }) : '{}' }]];
       if (sql.startsWith('SELECT * FROM document_delete_executions')) return [[{ ...state.execution, phase: state.phase }]];
       if (sql.startsWith('SELECT * FROM document_delete_attempts')) return [[{ state: state.fileTerminal ? 'SUCCEEDED' : 'UNKNOWN' }]];
       if (sql.startsWith('UPDATE document_delete_executions SET inventory=')) {
@@ -59,6 +61,27 @@ const make = () => {
 test('folder cleanup intent is durable after files, before metadata finalization and notifications', async () => {
   const f = make(); assert.equal((await f.engine().resume('OP')).status, 'COMPLETED');
   assert.equal(f.state.finalizations, 1); assert.equal(f.state.notified, 1);
+});
+
+test('direct engine retry of a cancelled operation stops before transaction, manifest, cleanup or notification', async () => {
+  const f = make(); f.state.cancelled = true;
+  for (let i = 0; i < 2; i++) {
+    const result = await f.engine({ beforeManifest: () => { throw new Error('must not reach manifest'); } }).resume('OP');
+    assert.equal(result.status, 'CONFLICT'); assert.equal(result.reason, 'DELETE_RESERVATION_CANCELLED');
+  }
+  assert.equal(f.state.cleanups, 0); assert.equal(f.state.finalizations, 0); assert.equal(f.state.notified, 0);
+  assert.deepEqual(f.state.trace, []);
+});
+
+test('repository operation guard rejects cancelled history before touching the coordinator', async () => {
+  const repository = require('../../src/repositories/documentDelete.repository').createRepository({ coordination: {
+    lockGate: async () => { throw new Error('must not reach coordinator'); },
+  } });
+  const c = { execute: async sql => {
+    assert.match(sql, /^SELECT \* FROM document_delete_operations/);
+    return [[{ id: 'OP', pending_metadata: '{"reservationRecovery":{"state":"CANCELLED_BEFORE_IO"}}' }]];
+  } };
+  await assert.rejects(repository.lockOperation(c, 'OP'), error => error.code === 'DELETE_RESERVATION_CANCELLED');
 });
 test('folder nonempty failure is Pending, never Completed or notified; retry keeps the same plan', async () => {
   const f = make(); f.state.folderFailure = true;

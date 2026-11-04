@@ -1,6 +1,7 @@
 const { pool } = require('../config/documentCoordinationDatabase');
 const { pool: businessPool } = require('../config/database');
 const { lockGate } = require('./documentGate.repository');
+const { isCancelledDelete, pending } = require('../utils/storageNamespace');
 
 const conflict = () => Object.assign(new Error(
   'This document is currently being permanently deleted by an Admin. No further actions are allowed.'
@@ -115,7 +116,10 @@ const reserve = async (operation, { beforeReserve } = {}) => transaction(async (
      WHERE project_id = ? AND document_id = ? AND request_identity = ?`,
     [operation.projectId, operation.documentId, operation.requestIdentity]
   );
-  if (prior[0]) return prior[0];
+  if (prior[0]) {
+    if (isCancelledDelete(prior[0])) throw pending('DELETE_RESERVATION_CANCELLED');
+    return prior[0];
+  }
   if (gate.gate_state !== 'OPEN') throw conflict();
   // A rejected preflight rolls back even a newly inserted OPEN coordinator.
   // Holding the gate keeps writer admission/commit serialized with this check.
@@ -141,6 +145,7 @@ const evaluateQuiescence = async (operationId) => {
   const [found] = await pool.execute('SELECT * FROM document_delete_operations WHERE id = ?', [operationId]);
   if (!found[0]) return null;
   const operation = found[0];
+  if (isCancelledDelete(operation)) throw pending('DELETE_RESERVATION_CANCELLED');
   const scope = { projectId: operation.project_id, documentId: operation.document_id };
   return transaction(async (connection) => {
     const gate = await lockGate(connection, scope);
