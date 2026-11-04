@@ -16,7 +16,7 @@ const createRuntimeRouter = () => {
   const { createDeleteEngine } = require('../services/documentDelete.service');
   const { createPermanentDeleteApi } = require('../services/permanentDeleteApi.service');
   return createRouter({ authenticate: require('../middlewares/authenticate'),
-    service: createPermanentDeleteApi({ pool, coordination, engine: createDeleteEngine({ pool, coordination, storage }) }) });
+    service: createPermanentDeleteApi({ pool, coordination, storage, engine: createDeleteEngine({ pool, coordination, storage }) }) });
 };
 
 module.exports = { createRouter, createRuntimeRouter };

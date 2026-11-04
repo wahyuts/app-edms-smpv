@@ -144,6 +144,16 @@ test('Actual engine checkpoints validate reversed manifest order, then delegate 
   assert.equal(f.db.operations.length, 2); assert.ok(f.db.gates.every(g => g.gate_state === 'CLOSED'));
 });
 
+test('internal resume refuses cancellation marker even if an inconsistent CLOSED gate remains', async () => {
+  const f = fixture(); const report = await f.dry();
+  f.db.operations[0].pending_metadata = JSON.stringify({ reservationRecovery: { state: 'CANCELLED_BEFORE_IO' } });
+  await assert.rejects(f.apply(report), error => error.code === 'DELETE_RESERVATION_CANCELLED');
+  const fresh = await f.dry();
+  assert.equal(fresh.verdict, 'BLOCKED');
+  assert.ok(fresh.items.some(item => item.reason === 'DELETE_RESERVATION_CANCELLED'));
+  assert.equal(f.calls.length, 0); assert.equal(f.db.executions.length, 0);
+});
+
 for (const fault of ['digest', 'identity', 'checksum', 'unknownFile', 'unknownFolder', 'gate', 'reservation', 'execution', 'manifest', 'attempt', 'denied', 'project', 'foreignReference', 'operationAssociation', 'originalActor']) {
   test(`${fault}: rejects before any fixture deletion`, async () => {
     const f = fixture(), report = await f.dry(), key = report.items[0].proofs[0].key;

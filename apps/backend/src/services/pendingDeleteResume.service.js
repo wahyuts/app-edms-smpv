@@ -1,4 +1,4 @@
-const { digest, pending, sameNamespace } = require('../utils/storageNamespace');
+const { digest, pending, sameNamespace, isCancelledDelete } = require('../utils/storageNamespace');
 const { assertNamespace, verifyFile } = require('./fileProvenance.service');
 const { createRepository } = require('../repositories/documentDelete.repository');
 const { createFolderPlan } = require('./documentFolderCleanup.service');
@@ -42,6 +42,7 @@ const createPendingResume = ({ pool, coordination, storage, namespace, actorUser
   };
   const operationState = async (c, scope, claimed) => {
     const [op] = await rows(c, 'SELECT * FROM document_delete_operations WHERE id=?', [scope.operationId]);
+    if (isCancelledDelete(op)) throw pending('DELETE_RESERVATION_CANCELLED');
     if (!op || op.document_id !== scope.documentId || op.project_id !== scope.projectId
       || op.document_number_snapshot !== scope.documentNumber || String(op.initiated_by_user_id) !== '1'
       || op.status !== 'QUIESCENCE_CONFIRMED') throw pending('RESUME_OPERATION_MISMATCH');

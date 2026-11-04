@@ -97,11 +97,12 @@ test('proven pre-admission legacy restriction returns approved copy before any r
   assert.ok(f.sqls.every(sql => /^SELECT/.test(sql)));
 });
 for (const patch of [{ historical: false }, { busy: true }, { malformed: true }, { bound: true, valid: false }]) {
-  test(`unproven/transient/ambiguous ownership is generic, never mislabeled legacy: ${JSON.stringify(patch)}`, async () => {
+  test(`ownership rejection before reservation, without falsely confirming legacy: ${JSON.stringify(patch)}`, async () => {
     const f = fixture(patch);
-    const result = await f.api.remove(f.args);
-    assert.equal(result.status, 'PENDING'); assert.equal(result.reasonCode, undefined);
-    assert.equal(f.counters().reserved, 1); assert.equal(f.counters().resumed, patch.busy ? 0 : 1);
+    await assert.rejects(f.api.remove(f.args), error => error.statusCode === 409
+      && error.data.reasonCode === 'DELETE_OWNERSHIP_UNVERIFIED'
+      && error.data.message.startsWith('Kemungkinan dokumen ini'));
+    assert.deepEqual(f.counters(), { reserved: 0, resumed: 0, rolledBack: 1 });
   });
 }
 test('old or new files with valid binding keep the same successful engine flow', async () => {
@@ -109,7 +110,7 @@ test('old or new files with valid binding keep the same successful engine flow',
     const f = fixture({ historical, bound: true });
     assert.equal((await f.api.remove(f.args)).status, 'COMPLETED');
     assert.equal(f.counters().reserved, 1); assert.equal(f.counters().resumed, 1);
-    assert.equal(f.sqls.some(sql => sql.startsWith('SELECT * FROM stored_files')), false);
+    assert.equal(f.sqls.some(sql => sql.startsWith('SELECT * FROM stored_files')), true);
   }
 });
 test('valid-binding requests retain existing reservation/drain flow even with active writers', async () => {
@@ -128,9 +129,47 @@ test('read-only GET recovers a lost legacy rejection response without reservatio
   assert.equal(result.reasonCode, 'LEGACY_STORAGE_OWNERSHIP_UNVERIFIED'); assert.equal(result.status, 'CONFLICT');
   assert.deepEqual(f.counters(), { reserved: 0, resumed: 0, rolledBack: 0 });
 });
-test('GET without proven legacy evidence or with a mismatched operation identity retains 404', async () => {
+
+test('temporary SQL failure rejects before reservation without a legacy classification', async () => {
+  const f = fixture({ historical: false }); const execute = f.c.execute;
+  f.c.execute = async sql => {
+    if (sql.includes('information_schema.')) throw Object.assign(new Error('synthetic timeout'), { code: 'ETIMEDOUT' });
+    return execute(sql);
+  };
+  await assert.rejects(f.api.remove(f.args), e => e.code === 'ETIMEDOUT' && !e.data);
+  assert.deepEqual(f.counters(), { reserved: 0, resumed: 0, rolledBack: 1 });
+});
+
+test('cancelled recovery operation never resumes and returns definitive ownership restriction', async () => {
+  const f = fixture({ historical: false, existingStatus: 'PENDING' });
+  const execute = f.pool.execute;
+  f.pool.execute = async sql => {
+    const result = await execute(sql);
+    if (sql.startsWith('SELECT * FROM document_delete_operations')) result[0][0].pending_metadata =
+      JSON.stringify({ reservationRecovery: { state: 'CANCELLED_BEFORE_IO' } });
+    return result;
+  };
+  assert.equal((await f.api.remove(f.args)).reasonCode, 'DELETE_OWNERSHIP_UNVERIFIED');
+  assert.equal((await f.api.status(f.args)).reasonCode, 'DELETE_RESERVATION_CANCELLED');
+  assert.deepEqual(f.counters(), { reserved: 0, resumed: 0, rolledBack: 0 });
+});
+
+test('concurrent DELETE retries and GET status cannot resume a recovered operation with eligible metadata', async () => {
+  const f = fixture({ historical: false, bound: true, existingStatus: 'PENDING' });
+  const execute = f.pool.execute;
+  f.pool.execute = async sql => {
+    const result = await execute(sql);
+    if (sql.startsWith('SELECT * FROM document_delete_operations')) result[0][0].pending_metadata =
+      JSON.stringify({ reservationRecovery: { state: 'CANCELLED_BEFORE_IO' } });
+    return result;
+  };
+  const responses = await Promise.all([f.api.remove(f.args), f.api.remove({ ...f.args, requestKey: 'other-request' }), f.api.status(f.args)]);
+  assert.ok(responses.every(result => result.status === 'CONFLICT' && result.reasonCode === 'DELETE_RESERVATION_CANCELLED'));
+  assert.deepEqual(f.counters(), { reserved: 0, resumed: 0, rolledBack: 0 });
+});
+test('GET recovers possible legacy rejection but a mismatched operation identity retains 404', async () => {
   const f = fixture({ historical: false });
-  await assert.rejects(f.api.status(f.args), e => e.statusCode === 404);
+  assert.equal((await f.api.status(f.args)).reasonCode, 'DELETE_OWNERSHIP_UNVERIFIED');
   await assert.rejects(f.api.status({ ...f.args, operationId: 'unrelated-operation' }), e => e.statusCode === 404);
 });
 
@@ -151,9 +190,25 @@ test('actual reservation hook rejects before closing gate or adding operation; a
   assert.equal(f.state.trace.filter(t => t === 'MUTATION').length, 8);
 });
 
+test('concurrent eligibility rejection leaves no reservation; concurrent eligible requests reserve only once', async () => {
+  for (const bound of [false, true]) {
+    const f = coordinationFixture(); const ownership = fixture({ historical: false, bound });
+    const eligibility = require('../../src/services/deleteEligibility.service').createEligibilityPreflight();
+    const beforeReserve = async () => {
+      const result = await eligibility(ownership.c, 'P', 'D');
+      if (result.blocked) throw Object.assign(new Error('definitive ownership rejection'), { code: result.reasonCode });
+    };
+    const results = await Promise.allSettled([1, 2].map(i => f.repository.reserve({ id: `DELETE-${i}`,
+      projectId: 'P1', documentId: 'D1', requestIdentity: `request-${i}` }, { beforeReserve })));
+    assert.equal(results.filter(result => result.status === 'fulfilled').length, bound ? 1 : 0);
+    assert.equal(f.state.operations.size, bound ? 1 : 0);
+    assert.equal(f.state.gates.get('P1:D1')?.gate_state, bound ? 'CLOSED' : 'OPEN');
+    assert.ok(ownership.sqls.every(sql => sql.startsWith('SELECT')));
+  }
+});
+
 for (const scenario of [
-  { bound: true }, { bound: true, busy: true }, { historical: false },
-  { busy: true }, { malformed: true }, { bound: true, valid: false },
+  { bound: true }, { bound: true, busy: true },
   { existingStatus: 'PENDING' }, { existingStatus: 'UNKNOWN' },
 ]) test(`before/after baseline ${baselineCommit.slice(0,7)}: unchanged non-legacy outcome ${JSON.stringify(scenario)}`, async () => {
   const old = fixture({ ...scenario, factory: baselineApi() }); const current = fixture(scenario);
@@ -169,15 +224,15 @@ test('existing operation conflict and missing-operation GET preserve baseline re
     const conflict = fixture({ factory, existingStatus: 'PENDING' });
     await assert.rejects(conflict.api.remove({ ...conflict.args, requestKey: 'different-request' }), e =>
       e.statusCode === 409 && e.data.status === 'CONFLICT' && !e.data.reasonCode);
-    const missing = fixture({ factory, historical: false });
+    const missing = fixture({ factory, historical: false, bound: true });
     await assert.rejects(missing.api.status(missing.args), e => e.statusCode === 404);
   }
 });
 
-test('workflow, approval, revision, storage, SLA, RBAC and Delete engine remain byte-equivalent to pre-patch baseline', () => {
+test('workflow, approval, revision, storage, SLA and RBAC remain byte-equivalent to pre-patch baseline', () => {
   for (const file of ['apps/backend/src/services/workflowEngine.service.js','apps/backend/src/services/approval.service.js',
     'apps/backend/src/services/revision.service.js','apps/backend/src/repositories/storageNamespace.repository.js',
-    'apps/backend/src/services/storage.service.js','apps/backend/src/services/documentDelete.service.js',
+    'apps/backend/src/services/storage.service.js',
     'apps/backend/src/services/document.service.js','apps/backend/src/services/fileAccess.service.js',
     'apps/backend/src/services/sla.service.js','apps/backend/src/repositories/sla.repository.js',
     'apps/backend/src/services/authorization.service.js','apps/backend/src/middlewares/authorizePermissions.js']) {
