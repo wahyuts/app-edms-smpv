@@ -118,7 +118,16 @@ const deleteExpiredTemporaryUploadById = async (id) => {
   return result.affectedRows;
 };
 
+const findExpiredTemporaryUploadById = async (id) => {
+  const [rows] = await pool.execute(
+    `SELECT * FROM temporary_uploads WHERE id = ? AND consumed_at IS NULL
+     AND expires_at <= UTC_TIMESTAMP(3)`, [id]
+  );
+  return mapTemporaryUploadRow(rows[0]);
+};
+
 module.exports = {
+  findExpiredTemporaryUploadById,
   createTemporaryUpload,
   deleteAvailableTemporaryUpload,
   deleteExpiredTemporaryUploadById,

@@ -5,6 +5,7 @@ const logger = require('../config/logger');
 const { STORAGE_DIRECTORIES } = require('../constants/storage.constants');
 const temporaryUploadRepository = require('../repositories/temporaryUpload.repository');
 const storageService = require('./storage.service');
+const admission = require('./documentAdmission.service');
 const { sanitizeFileName } = require('../utils/fileName');
 const { toStorageSafeSegment } = require('../utils/storageKeyBuilder');
 const { validateTemporaryUploadCapacity } = require('../utils/storageMetadataCapacity');
@@ -128,15 +129,31 @@ const assertTemporaryUploadConsumable = async ({ actorUserId, temporaryFileId })
 };
 
 const consumeTemporaryUploadMetadata = async (connection, temporaryFileId) => {
+  const context = admission.current();
+  if (!context || context.closed || context.temporaryFileId !== temporaryFileId) {
+    throw Object.assign(new Error('File temporary tidak sesuai dengan operasi aktif.'),
+      { statusCode: 409, code: 'TEMPORARY_UPLOAD_IN_USE' });
+  }
   return temporaryUploadRepository.deleteAvailableTemporaryUpload(connection, { temporaryFileId });
 };
 
 const discardTemporaryUpload = async (temporaryMetadata) => {
   if (!temporaryMetadata?.temporaryFileId) return;
+  if (admission.current()?.closed) {
+    throw Object.assign(new Error('Operasi upload sudah selesai.'), { statusCode: 409 });
+  }
+  if (!admission.current()) {
+    return admission.runWriter({ type: 'TEMPORARY_DISCARD', temporaryFileId: temporaryMetadata.temporaryFileId },
+      () => discardTemporaryUpload(temporaryMetadata));
+  }
+  if (admission.current().temporaryFileId !== temporaryMetadata.temporaryFileId) {
+    throw Object.assign(new Error('File temporary tidak sesuai dengan operasi aktif.'),
+      { statusCode: 409, code: 'TEMPORARY_UPLOAD_IN_USE' });
+  }
 
   await temporaryUploadRepository
     .deleteAvailableTemporaryUpload(null, { temporaryFileId: temporaryMetadata.temporaryFileId })
-    .catch(() => {});
+    .catch(() => { admission.noteDbOutcome('UNKNOWN'); });
 
   if (temporaryMetadata.storageKey) {
     await storageService.deleteTemporary(temporaryMetadata.storageKey).catch(() => {});

@@ -1,0 +1,19 @@
+{
+  "startedAt": "2026-11-02T13:47:39.551Z",
+  "backupHash": "3796876d7886d4623414997ada31d0efaba44328d888421fa40c7b58d945b56b",
+  "originalServerAccess": false,
+  "identity": {
+    "db": null,
+    "version": "10.4.32-MariaDB",
+    "hostname": "DESKTOP-3DFA1TA",
+    "port": 13317,
+    "datadir": "D:\\Project\\app-edms-smpv\\tmp\\mariadb-sprint-b-20261102\\data\\",
+    "serverId": 13317,
+    "forceRecovery": 0,
+    "connectionId": 32
+  },
+  "fatal": {
+    "code": "ERR_ASSERTION",
+    "message": "Restore warnings require review"
+  }
+}

@@ -45,6 +45,7 @@ app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/password', passwordRoutes);
 app.use('/api/v1/dev/email-outbox', devEmailOutboxRoutes);
 app.use('/api/v1/development', developmentResetRoutes);
+app.use('/api/v1/documents', require('./routes/permanentDelete.routes').createRuntimeRouter());
 app.use('/api/v1/documents', documentRoutes);
 app.use('/api/v1/departments', departmentRoutes);
 app.use('/api/v1/escalations', escalationRoutes);

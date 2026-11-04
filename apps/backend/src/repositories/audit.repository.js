@@ -1,4 +1,5 @@
 const { pool } = require('../config/database');
+const admission = require('../services/documentAdmission.service');
 const { normalizeJsonMetadata } = require('../utils/jsonMetadata');
 
 const sensitiveMetadataKeys = [
@@ -149,32 +150,38 @@ const createAuditOrderClause = ({ direction, sortBy }) => {
 };
 
 const insertAuditRecord = async (record) => {
-  await pool.execute(
-    `
-      INSERT IGNORE INTO audit_trail (
-        id, identity_key, project_id, actor_user_id, actor_name, department,
-        official_role, action, business_event, detail, resource_type,
-        resource_id, reference, metadata
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    [
-      record.id,
-      record.identityKey,
-      record.projectId,
-      record.actorUserId,
-      record.actorName,
-      record.department,
-      record.officialRole,
-      record.action,
-      record.businessEvent,
-      record.detail,
-      record.resourceType,
-      record.resourceId,
-      record.reference,
-      JSON.stringify(sanitizeMetadata(record.metadata || {})),
-    ]
-  );
+  const write = async (connection) => {
+    await connection.execute(
+      `
+        INSERT IGNORE INTO audit_trail (
+          id, identity_key, project_id, actor_user_id, actor_name, department,
+          official_role, action, business_event, detail, resource_type,
+          resource_id, reference, metadata
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        record.id,
+        record.identityKey,
+        record.projectId,
+        record.actorUserId,
+        record.actorName,
+        record.department,
+        record.officialRole,
+        record.action,
+        record.businessEvent,
+        record.detail,
+        record.resourceType,
+        record.resourceId,
+        record.reference,
+        JSON.stringify(sanitizeMetadata(record.metadata || {})),
+      ]
+    );
+  };
+  if (record.resourceType === 'Document' && record.projectId && record.resourceId) {
+    return admission.mutate({ projectId: record.projectId, documentId: record.resourceId }, write);
+  }
+  return write(pool);
 };
 
 const listAuditRecordsPage = async ({

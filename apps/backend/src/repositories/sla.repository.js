@@ -1,4 +1,5 @@
 const { pool } = require('../config/database');
+const admission = require('../services/documentAdmission.service');
 
 const upsertSlaEvaluation = async ({
   cycleId,
@@ -8,25 +9,27 @@ const upsertSlaEvaluation = async ({
   notifiedStates = {},
   projectId,
 }) => {
-  await pool.execute(
-    `
-      INSERT INTO document_sla_evaluations (
-        id, project_id, document_id, cycle_id, current_state, notified_states
-      )
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        current_state = VALUES(current_state),
-        notified_states = COALESCE(document_sla_evaluations.notified_states, VALUES(notified_states))
-    `,
-    [
-      evaluationId,
-      projectId,
-      documentId,
-      cycleId,
-      currentState,
-      JSON.stringify(notifiedStates),
-    ]
-  );
+  return admission.mutate({ projectId, documentId }, async (connection) => {
+    await connection.execute(
+      `
+        INSERT INTO document_sla_evaluations (
+          id, project_id, document_id, cycle_id, current_state, notified_states
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          current_state = VALUES(current_state),
+          notified_states = COALESCE(document_sla_evaluations.notified_states, VALUES(notified_states))
+      `,
+      [
+        evaluationId,
+        projectId,
+        documentId,
+        cycleId,
+        currentState,
+        JSON.stringify(notifiedStates),
+      ]
+    );
+  });
 };
 
 const findSlaEvaluationByCycle = async ({ cycleId, documentId }) => {

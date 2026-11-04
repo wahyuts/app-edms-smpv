@@ -3,9 +3,14 @@ const storageConfig = require('../config/storage');
 const { STORAGE_DIRECTORIES } = require('../constants/storage.constants');
 const { createStorageDriver } = require('../storage/storageDriver.factory');
 const { normalizeStorageError } = require('../storage/storage.errors');
+const admission = require('./documentAdmission.service');
+
 const { validateStorageKey, validateProjectCode, validateDocumentCode } = require('../validators/storage.validator');
 
 const activeDriver = createStorageDriver();
+const track = (type, sourceKey, destinationKey, callback) => admission.trackIo({
+  type, sourceKey, destinationKey, provider: activeDriver.name, requiresWriter: type !== 'DELETE_TEMPORARY',
+}, callback);
 
 const normalizeKey = (storageKey, fieldName) => {
   return validateStorageKey(storageKey, fieldName);
@@ -155,14 +160,14 @@ const putTemporaryStream = async (storageKey, stream, options = {}) => {
 };
 
 const finalize = async (temporaryStorageKey, permanentStorageKey) => {
-  return activeDriver.finalize(
-    normalizeKey(temporaryStorageKey, 'temporaryStorageKey'),
-    normalizeKey(permanentStorageKey, 'permanentStorageKey')
-  );
+  const source = normalizeKey(temporaryStorageKey, 'temporaryStorageKey');
+  const destination = normalizeKey(permanentStorageKey, 'permanentStorageKey');
+  return track('FINALIZE', source, destination, () => activeDriver.finalize(source, destination));
 };
 
 const put = async (storageKey, content) => {
-  return activeDriver.put(normalizeKey(storageKey), content);
+  const key = normalizeKey(storageKey);
+  return track('PUT', null, key, () => activeDriver.put(key, content));
 };
 
 const get = async (storageKey) => {
@@ -178,19 +183,25 @@ const exists = async (storageKey) => {
 };
 
 const copy = async (sourceStorageKey, targetStorageKey) => {
-  return activeDriver.copy(normalizeKey(sourceStorageKey, 'sourceStorageKey'), normalizeKey(targetStorageKey, 'targetStorageKey'));
+  const source = normalizeKey(sourceStorageKey, 'sourceStorageKey');
+  const destination = normalizeKey(targetStorageKey, 'targetStorageKey');
+  return track('COPY', source, destination, () => activeDriver.copy(source, destination));
 };
 
 const move = async (sourceStorageKey, targetStorageKey) => {
-  return activeDriver.move(normalizeKey(sourceStorageKey, 'sourceStorageKey'), normalizeKey(targetStorageKey, 'targetStorageKey'));
+  const source = normalizeKey(sourceStorageKey, 'sourceStorageKey');
+  const destination = normalizeKey(targetStorageKey, 'targetStorageKey');
+  return track('MOVE', source, destination, () => activeDriver.move(source, destination));
 };
 
 const deleteObject = async (storageKey) => {
-  return activeDriver.delete(normalizeKey(storageKey));
+  const key = normalizeKey(storageKey);
+  return track('DELETE', key, null, () => activeDriver.delete(key));
 };
 
 const deleteTemporary = async (storageKey) => {
-  return activeDriver.deleteTemporary(normalizeKey(storageKey, 'temporaryStorageKey'));
+  const key = normalizeKey(storageKey, 'temporaryStorageKey');
+  return track('DELETE_TEMPORARY', key, null, () => activeDriver.deleteTemporary(key));
 };
 
 const cleanupEmptyTemporaryDirectories = async ({ limit = 100 } = {}) => {
@@ -226,7 +237,22 @@ const getActiveStorageDriver = () => {
   };
 };
 
+const captureNamespace = async () => {
+  return activeDriver.captureNamespace();
+};
+
+// Internal Sprint B path only; the cleanup engine persists its own attempt before IO.
+const deleteOwnedExact = (key, boundNamespace, evidence) => activeDriver.deleteOwnedExact(key, boundNamespace, evidence);
+const inspectOwnedExact = (key, boundNamespace) => activeDriver.inspectOwnedExact(key, boundNamespace);
+const inspectDocumentFolders = (prefix, boundNamespace) => activeDriver.inspectDocumentFolders(prefix, boundNamespace);
+const cleanupDocumentFolders = (plan) => activeDriver.cleanupDocumentFolders(plan);
+
 module.exports = {
+  captureNamespace,
+  deleteOwnedExact,
+  inspectOwnedExact,
+  inspectDocumentFolders,
+  cleanupDocumentFolders,
   initializeStorage,
   testStorageAccess,
   checkStorageHealth,

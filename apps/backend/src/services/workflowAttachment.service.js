@@ -5,6 +5,7 @@ const fileAccessRepository = require('../repositories/fileAccess.repository');
 const auditService = require('./audit.service');
 const storageService = require('./storage.service');
 const uploadService = require('./upload.service');
+const admission = require('./documentAdmission.service');
 const { assertProjectAccess } = require('./fileAccess.service');
 const { createEntityId, createHttpError } = require('../utils/administration');
 const {
@@ -21,6 +22,7 @@ const getAttachmentDownload = async ({ attachmentId, documentId, userId }) => {
   }
 
   await assertProjectAccess({ projectId: attachment.projectId, userId });
+  await admission.assertReadable({ projectId: attachment.projectId, documentId });
 
   if (!(await storageService.exists(attachment.storedFile.storageKey))) {
     logger.error('[ATTACHMENT] Storage object missing');
@@ -127,6 +129,7 @@ const uploadWorkflowAttachment = async ({ actorUserId, documentId, payload }) =>
       }
       await storageService.finalize(temporaryMetadata.storageKey, storageKey);
       finalized = true;
+      await documentRepository.completeStoredFileProvenance(connection, fileId);
     });
   } catch (error) {
     if (finalized) {
@@ -167,5 +170,5 @@ const uploadWorkflowAttachment = async ({ actorUserId, documentId, payload }) =>
 
 module.exports = {
   getAttachmentDownload,
-  uploadWorkflowAttachment,
+  uploadWorkflowAttachment: admission.documentWriter(uploadWorkflowAttachment, 'WORKFLOW_ATTACHMENT'),
 };

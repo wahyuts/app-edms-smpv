@@ -159,6 +159,12 @@ const createFixture = (kind, scenario) => {
     query() { throw new Error('Unexpected unmocked pool query'); },
   };
   const mocks = new Map([
+    ['services/documentAdmission.service.js', {
+      documentWriter: (handler) => handler,
+      runWriter: (scope, callback) => callback(),
+      guardTransaction: async () => {}, noteDbOutcome() {}, assertReadable: async () => {},
+      withContinuation: (callback) => callback(),
+    }],
     ['config/database.js', { pool }],
     ['config/logger.js', { log() {}, error() {}, warn() {} }],
     ['repositories/project.repository.js', {
@@ -254,6 +260,10 @@ const createFixture = (kind, scenario) => {
     },
     async insertStoredFile(currentConnection, value) {
       stage(currentConnection, 'INSERT stored file', (state) => state.files.push({ ...value }));
+    },
+    async completeStoredFileProvenance(currentConnection) {
+      stage(currentConnection, 'VERIFY final file provenance', () => assert.ok(objects.has(targetKey)));
+      if (scenario.provenanceFailure) throw errors.write;
     },
     async insertRevision(currentConnection, value) {
       stage(currentConnection, 'INSERT revision', (state) => state.revisions.push({ ...value }));
@@ -383,6 +393,16 @@ for (const kind of paths) {
     });
   }
 }
+
+for (const kind of paths) test(`upload provenance failure rolls back and compensates finalized file: ${kind}`, async () => {
+  const f = createFixture(kind, { commit: 'success', provenanceFailure: true });
+  await assert.rejects(f.invoke(), (error) => error === f.errors.write);
+  assert.deepEqual(f.committed, f.before);
+  assert.equal(f.objects.has(f.targetKey), false);
+  assert.deepEqual(f.deletions, [f.targetKey]);
+  assert.ok(!f.trace.includes('COMMIT requested'));
+  assert.ok(!f.trace.includes('NOTIFICATION'));
+});
 
 test('Isolation gate rejects runtime configuration, external clients and network modules', () => {
   const loader = isolatedLoader(new Map());

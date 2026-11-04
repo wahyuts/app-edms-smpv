@@ -33,6 +33,7 @@ import {
 import { getDocumentActionVisibility } from "../utils/documentActionVisibility";
 import { synchronizeDocumentRuntimeQueries } from "../utils/documentRuntimeQuerySync";
 import { createRealtimeRefetchCoalescer } from "../utils/realtimeRefetchCoalescer";
+import { PermanentDeleteAction } from "./PermanentDeleteAction";
 import {
   isActorSelfEvent,
   isRelevantWorkflowDetailEvent,
@@ -1137,6 +1138,10 @@ export const DocumentActionGroup = ({
               label="Restore Document"
               onClick={() => runAction(actionLoadingType.RESTORE, submitRestoreDocument)}
             />
+          ) : null}
+          {!isDashboard && !isReadOnlyActionMode && projectRoleName === OFFICIAL_ROLE.ADMIN ? (
+            <PermanentDeleteAction documentItem={documentItem} disabled={isActionLocked}
+              onRunAction={(handler) => runAction("permanentDelete", handler)} onComplete={onWorkflowComplete} />
           ) : null}
         </div>
 
