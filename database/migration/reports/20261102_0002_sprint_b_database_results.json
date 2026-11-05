@@ -1,0 +1,90 @@
+{
+  "run": "SB-mvz8c2cr-03398f",
+  "database": "edms_sprint_a_test",
+  "tests": [
+    {
+      "name": "MariaDB migration: four InnoDB sidecars and FK enforcement enabled",
+      "result": "PASS"
+    },
+    {
+      "name": "Complete archived document: active/history/attachment/out-of-prefix/direct files; audit retained; repeated resume exactly once",
+      "result": "PASS"
+    },
+    {
+      "name": "Existing unbound files remain untouched and no manifest is finalized",
+      "result": "PASS"
+    }
+  ],
+  "startedAt": "2026-11-02T12:22:58.539Z",
+  "lastSql": "INSERT INTO engineering_documents (id,project_id,document_number,description,drawing,area,days_until_validation,\n      workflow_status,revision_label,responsible_role,created_by_user_id,sla_started_at,lifecycle_status)\n      VALUES (?,?,?,'Synthetic','PFD','TEST',5,'Process Review','IFR-Submitted','Team Process',?,UTC_TIMESTAMP(3),?)",
+  "server": {
+    "version": "10.4.32-MariaDB",
+    "hostname": "DESKTOP-3DFA1TA",
+    "port": 3306,
+    "datadir": "D:\\xampp\\mysql\\data\\",
+    "sql_mode": "NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION",
+    "time_zone": "SYSTEM",
+    "autocommit": 1
+  },
+  "migration": {
+    "executed": false,
+    "hash": "7302ef31b9f58c094532f1e8c5f3574d8de6f351a282f608d89136c7f9071e75",
+    "tables": [
+      "storage_namespaces",
+      "stored_file_namespace_bindings",
+      "document_delete_executions",
+      "document_delete_attempts"
+    ]
+  },
+  "localSandbox": "C:\\Users\\ThinkPad\\AppData\\Local\\Temp\\edms-sprint-b-db-cyKOEw",
+  "fatal": "Test deadline: Cross-document shared file blocks the entire cleanup without reassigning metadata",
+  "pool": {
+    "all": 1,
+    "free": 0,
+    "queued": 0
+  },
+  "processes": [
+    {
+      "ID": 61,
+      "COMMAND": "Execute",
+      "TIME": 0,
+      "STATE": "Filling schema table",
+      "INFO": "SELECT ID,COMMAND,TIME,STATE,INFO FROM information_schema.PROCESSLIST WHERE DB=?"
+    },
+    {
+      "ID": 59,
+      "COMMAND": "Execute",
+      "TIME": 19,
+      "STATE": "Update",
+      "INFO": "INSERT INTO engineering_documents (id,project_id,document_number,description,drawing,area,days_until_validation,\n      workflow_status,revision_label,responsible_role,created_by_user_id,sla_started_at,lifecycle_status)\n      VALUES (?,?,?,'Synthetic','PFD','TEST',5,'Process Review','IFR-Submitted','Team Process',?,UTC_TIMESTAMP(3),?)"
+    },
+    {
+      "ID": 56,
+      "COMMAND": "Execute",
+      "TIME": 96,
+      "STATE": "Update",
+      "INFO": "INSERT INTO document_admission_coordinators (project_id, document_id, created_at, updated_at)\n     VALUES (?, ?, UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))\n     ON DUPLICATE KEY UPDATE document_id = document_id"
+    },
+    {
+      "ID": 53,
+      "COMMAND": "Execute",
+      "TIME": 165,
+      "STATE": "Update",
+      "INFO": "INSERT INTO document_admission_coordinators (project_id, document_id, created_at, updated_at)\n     VALUES (?, ?, UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))\n     ON DUPLICATE KEY UPDATE document_id = document_id"
+    },
+    {
+      "ID": 48,
+      "COMMAND": "Execute",
+      "TIME": 250,
+      "STATE": "Update",
+      "INFO": "INSERT INTO stored_files (file_id,project_id,document_id,original_file_name,physical_file_name,file_extension,\n        mime_type,file_size,storage_key,relative_path,file_category,uploaded_by_user_id,uploaded_at) VALUES (?,?,?,'Original.pdf','physical.pdf','pdf',\n        'application/pdf',9,?,?,?, ?,UTC_TIMESTAMP(3))"
+    },
+    {
+      "ID": 46,
+      "COMMAND": "Execute",
+      "TIME": 303,
+      "STATE": "Update",
+      "INFO": "INSERT INTO engineering_documents (id,project_id,document_number,description,drawing,area,days_until_validation,\n      workflow_status,revision_label,responsible_role,created_by_user_id,sla_started_at,lifecycle_status)\n      VALUES (?,?,?,'Synthetic','PFD','TEST',5,'Process Review','IFR-Submitted','Team Process',?,UTC_TIMESTAMP(3),?)"
+    }
+  ]
+}

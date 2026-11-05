@@ -19,6 +19,14 @@ const allowed = new Set([
 
 // Fail closed: no native runtime require, env file, database driver, or network API.
 const createLoader = (mocks = new Map(), external = new Map()) => {
+  mocks = new Map(mocks);
+  if (!mocks.has('services/documentAdmission.service.js')) {
+    mocks.set('services/documentAdmission.service.js', {
+      documentWriter: (handler) => handler,
+      guardTransaction: async () => {}, noteDbOutcome() {}, assertReadable: async () => {},
+      withContinuation: (callback) => callback(),
+    });
+  }
   const cache = new Map();
   const loaded = [];
   const load = (file) => {

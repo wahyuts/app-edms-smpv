@@ -4,11 +4,11 @@ import { queryClient } from "@/shared/api/query-client";
 import {
   REALTIME_EVENT_TYPE,
   useRealtimeEvent,
-  useRealtimeRecovery,
 } from "@/shared/realtime";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 
 import { createRealtimeRefetchCoalescer } from "../utils/realtimeRefetchCoalescer";
+import { useRealtimePermanentDeleteSync } from "./useRealtimePermanentDeleteSync";
 
 const REALTIME_DOCUMENT_REFETCH_DELAY_MS = 500;
 
@@ -26,7 +26,14 @@ const refreshDocumentRegisterAndDashboardQueries = () => {
   queryClient.invalidateQueries({ queryKey: ["dashboard"], refetchType: "active" });
 };
 
+const refreshDeletedDocumentQueries = () => {
+  return Promise.allSettled(["documents", "dashboard", "sla-monitoring", "escalation", "audit-trail"].map(
+    (key) => queryClient.invalidateQueries({ queryKey: [key], refetchType: "active" }),
+  ));
+};
+
 export const useRealtimeDocumentRuntimeSync = () => {
+  useRealtimePermanentDeleteSync(refreshDeletedDocumentQueries);
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
   const refetchCoalescerRef = useRef(null);
 
@@ -60,20 +67,7 @@ export const useRealtimeDocumentRuntimeSync = () => {
     [activeProjectId],
   );
 
-  const handleRecovery = useCallback(
-    (context) => {
-      if (String(context.projectId ?? "") !== String(activeProjectId ?? "")) return;
-
-      refetchCoalescerRef.current?.schedule({
-        projectId: activeProjectId,
-        reason: "recovery",
-      });
-    },
-    [activeProjectId],
-  );
-
   useRealtimeEvent(handleDocumentRuntimeEvent);
-  useRealtimeRecovery(handleRecovery);
 };
 
 export default useRealtimeDocumentRuntimeSync;

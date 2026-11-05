@@ -136,6 +136,11 @@ export const useDocumentRegisterTable = ({
   const rows = sourceDocuments;
   const totalPages = Math.max(1, pagination.totalPages ?? 1);
   const normalizedPageNumber = Math.min(pagination.page ?? pageNumber, totalPages);
+  useEffect(() => {
+    if (!documentsQuery.data || pageNumber <= totalPages) return;
+    const timer = window.setTimeout(() => setPageNumber(totalPages), 0);
+    return () => window.clearTimeout(timer);
+  }, [documentsQuery.data, pageNumber, totalPages]);
   const startIndex = ((normalizedPageNumber - 1) * (pagination.pageSize ?? pageSize));
 
   return {

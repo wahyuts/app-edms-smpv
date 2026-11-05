@@ -1,5 +1,6 @@
 const { pool } = require('../config/database');
 const logger = require('../config/logger');
+const admission = require('../services/documentAdmission.service');
 
 const toExplicitUtcIsoString = (value) => {
   if (!value) return null;
@@ -487,22 +488,33 @@ const buildRegisterWhere = ({
   };
 };
 
-const runInTransaction = async (callback) => {
+const runInTransaction = async (callback) => admission.withContinuation(async () => {
   const connection = await pool.getConnection();
+  let committing = false;
 
   try {
     await connection.beginTransaction();
+    await admission.guardTransaction(connection);
+    admission.noteDbOutcome('IN_PROGRESS');
     const result = await callback(connection);
+    committing = true;
     await connection.commit();
+    admission.noteDbOutcome('COMMITTED');
 
     return result;
   } catch (error) {
-    await connection.rollback();
+    try {
+      await connection.rollback();
+      admission.noteDbOutcome(committing ? 'UNKNOWN' : 'ROLLED_BACK');
+    } catch (rollbackError) {
+      admission.noteDbOutcome('UNKNOWN');
+      throw rollbackError;
+    }
     throw error;
   } finally {
     connection.release();
   }
-};
+});
 
 const findDocumentTypeByDrawing = async (drawing) => {
   const documentTypeCode = drawing === 'P&ID' ? 'PID' : drawing;
@@ -864,27 +876,29 @@ const listSlaNotificationCandidateDocuments = async ({ limit = 200 } = {}) => {
 };
 
 const markWorkflowCommentsReadForUser = async ({ documentId, projectId, userId }) => {
-  const [result] = await pool.execute(
-    `
-      INSERT IGNORE INTO comment_read_receipts (
-        id, project_id, document_id, comment_id, user_id, read_at
-      )
-      SELECT
-        CONCAT(?, ':', workflow_comments.id),
-        workflow_comments.project_id,
-        workflow_comments.document_id,
-        workflow_comments.id,
-        ?,
-        UTC_TIMESTAMP(3)
-      FROM workflow_comments
-      WHERE workflow_comments.project_id = ?
-        AND workflow_comments.document_id = ?
-        AND workflow_comments.created_by_user_id <> ?
-    `,
-    [userId, userId, projectId, documentId, userId]
-  );
+  return admission.mutate({ documentId, projectId }, async (connection) => {
+    const [result] = await connection.execute(
+      `
+        INSERT IGNORE INTO comment_read_receipts (
+          id, project_id, document_id, comment_id, user_id, read_at
+        )
+        SELECT
+          CONCAT(?, ':', workflow_comments.id),
+          workflow_comments.project_id,
+          workflow_comments.document_id,
+          workflow_comments.id,
+          ?,
+          UTC_TIMESTAMP(3)
+        FROM workflow_comments
+        WHERE workflow_comments.project_id = ?
+          AND workflow_comments.document_id = ?
+          AND workflow_comments.created_by_user_id <> ?
+      `,
+      [userId, userId, projectId, documentId, userId]
+    );
 
-  return Number(result.affectedRows || 0);
+    return Number(result.affectedRows || 0);
+  });
 };
 
 const insertDocument = async (connection, document) => {
@@ -945,7 +959,16 @@ const insertStoredFile = async (connection, storedFile) => {
       storedFile.isActive ? 1 : 0,
     ]
   );
+  const storage = require('../services/storage.service');
+  const captured = await storage.captureNamespace();
+  await require('./storageNamespace.repository').bindNewFile(connection, storedFile.fileId, storedFile.storageKey, captured);
 };
+
+const completeStoredFileProvenance = (connection, fileId) => require('./storageNamespace.repository')
+  .completeNewFile(connection, fileId, require('../services/storage.service'));
+
+const prepareStoredFileMove = (connection, { fileId, fromStorageKey, storageKey }) => require('./storageNamespace.repository')
+  .prepareFileMove(connection, fileId, fromStorageKey, storageKey, require('../services/storage.service'));
 
 const insertRevision = async (connection, revision) => {
   await connection.execute(
@@ -1389,6 +1412,8 @@ module.exports = {
   insertDocumentHistory,
   insertRevision,
   insertStoredFile,
+  completeStoredFileProvenance,
+  prepareStoredFileMove,
   insertWorkflowComment,
   listDocumentHistory,
   listDocumentRegister,

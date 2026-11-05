@@ -1,0 +1,35 @@
+{
+  "run": "SA-1793631086884-dc3f73",
+  "database": "edms_sprint_b_isolated",
+  "startedAt": "2026-11-02T14:51:26.884Z",
+  "tests": [],
+  "connectionIds": [
+    23
+  ],
+  "server": {
+    "version": "10.4.32-MariaDB",
+    "hostname": "DESKTOP-3DFA1TA",
+    "port": 13317,
+    "isolation_level": "REPEATABLE-READ",
+    "sql_mode": "IGNORE_SPACE,NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION",
+    "global_sql_mode": "NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION",
+    "page_size": 16384,
+    "time_zone": "SYSTEM",
+    "global_time_zone": "SYSTEM"
+  },
+  "createdDatabase": false,
+  "schemaHash": "fc12ac89ef376ffcf4991d57fd65d4fe8758d5510f5cd51a44e0c88a51ab018e",
+  "migrationHash": "b773d65372b6a60a0f5b8e1b619e9ddd8be53dd4dc3f87e5bdc2f68a21ee3865",
+  "testSessionSettings": {
+    "sql_mode": "IGNORE_SPACE,NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION",
+    "isolation_level": "REPEATABLE-READ",
+    "time_zone": "+00:00"
+  },
+  "fatal": {
+    "code": "ERR_ASSERTION",
+    "error": "Runtime module blocked: repositories/notificationWrite.repository.js"
+  },
+  "poolsClosed": true,
+  "passed": 0,
+  "failed": 1
+}

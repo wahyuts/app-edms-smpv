@@ -1,0 +1,48 @@
+{
+  "startedAt": "2026-11-02T14:29:42.731Z",
+  "originalServerAccess": false,
+  "originalBackupUnchanged": true,
+  "identity": {
+    "db": null,
+    "version": "10.4.32-MariaDB",
+    "hostname": "DESKTOP-3DFA1TA",
+    "port": 13317,
+    "datadir": "D:\\Project\\app-edms-smpv\\tmp\\mariadb-sprint-b-20261102\\data\\",
+    "serverId": 13317,
+    "forceRecovery": 0,
+    "connectionId": 33
+  },
+  "isolatedPid": 18348,
+  "restoredDatabases": [
+    {
+      "database": "edms_restore_validation",
+      "tables": 24,
+      "rows": 1231,
+      "countsUnchangedAfterTests": true
+    },
+    {
+      "database": "edms_restore_validation_confirmed",
+      "tables": 24,
+      "rows": 1231,
+      "countsUnchangedAfterTests": true
+    },
+    {
+      "database": "edms_restore_validation_reviewed",
+      "tables": 24,
+      "rows": 1231,
+      "countsUnchangedAfterTests": true
+    }
+  ],
+  "restoreIndexDefinitions": 125,
+  "restoreObjects": {
+    "VIEWS": 0,
+    "TRIGGERS": 0,
+    "ROUTINES": 0,
+    "EVENTS": 0
+  },
+  "syntheticAccountCannotReadRestore": true,
+  "activeCommandsBeforeShutdown": 0,
+  "shutdownAcknowledged": true,
+  "status": "PASS",
+  "finishedAt": "2026-11-02T14:29:43.516Z"
+}

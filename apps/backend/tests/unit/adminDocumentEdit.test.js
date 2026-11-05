@@ -49,6 +49,12 @@ const fixture = (t, options = {}) => {
     role && projectId === 'PRJ-1' ? { id: 'MEM-1', officialRole: role, userId: '1', projectId } : null);
   t.mock.method(projects, 'findProjectById', async () => ({ id: 'PRJ-1', status: options.projectStatus || 'Active' }));
   t.mock.method(repo, 'findDocumentRegisterById', async () => structuredClone(doc));
+  require('../helpers/documentCoordinationMock')(t, repo, () => doc);
+  t.mock.method(repo, 'completeStoredFileProvenance', async () => {
+    assert.ok(records.files.length);
+    assert.ok(physicalFiles.has(records.files.at(-1).storageKey));
+    if (options.provenanceFailure) throw new Error('provenance failed');
+  });
   t.mock.method(repo, 'findDocumentTypeByDrawing', async () => ({ id: 'TYPE-1' }));
   t.mock.method(repo, 'getNextRevisionSequence', async () => 2);
   t.mock.method(repo, 'lockDocumentForEdit', async () => ({ ...doc, ...options.lockedState }));
@@ -166,6 +172,7 @@ for (const status of Object.values(STATUS)) {
         assert.equal(repo.getNextRevisionSequence.mock.callCount(), 0);
         assert.equal(repo.deactivateDocumentRevisions.mock.callCount(), 0);
         assert.equal(storage.finalize.mock.callCount(), 0);
+        assert.equal(repo.completeStoredFileProvenance.mock.callCount(), 0);
         assert.equal(uploads.assertTemporaryUploadConsumable.mock.callCount(), 0);
       }
       if (!transition) assert.equal(result.slaStoppedAt, f.original.slaStoppedAt);
@@ -235,6 +242,7 @@ for (const options of [
   { status: STATUS.PROJECT_COMMENT, workflowConflict: true },
   { file: true, invalidTemporary: true },
   { file: true, storageFailure: true }, { file: true, consumed: 0 }, { file: true, commitFailure: true },
+  { file: true, provenanceFailure: true },
   { status: STATUS.PROCESS_COMMENT, file: true, storageFailure: true },
   { status: STATUS.PROJECT_COMMENT, file: true, commitFailure: true },
   { status: STATUS.PROCESS_COMMENT, historyFailure: true },

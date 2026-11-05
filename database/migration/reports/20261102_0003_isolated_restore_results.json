@@ -1,0 +1,217 @@
+{
+  "startedAt": "2026-11-02T13:50:07.047Z",
+  "backupHash": "3796876d7886d4623414997ada31d0efaba44328d888421fa40c7b58d945b56b",
+  "originalServerAccess": false,
+  "identity": {
+    "db": null,
+    "version": "10.4.32-MariaDB",
+    "hostname": "DESKTOP-3DFA1TA",
+    "port": 13317,
+    "datadir": "D:\\Project\\app-edms-smpv\\tmp\\mariadb-sprint-b-20261102\\data\\",
+    "serverId": 13317,
+    "forceRecovery": 0,
+    "connectionId": 33
+  },
+  "restore": {
+    "status": "PASS",
+    "database": "edms_restore_validation_reviewed",
+    "verifiedExistingRestore": false,
+    "tables": 24,
+    "rows": 1231,
+    "rowCounts": {
+      "audit_trail": 291,
+      "comment_read_receipts": 52,
+      "departments": 3,
+      "document_history": 91,
+      "document_revisions": 38,
+      "document_sla_evaluations": 73,
+      "document_types": 2,
+      "engineering_documents": 18,
+      "notifications": 288,
+      "password_reset_tokens": 0,
+      "permissions": 20,
+      "project_memberships": 8,
+      "projects": 2,
+      "refresh_sessions": 162,
+      "role_permissions": 65,
+      "roles": 5,
+      "stored_files": 47,
+      "system_metadata": 3,
+      "temporary_uploads": 0,
+      "user_credentials": 8,
+      "user_project_preferences": 7,
+      "users": 8,
+      "workflow_attachments": 9,
+      "workflow_comments": 31
+    },
+    "constraints": [
+      {
+        "CONSTRAINT_TYPE": "CHECK",
+        "n": 41
+      },
+      {
+        "CONSTRAINT_TYPE": "FOREIGN KEY",
+        "n": 57
+      },
+      {
+        "CONSTRAINT_TYPE": "PRIMARY KEY",
+        "n": 24
+      },
+      {
+        "CONSTRAINT_TYPE": "UNIQUE",
+        "n": 22
+      }
+    ],
+    "checkedForeignKeys": 57,
+    "orphanCount": 0,
+    "targetDirectivesSkipped": {
+      "createDatabase": 1,
+      "use": 1
+    },
+    "warnings": [
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "document_revisions",
+        "column": "active_document_id",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "users",
+        "column": "email_uniqueness_key",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "users",
+        "column": "email_uniqueness_key",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "users",
+        "column": "email_uniqueness_key",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "users",
+        "column": "email_uniqueness_key",
+        "expectedGeneratedColumn": true
+      },
+      {
+        "code": 1906,
+        "table": "users",
+        "column": "email_uniqueness_key",
+        "expectedGeneratedColumn": true
+      }
+    ],
+    "generatedKeyMismatches": 0,
+    "perStatementWarningsChecked": true,
+    "schemaDefinitionsMatch": true
+  },
+  "originalBackupUnchanged": true,
+  "finishedAt": "2026-11-02T13:50:09.743Z"
+}

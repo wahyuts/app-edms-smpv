@@ -292,6 +292,7 @@ const applyWorkflowTransition = async ({
         revisionLabel: nextRevision,
       });
       if (revisionStorageMove) {
+        await documentRepository.prepareStoredFileMove(connection, revisionStorageMove);
         await documentRepository.updateStoredFileStorageMetadata(connection, {
           fileId: revisionStorageMove.fileId,
           physicalFileName: revisionStorageMove.physicalFileName,
@@ -303,6 +304,7 @@ const applyWorkflowTransition = async ({
         });
         await storageService.move(revisionStorageMove.fromStorageKey, revisionStorageMove.storageKey);
         storageMoved = true;
+        await documentRepository.completeStoredFileProvenance(connection, revisionStorageMove.fileId);
       }
       await documentRepository.insertDocumentHistory(connection, {
         id: createEntityId('DTH'),

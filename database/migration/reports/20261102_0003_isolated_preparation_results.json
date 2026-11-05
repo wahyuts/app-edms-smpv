@@ -1,0 +1,85 @@
+{
+  "startedAt": "2026-11-02T13:38:02.247Z",
+  "backupHash": "3796876d7886d4623414997ada31d0efaba44328d888421fa40c7b58d945b56b",
+  "originalServerAccess": false,
+  "identity": {
+    "db": null,
+    "version": "10.4.32-MariaDB",
+    "hostname": "DESKTOP-3DFA1TA",
+    "port": 13317,
+    "datadir": "D:\\Project\\app-edms-smpv\\tmp\\mariadb-sprint-b-20261102\\data\\",
+    "serverId": 13317,
+    "forceRecovery": 0,
+    "connectionId": 9
+  },
+  "restore": {
+    "status": "PASS",
+    "database": "edms_restore_validation",
+    "verifiedExistingRestore": true,
+    "tables": 24,
+    "rows": 1231,
+    "rowCounts": {
+      "audit_trail": 291,
+      "comment_read_receipts": 52,
+      "departments": 3,
+      "document_history": 91,
+      "document_revisions": 38,
+      "document_sla_evaluations": 73,
+      "document_types": 2,
+      "engineering_documents": 18,
+      "notifications": 288,
+      "password_reset_tokens": 0,
+      "permissions": 20,
+      "project_memberships": 8,
+      "projects": 2,
+      "refresh_sessions": 162,
+      "role_permissions": 65,
+      "roles": 5,
+      "stored_files": 47,
+      "system_metadata": 3,
+      "temporary_uploads": 0,
+      "user_credentials": 8,
+      "user_project_preferences": 7,
+      "users": 8,
+      "workflow_attachments": 9,
+      "workflow_comments": 31
+    },
+    "constraints": [
+      {
+        "CONSTRAINT_TYPE": "CHECK",
+        "n": 41
+      },
+      {
+        "CONSTRAINT_TYPE": "FOREIGN KEY",
+        "n": 57
+      },
+      {
+        "CONSTRAINT_TYPE": "PRIMARY KEY",
+        "n": 24
+      },
+      {
+        "CONSTRAINT_TYPE": "UNIQUE",
+        "n": 22
+      }
+    ],
+    "checkedForeignKeys": 57,
+    "orphanCount": 0,
+    "targetDirectivesSkipped": {
+      "createDatabase": 1,
+      "use": 1
+    },
+    "warnings": [],
+    "schemaDefinitionsMatch": true
+  },
+  "synthetic": {
+    "database": "edms_sprint_b_isolated",
+    "tableCount": 34,
+    "realDataRestored": false,
+    "fixtureRows": 0,
+    "schemaHash": "fc12ac89ef376ffcf4991d57fd65d4fe8758d5510f5cd51a44e0c88a51ab018e",
+    "foundationHash": "b773d65372b6a60a0f5b8e1b619e9ddd8be53dd4dc3f87e5bdc2f68a21ee3865",
+    "cleanupHash": "7302ef31b9f58c094532f1e8c5f3574d8de6f351a282f608d89136c7f9071e75"
+  },
+  "originalBackupUnchanged": true,
+  "finishedAt": "2026-11-02T13:38:03.197Z"
+}

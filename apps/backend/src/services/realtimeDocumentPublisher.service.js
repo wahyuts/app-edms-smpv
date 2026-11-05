@@ -4,6 +4,30 @@ const {
   REALTIME_RESOURCE_TYPE,
 } = require('../constants/realtime.constants');
 const realtimePublisher = require('./realtimePublisher.service');
+const publishedDeleteEvents = new Set();
+
+// Called only after durable COMPLETED. Reuse recipient/project-scoped SSE;
+// never expose document numbers, file paths or provider evidence in this event.
+const publishDocumentDeleted = ({ actorUserId, document, operationId, recipientUserIds = [] }) => {
+  if (!document?.id || !document?.projectId || !operationId) return;
+  for (const recipientUserId of new Set(recipientUserIds)) {
+    const eventId = `RT-DELETE:${document.projectId}:${operationId}:${recipientUserId}`;
+    if (publishedDeleteEvents.has(eventId)) continue;
+    const result = realtimePublisher.publishSafely({
+      actorUserId, documentId: document.id, projectId: document.projectId,
+      correlationId: operationId, eventId, recipientUserId,
+      reason: 'permanent_delete_completed', resourceId: document.id,
+      resourceType: REALTIME_RESOURCE_TYPE.DOCUMENT,
+      scope: REALTIME_EVENT_SCOPE.USER_PROJECT, type: REALTIME_EVENT_TYPE.DOCUMENT_DELETED,
+    });
+    if (result?.published) {
+      publishedDeleteEvents.add(eventId);
+      // Bounded process-local suppression; stable IDs dedupe clients after restart
+      // or eviction. Existing reconnect recovery covers missed delivery.
+      if (publishedDeleteEvents.size > 10000) publishedDeleteEvents.delete(publishedDeleteEvents.values().next().value);
+    }
+  }
+};
 
 const publishDocumentEvent = ({
   actorUserId = null,
@@ -94,6 +118,7 @@ const publishCommentCreated = ({ actorUserId = null, commentId, document }) => {
 };
 
 module.exports = {
+  publishDocumentDeleted,
   publishCommentCreated,
   publishDocumentArchived,
   publishDocumentCreated,

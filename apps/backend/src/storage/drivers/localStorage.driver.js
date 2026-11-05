@@ -6,6 +6,9 @@ const logger = require('../../config/logger');
 const { STORAGE_DIRECTORIES } = require('../../constants/storage.constants');
 const { resolveStorageKeyPath, getStorageRootPath, getTemporaryRootPath, getProjectsRootPath } = require('../../utils/storagePath');
 const { StorageError, normalizeStorageError } = require('../storage.errors');
+const { namespace, sameNamespace, pending } = require('../../utils/storageNamespace');
+const { validateStorageKey } = require('../../validators/storage.validator');
+const { validateDocumentPrefix } = require('../../utils/documentFolder');
 
 const UUID_DIRECTORY_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -13,6 +16,63 @@ class LocalStorageDriver {
   constructor(config) {
     this.name = 'local';
     this.config = config;
+  }
+
+  async captureNamespace() {
+    const root = await fs.realpath(this.config.rootPath);
+    const stat = await fs.stat(root);
+    if (!stat.isDirectory()) throw pending('LOCAL_ROOT_INVALID');
+    return namespace({ version: 1, provider: 'local', root, device: String(stat.dev),
+      inode: String(stat.ino), birthtime: stat.birthtimeMs });
+  }
+
+  async inspectOwnedExact(storageKey, boundNamespace) {
+    if (!sameNamespace(await this.captureNamespace(), boundNamespace)) throw pending('NAMESPACE_MISMATCH');
+    const key = validateStorageKey(storageKey);
+    if (key !== storageKey) throw pending('STORAGE_INVALID_KEY');
+    const root = path.resolve(this.config.rootPath);
+    const target = path.resolve(root, key);
+    if (path.relative(root, target).startsWith('..') || path.isAbsolute(path.relative(root, target))) throw pending('STORAGE_INVALID_KEY');
+    const { operate } = require('../windowsExactFile');
+    return operate(root, path.relative(root, target).split(path.sep).join('/'));
+  }
+
+  async inspectDocumentFolders(prefix, boundNamespace) {
+    if (!sameNamespace(await this.captureNamespace(), boundNamespace)) throw pending('NAMESPACE_MISMATCH');
+    const key = validateDocumentPrefix(prefix);
+    return require('../windowsExactFile').operateTree(path.resolve(this.config.rootPath), key);
+  }
+
+  async cleanupDocumentFolders(plan) {
+    if (!sameNamespace(await this.captureNamespace(), plan.namespace)) throw pending('NAMESPACE_MISMATCH');
+    const key = validateDocumentPrefix(plan.prefix);
+    await require('../windowsExactFile').operateTree(path.resolve(this.config.rootPath), key, plan.observed);
+    const after = await this.inspectDocumentFolders(plan.prefix, plan.namespace);
+    if (after.exists || after.objects.length || after.rootIdentity !== plan.observed.rootIdentity) throw pending('FOLDER_CLEANUP_INCOMPLETE');
+    return { clean: true };
+  }
+
+  async deleteOwnedExact(storageKey, boundNamespace, evidence) {
+    if (!sameNamespace(await this.captureNamespace(), boundNamespace)) throw pending('NAMESPACE_MISMATCH');
+    const target = resolveStorageKeyPath(storageKey);
+    const root = getStorageRootPath();
+    const rootStat = await fs.lstat(root);
+    if (rootStat.isSymbolicLink()) throw pending('LOCAL_LINK_REJECTED');
+    const segments = path.relative(root, target).split(path.sep);
+    let cursor = root;
+    for (const segment of segments) {
+      cursor = path.join(cursor, segment);
+      try {
+        if ((await fs.lstat(cursor)).isSymbolicLink()) throw pending('LOCAL_LINK_REJECTED');
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        break;
+      }
+    }
+    if (!evidence?.localIdentity) throw pending('LOCAL_SAFE_DELETE_UNAVAILABLE');
+    const { operate } = require('../windowsExactFile');
+    await operate(root, path.relative(root, target).split(path.sep).join('/'), evidence.localIdentity);
+    return { terminal: true, outcome: 'DELETE_ACKNOWLEDGED' };
   }
 
   async initialize() {

@@ -3,6 +3,7 @@ const fileAccessRepository = require('../repositories/fileAccess.repository');
 const projectMembershipRepository = require('../repositories/projectMembership.repository');
 const auditService = require('./audit.service');
 const storageService = require('./storage.service');
+const admission = require('./documentAdmission.service');
 const { createHttpError } = require('../utils/administration');
 const { buildContentDisposition } = require('../utils/contentDisposition');
 
@@ -56,11 +57,13 @@ const assertStoredFileConsistency = async ({ context, documentFile }) => {
 const resolveActiveFile = async ({ documentId, userId }) => {
   const documentFile = await fileAccessRepository.findActiveDocumentFile(documentId);
 
-  await assertStoredFileConsistency({ context: 'active', documentFile });
+  if (!documentFile?.document) throw createHttpError('Document Tidak Ditemukan', 404);
   await assertProjectAccess({
     projectId: documentFile.document.projectId,
     userId,
   });
+  await admission.assertReadable({ projectId: documentFile.document.projectId, documentId });
+  await assertStoredFileConsistency({ context: 'active', documentFile });
 
   return documentFile;
 };
@@ -68,11 +71,13 @@ const resolveActiveFile = async ({ documentId, userId }) => {
 const resolveRevisionFile = async ({ documentId, revisionId, userId }) => {
   const documentFile = await fileAccessRepository.findRevisionDocumentFile({ documentId, revisionId });
 
-  await assertStoredFileConsistency({ context: 'revision', documentFile });
+  if (!documentFile?.document) throw createHttpError('Document Tidak Ditemukan', 404);
   await assertProjectAccess({
     projectId: documentFile.document.projectId,
     userId,
   });
+  await admission.assertReadable({ projectId: documentFile.document.projectId, documentId });
+  await assertStoredFileConsistency({ context: 'revision', documentFile });
 
   return documentFile;
 };

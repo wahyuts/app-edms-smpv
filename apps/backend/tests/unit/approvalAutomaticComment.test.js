@@ -30,6 +30,7 @@ const fixture = (t, { role = 'Team Process', status, failInsert = false, noMembe
   const attempts = [];
   for (const method of ['execute', 'query', 'getConnection']) t.mock.method(pool, method, async () => { throw new Error('Live database access prohibited'); });
   t.mock.method(repo, 'findDocumentRegisterById', async () => structuredClone(doc));
+  require('../helpers/documentCoordinationMock')(t, repo, () => doc);
   t.mock.method(memberships, 'findActiveMembershipByProjectAndUser', async ({ projectId, userId }) => {
     assert.equal(userId, 1); assert.equal(projectId, 'PRJ-1');
     return noMembership ? null : { officialRole: role, userName: 'Authenticated Full Name', userId: 1, projectId };
@@ -58,6 +59,7 @@ const fixture = (t, { role = 'Team Process', status, failInsert = false, noMembe
   t.mock.method(repo, 'updateRevisionLabel', async () => {});
   t.mock.method(repo, 'insertDocumentHistory', async (connection, value) => records.history.push(value));
   t.mock.method(repo, 'insertStoredFile', async () => {});
+  t.mock.method(repo, 'completeStoredFileProvenance', async () => {});
   t.mock.method(repo, 'insertWorkflowComment', async (connection, value) => {
     assert.equal(connection.transaction, true);
     assert.notEqual(doc.status, 'Process Review');
@@ -141,6 +143,7 @@ for (const role of ['Admin', 'Document Owner', 'Viewer', 'Team Project']) for (c
 });
 
 test('Workflow comment INSERT retains database UTC time and existing read-receipt semantics', async (t) => {
+  require('../helpers/documentCoordinationMock')(t, repo, () => null);
   let capturedSql;
   let capturedParams;
   await repo.insertWorkflowComment({ execute: async (sql, params) => { capturedSql = sql; capturedParams = params; } }, {

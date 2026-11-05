@@ -1,5 +1,7 @@
 const { pool } = require('../config/database');
+const admission = require('../services/documentAdmission.service');
 const { normalizeJsonMetadata } = require('../utils/jsonMetadata');
+const { insertNotification } = require('./notificationWrite.repository');
 
 const mapNotificationRow = (row) => row && ({
   id: row.id,
@@ -102,36 +104,11 @@ const createNotificationOrderClause = ({ direction, sortBy }) => {
 };
 
 const createNotification = async (notification) => {
-  const [result] = await pool.execute(
-    `
-      INSERT IGNORE INTO notifications (
-        id, identity_key, project_id, recipient_user_id, recipient_project_membership_id,
-        event_type, title, message, priority, official_role, recipient_role,
-        related_resource_type, related_resource_id, related_document_number, action_target, metadata
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    [
-      notification.id,
-      notification.identityKey,
-      notification.projectId,
-      notification.recipientUserId,
-      notification.recipientProjectMembershipId,
-      notification.eventType,
-      notification.title,
-      notification.message,
-      notification.priority,
-      notification.officialRole,
-      notification.recipientRole,
-      notification.relatedResourceType,
-      notification.relatedResourceId,
-      notification.relatedDocumentNumber,
-      notification.actionTarget,
-      JSON.stringify(notification.metadata || {}),
-    ]
-  );
-
-  return result.affectedRows;
+  const write = (connection) => insertNotification(connection, notification);
+  if (notification.relatedResourceType === 'Document' && notification.relatedResourceId && notification.projectId) {
+    return admission.mutate({ projectId: notification.projectId, documentId: notification.relatedResourceId }, write);
+  }
+  return write(pool);
 };
 
 const listNotificationsPageByRecipient = async ({
@@ -267,62 +244,99 @@ const listSlaNotificationsByBusinessKey = async ({
 };
 
 const markNotificationRead = async ({ notificationId, recipientUserId }) => {
-  await pool.execute(
-    `
-      UPDATE notifications
-      SET is_read = 1,
-          read_at = COALESCE(read_at, UTC_TIMESTAMP(3))
-      WHERE id = ?
-        AND recipient_user_id = ?
-    `,
-    [notificationId, recipientUserId]
-  );
+  return admission.mutateSelected(async (connection) => {
+    const [rows] = await connection.execute(
+      'SELECT * FROM notifications WHERE id = ? AND recipient_user_id = ?', [notificationId, recipientUserId]
+    );
+    return rows;
+  }, async (connection, rows) => {
+    if (!rows.length) return;
+    await connection.execute(
+      `
+        UPDATE notifications
+        SET is_read = 1,
+            read_at = COALESCE(read_at, UTC_TIMESTAMP(3))
+        WHERE id = ?
+          AND recipient_user_id = ?
+      `,
+      [notificationId, recipientUserId]
+    );
+  });
 };
 
 const markAllNotificationsRead = async ({ projectId, recipientUserId }) => {
-  const [result] = await pool.execute(
-    `
-      UPDATE notifications
-      SET is_read = 1,
-          read_at = COALESCE(read_at, UTC_TIMESTAMP(3))
-      WHERE recipient_user_id = ?
-        AND is_read = 0
-        AND (? IS NULL OR project_id = ?)
-    `,
-    [recipientUserId, projectId || null, projectId || null]
-  );
+  return admission.mutateSelected(async (connection) => {
+    const [rows] = await connection.execute(
+      `SELECT * FROM notifications WHERE recipient_user_id = ? AND is_read = 0
+       AND (? IS NULL OR project_id = ?)`, [recipientUserId, projectId || null, projectId || null]
+    );
+    return rows;
+  }, async (connection, rows) => {
+    if (!rows.length) return 0;
+    const [result] = await connection.execute(
+      `
+        UPDATE notifications
+        SET is_read = 1,
+            read_at = COALESCE(read_at, UTC_TIMESTAMP(3))
+        WHERE recipient_user_id = ?
+          AND is_read = 0
+          AND (? IS NULL OR project_id = ?)
+          AND id IN (${rows.map(() => '?').join(', ')})
+      `,
+      [recipientUserId, projectId || null, projectId || null, ...rows.map((row) => row.id)]
+    );
 
-  return result.affectedRows;
+    return result.affectedRows;
+  });
 };
 
 const deleteNotification = async ({ notificationId, recipientUserId }) => {
-  const [result] = await pool.execute(
-    `
-      DELETE FROM notifications
-      WHERE id = ?
-        AND recipient_user_id = ?
-    `,
-    [notificationId, recipientUserId]
-  );
+  return admission.mutateSelected(async (connection) => {
+    const [rows] = await connection.execute(
+      'SELECT * FROM notifications WHERE id = ? AND recipient_user_id = ?', [notificationId, recipientUserId]
+    );
+    return rows;
+  }, async (connection, rows) => {
+    if (!rows.length) return 0;
+    const [result] = await connection.execute(
+      `
+        DELETE FROM notifications
+        WHERE id = ?
+          AND recipient_user_id = ?
+      `,
+      [notificationId, recipientUserId]
+    );
 
-  return result.affectedRows;
+    return result.affectedRows;
+  });
 };
 
 const deleteNotifications = async ({ notificationIds, projectId, recipientUserId }) => {
   const ids = [...new Set(notificationIds.filter(Boolean))];
   if (ids.length === 0) return 0;
   const placeholders = ids.map(() => '?').join(', ');
-  const [result] = await pool.execute(
-    `
-      DELETE FROM notifications
-      WHERE recipient_user_id = ?
-        AND (? IS NULL OR project_id = ?)
-        AND id IN (${placeholders})
-    `,
-    [recipientUserId, projectId || null, projectId || null, ...ids]
-  );
+  return admission.mutateSelected(async (connection) => {
+    const [rows] = await connection.execute(
+      `SELECT * FROM notifications WHERE recipient_user_id = ?
+       AND (? IS NULL OR project_id = ?) AND id IN (${placeholders})`,
+      [recipientUserId, projectId || null, projectId || null, ...ids]
+    );
+    return rows;
+  }, async (connection, rows) => {
+    if (!rows.length) return 0;
+    const [result] = await connection.execute(
+      `
+        DELETE FROM notifications
+        WHERE recipient_user_id = ?
+          AND (? IS NULL OR project_id = ?)
+          AND id IN (${placeholders})
+          AND id IN (${rows.map(() => '?').join(', ')})
+      `,
+      [recipientUserId, projectId || null, projectId || null, ...ids, ...rows.map((row) => row.id)]
+    );
 
-  return result.affectedRows;
+    return result.affectedRows;
+  });
 };
 
 module.exports = {
