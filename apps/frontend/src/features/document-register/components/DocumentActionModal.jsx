@@ -1123,6 +1123,7 @@ export const CreateDocumentModal = ({
 }) => {
   const [formValue, setFormValue] = useState({
     area: "",
+    rev: "",
     daysUntilValidation: 5,
     description: "",
     documentNumber: "",
@@ -1292,6 +1293,16 @@ export const CreateDocumentModal = ({
           ) : null}
         </label>
         <label className="block">
+          <span className={fieldLabelClassName}>REV.</span>
+          <input
+            className={inputClassName}
+            maxLength={50}
+            onChange={(event) => handleChange("rev", event.target.value)}
+            type="text"
+            value={formValue.rev}
+          />
+        </label>
+        <label className="block">
           <span className={fieldLabelClassName}>Day Times For Review</span>
           <input
             className={inputClassName}
@@ -1331,6 +1342,7 @@ export const EditDocumentModal = ({
   const showUploadField = isProjectAdmin || isUploadRevision;
   const [formValue, setFormValue] = useState({
     area: documentItem.area,
+    rev: documentItem.rev ?? "",
     daysUntilValidation: documentItem.daysUntilValidation,
     description: documentItem.description,
   });
@@ -1499,6 +1511,16 @@ export const EditDocumentModal = ({
           {validationMessages.area ? (
             <p className={validationClassName}>{validationMessages.area}</p>
           ) : null}
+        </label>
+        <label className="block">
+          <span className={fieldLabelClassName}>REV.</span>
+          <input
+            className={inputClassName}
+            maxLength={50}
+            onChange={(event) => handleChange("rev", event.target.value)}
+            type="text"
+            value={formValue.rev}
+          />
         </label>
         <label className="block">
           <span className={fieldLabelClassName}>Day Times For Review</span>

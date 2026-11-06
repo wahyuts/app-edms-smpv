@@ -61,6 +61,7 @@ const createModalHarness = async (overrides = {}) => {
   return {
     submissions, warnings,
     render() { index = 0; return module.EditDocumentModal(props); },
+    renderCreate() { index = 0; return module.CreateDocumentModal({ ...props, drawing: 'PFD' }); },
     renderView(documentItem, documentFile = {}) {
       return module.ViewDocumentModal({ documentItem, documentFile, onClose() {}, onDownload() {} });
     },
@@ -76,6 +77,104 @@ const submit = (tree) => tree.props.footer.props.children[1].props.onClick();
 
 const getUploadedDateField = (tree) => nodes(tree).find((node) =>
   node.type === 'div' && node.props?.children?.[0]?.props?.children === 'DATE UPLOADED');
+
+const revInput = (tree) => nodes(tree).find((node) =>
+  node.type === 'label' && node.props.children?.[0]?.props.children === 'REV.').props.children[1];
+
+test('Create REV. is optional and placed between Area and review days', async () => {
+  const h = await createModalHarness();
+  let tree = h.renderCreate();
+  const labels = nodes(tree).filter(n => n.type === 'label').map(n => n.props.children?.[0]?.props.children);
+  const area = labels.indexOf('Area');
+  assert.deepEqual(labels.slice(area, area + 3), ['Area', 'REV.', 'Day Times For Review']);
+  assert.equal(revInput(tree).props.value, '');
+  assert.equal(revInput(tree).props.required, undefined);
+  assert.equal(revInput(tree).props.maxLength, 50);
+  revInput(tree).props.onChange({ target: { value: '01' } });
+  tree = h.renderCreate();
+  assert.equal(revInput(tree).props.value, '01');
+});
+
+for (const initial of [null, 'A', '01']) {
+  test(`Edit REV. prepopulation/update/clear with initial ${initial}`, async () => {
+    const h = await createModalHarness({ documentItem: {
+      status: 'Process Review', description: 'Existing legacy document', area: 'CDU', daysUntilValidation: 5, rev: initial,
+    } });
+    let tree = h.render();
+    assert.equal(revInput(tree).props.value, initial ?? '');
+    const labels = nodes(tree).filter(n => n.type === 'label').map(n => n.props.children?.[0]?.props.children);
+    assert.equal(labels[labels.indexOf('Area') + 1], 'REV.');
+    revInput(tree).props.onChange({ target: { value: 'B' } });
+    await submit(h.render());
+    assert.equal(h.submissions[0].rev, 'B');
+    tree = h.render();
+    revInput(tree).props.onChange({ target: { value: '' } });
+    await submit(h.render());
+    assert.equal(h.submissions[1].rev, '');
+    assert.equal(h.submissions[1].file, null);
+  });
+}
+
+test('REV. API mapping and payload preserve omitted versus explicit clear', async () => {
+  const calls = [];
+  const request = async (url, payload) => {
+    calls.push({ url, payload });
+    return { data: { data: { id: 'D', ...payload } } };
+  };
+  const { DocumentApiService, mapDocumentRecord } = await load('services/document-api.service.js', {
+    '@/shared/api': { apiClient: { post: request, patch: request } }, './file.service': { FileService },
+  });
+  assert.equal(mapDocumentRecord({ id: 'legacy' }).rev, null);
+  assert.equal(mapDocumentRecord({ rev: '01', revision: 'IFA-Submitted' }).rev, '01');
+  await DocumentApiService.createDocument({ rev: '01' });
+  assert.equal(calls.at(-1).payload.rev, '01');
+  await DocumentApiService.updateDocument('D', { description: 'unchanged REV.' });
+  assert.equal(Object.hasOwn(calls.at(-1).payload, 'rev'), false);
+  for (const rev of ['A', '', null]) {
+    await DocumentApiService.updateDocument('D', { rev });
+    assert.equal(calls.at(-1).payload.rev, rev);
+    assert.equal(Object.hasOwn(calls.at(-1).payload, 'temporaryFileId'), false);
+  }
+});
+
+test('Dashboard and register render REV. after Submission, display-only empty placeholder, and correct empty-state span', async () => {
+  const element = (type, props) => ({ type, props });
+  const { DocumentRegisterTable } = await load('components/DocumentRegisterTable.jsx', {
+    react: { useState: () => [null, () => {}], useCallback: callback => callback },
+    'react/jsx-runtime': { jsx: element, jsxs: element, Fragment: 'fragment' },
+    'lucide-react': { ChevronLeft: 'ChevronLeft', ChevronRight: 'ChevronRight', ClipboardList: 'ClipboardList' },
+    '@/shared/components/form/SelectDropdown': { default: 'SelectDropdown' },
+    '@/shared/hooks/usePermission': { usePermission: () => ({ hasProjectPermission: () => true }) },
+    '@/shared/stores/project-context.store': { useProjectContextStore: () => 'Admin' },
+    '@/features/sla-management/utils/sla-timer-display': { getSlaTimerTextClassName: () => '', getSlaTimerTooltip: () => '' },
+    './DocumentActionGroup': { default: 'DocumentActionGroup' },
+    '../constants/document.constants': constants,
+  }, true);
+  for (const isDashboard of [false, true]) {
+    const props = { isDashboard, pageNumber: 1, totalPages: 1, rows: [
+      { id: 'D', documentNumber: 'PFD-1', revision: 'IFR-Submitted', rev: '01', status: 'Process Review', lifecycle: 'Active' },
+    ] };
+    const tree = DocumentRegisterTable(props);
+    const headers = nodes(tree).filter(n => n.type === 'th').map(n => n.props.children);
+    const index = headers.indexOf('Submission');
+    assert.equal(headers[index + 1], 'REV.');
+    assert.ok(headers.indexOf('Status') > index + 1);
+    const row = nodes(tree).filter(n => n.type === 'tr')[1];
+    const cells = nodes(row).filter(n => n.type === 'td');
+    assert.equal(cells[index].props.children, 'IFR-Submitted');
+    assert.equal(cells[index + 1].props.children, '01');
+    for (const [rev, expected] of [[null, '-'], [undefined, '-'], ['', '-'], ['   ', '-'], ['A', 'A'], ['01', '01'], [' A ', ' A ']]) {
+      props.rows[0].rev = rev;
+      const renderedRow = nodes(DocumentRegisterTable(props)).filter(n => n.type === 'tr')[1];
+      const cell = nodes(renderedRow).filter(n => n.type === 'td')[index + 1];
+      assert.equal(cell.props.children, expected);
+      assert.equal(cell.props.className, cells[index + 1].props.className);
+      assert.equal(props.rows[0].rev, rev);
+    }
+    const empty = DocumentRegisterTable({ ...props, rows: [] });
+    assert.equal(nodes(empty).find(n => n.type === 'td').props.colSpan, headers.length);
+  }
+});
 
 test('Comment Viewer derives Approval A titles from role snapshots without changing B/C cards or ordering', async () => {
   const harness = await createModalHarness();
