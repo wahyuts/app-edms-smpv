@@ -139,6 +139,7 @@ export const mapDocumentRecord = (document = {}) => {
     activeFile,
     createdDate: document.createdDate ?? document.createdAt ?? null,
     description: document.description ?? "",
+    rev: document.rev ?? null,
     fileHistory: document.fileHistory ?? [],
     fileMetadata: activeFile,
     hasUnreadComments: Boolean(document.hasUnreadComments),
@@ -328,9 +329,10 @@ const uploadTemporaryFile = async (file) => {
   }
 };
 
-const createDocument = async ({ area, daysUntilValidation, description, documentNumber, drawing, temporaryFileId } = {}) => {
+const createDocument = async ({ area, rev, daysUntilValidation, description, documentNumber, drawing, temporaryFileId } = {}) => {
   try {
     return unwrapDocument(await apiClient.post("/v1/documents", {
+      rev,
       area,
       daysUntilValidation,
       description,
@@ -343,10 +345,11 @@ const createDocument = async ({ area, daysUntilValidation, description, document
   }
 };
 
-const updateDocument = async (documentId, { area, daysUntilValidation, description, expectedState, file } = {}) => {
+const updateDocument = async (documentId, { area, rev, daysUntilValidation, description, expectedState, file } = {}) => {
   try {
     const temporaryUpload = file ? await uploadTemporaryFile(file) : null;
     return unwrapDocument(await apiClient.patch(`/v1/documents/${documentId}`, {
+      ...(rev !== undefined ? { rev } : {}),
       area,
       daysUntilValidation,
       description,
@@ -379,6 +382,7 @@ const restoreDocument = async (documentId) => {
 };
 
 const uploadRevision = async (documentId, {
+  rev,
   area,
   daysUntilValidation,
   description,
@@ -391,6 +395,7 @@ const uploadRevision = async (documentId, {
     return unwrapDocument(await apiClient.post(
       `/v1/documents/${documentId}/revisions`,
       {
+        ...(rev !== undefined ? { rev } : {}),
         area,
         daysUntilValidation,
         description,

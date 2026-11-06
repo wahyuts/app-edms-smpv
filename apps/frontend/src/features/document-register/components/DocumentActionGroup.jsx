@@ -900,6 +900,7 @@ export const DocumentActionGroup = ({
     try {
       if (formValue.isUploadRevision) {
         await DocumentApiService.uploadRevision(documentItem.id, {
+          rev: formValue.rev,
           area: formValue.area,
           daysUntilValidation: formValue.daysUntilValidation,
           description: formValue.description,
@@ -919,6 +920,7 @@ export const DocumentActionGroup = ({
       }
 
       await DocumentApiService.updateDocument(documentItem.id, {
+        rev: formValue.rev,
         area: formValue.area,
         daysUntilValidation: formValue.daysUntilValidation,
         description: formValue.description,

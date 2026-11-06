@@ -158,6 +158,7 @@ const saveDocumentRevision = async ({ activeProject, actorOfficialRole, actorUse
   let physicalFileName = null;
   let storageKey = null;
   const nextMetadata = metadata || {
+    ...(payload.rev !== undefined ? { rev: payload.rev } : {}),
     area: payload.area ?? document.area,
     daysUntilValidation: payload.daysUntilValidation ?? document.daysUntilValidation,
     description: payload.description ?? document.description,
