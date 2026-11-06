@@ -7,8 +7,22 @@ const toNonNegativeInteger = (value) => {
   return Number.isInteger(numericValue) && numericValue >= 0 ? numericValue : null;
 };
 
+const normalizeRev = (value, errors) => {
+  if (value == null) return null;
+  if (typeof value !== 'string') {
+    errors.push({ field: 'rev', message: 'REV. harus berupa teks.' });
+    return null;
+  }
+  const rev = value.trim();
+  if (Array.from(rev).length > 50) {
+    errors.push({ field: 'rev', message: 'REV. maksimal 50 karakter.' });
+  }
+  return rev || null;
+};
+
 const validateDocumentCreate = (body = {}) => {
   const errors = [];
+  const rev = normalizeRev(body.rev, errors);
   const documentNumber = normalizeText(body.documentNumber);
   const description = normalizeText(body.description);
   const drawing = normalizeText(body.drawing);
@@ -40,6 +54,7 @@ const validateDocumentCreate = (body = {}) => {
     isValid: errors.length === 0,
     errors,
     value: {
+      rev,
       area,
       daysUntilValidation: daysUntilValidation ?? 0,
       description,
@@ -53,6 +68,10 @@ const validateDocumentCreate = (body = {}) => {
 const validateDocumentUpdate = (body = {}) => {
   const errors = [];
   const value = {};
+
+  if (Object.prototype.hasOwnProperty.call(body, 'rev')) {
+    value.rev = normalizeRev(body.rev, errors);
+  }
 
   if (Object.prototype.hasOwnProperty.call(body, 'description')) {
     value.description = normalizeText(body.description);
@@ -113,6 +132,10 @@ const validateTemporaryFilePayload = (body = {}) => {
     expectedWorkflowStatus,
     temporaryFileId,
   };
+
+  if (Object.prototype.hasOwnProperty.call(body, 'rev')) {
+    value.rev = normalizeRev(body.rev, errors);
+  }
 
   if (!temporaryFileId) {
     errors.push({ field: 'temporaryFileId', message: 'Temporary File Wajib Diisi' });

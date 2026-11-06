@@ -241,6 +241,7 @@ CREATE TABLE engineering_documents (
   description TEXT NOT NULL,
   drawing VARCHAR(64) NOT NULL,
   area VARCHAR(255) NOT NULL,
+  rev VARCHAR(50) NULL DEFAULT NULL,
   days_until_validation INT NOT NULL,
   workflow_status VARCHAR(64) NOT NULL,
   lifecycle_status VARCHAR(64) NOT NULL DEFAULT 'Active',

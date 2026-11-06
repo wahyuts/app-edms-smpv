@@ -197,6 +197,7 @@ const createDocument = async ({ activeProject, actorOfficialRole, actorUserFullN
           documentTypeId: documentType?.id || null,
           documentNumber: payload.documentNumber,
           description: payload.description,
+          rev: payload.rev ?? null,
           drawing: payload.drawing,
           area: payload.area,
           daysUntilValidation: payload.daysUntilValidation,
@@ -351,6 +352,7 @@ const updateDocument = async ({
   const nextDrawing = payload.drawing ?? document.drawing;
   const documentType = await documentRepository.findDocumentTypeByDrawing(nextDrawing);
   const nextMetadata = {
+    ...(payload.rev !== undefined ? { rev: payload.rev } : {}),
     area: payload.area ?? document.area,
     daysUntilValidation: payload.daysUntilValidation ?? document.daysUntilValidation,
     description: payload.description ?? document.description,
