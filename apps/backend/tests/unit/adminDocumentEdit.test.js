@@ -18,7 +18,7 @@ const workflow = require('../../src/services/workflowEngine.service');
 const auth = require('../../src/services/auth.service');
 const { generateAccessToken } = require('../../src/utils/token');
 const { AUTH_COOKIE_NAMES } = require('../../src/constants/auth.constants');
-const { validateTemporaryFilePayload } = require('../../src/validators/document.validator');
+const { validateDocumentCreate, validateTemporaryFilePayload } = require('../../src/validators/document.validator');
 const { DOCUMENT_WORKFLOW_STATUS: STATUS } = require('../../src/constants/document.constants');
 
 const transitions = {
@@ -36,6 +36,7 @@ const fixture = (t, options = {}) => {
     lifecycle: 'Active', status, revision: labelFor(status), drawing: 'PFD', documentTypeId: 'TYPE-1',
     activeRevisionId: 'REV-OLD', activeFileId: 'FILE-OLD', currentAssigneeUserId: status === STATUS.APPROVED ? null : 7,
     responsibleRole: workflow.getResponsibleRoleForStatus(status), description: 'Original', area: 'CDU', daysUntilValidation: 5,
+    rev: options.rev ?? null,
     slaStartedAt: '2026-10-01T00:00:00Z', slaStoppedAt: status === STATUS.APPROVED ? '2026-10-02T00:00:00Z' : null,
   };
   const original = structuredClone(doc);
@@ -82,6 +83,7 @@ const fixture = (t, options = {}) => {
   t.mock.method(repo, 'updateDocumentMetadata', async (connection, values) => {
     assert.equal(connection.transaction, true);
     for (const field of ['area', 'description', 'drawing', 'documentTypeId', 'daysUntilValidation']) doc[field] = values[field];
+    if (values.rev !== undefined) doc.rev = values.rev;
   });
   for (const method of ['deactivateDocumentRevisions', 'deactivateDocumentRevisionFiles']) {
     t.mock.method(repo, method, async (connection) => assert.equal(connection.transaction, true));
@@ -130,6 +132,66 @@ const fixture = (t, options = {}) => {
   };
   return { args, records, original, physicalFiles, get doc() { return doc; } };
 };
+
+for (const rev of ['A', '01', undefined, '', '   ', null]) {
+  test(`Create service persists normalized REV. ${JSON.stringify(rev)} and returns it`, async (t) => {
+    const f = fixture(t);
+    t.mock.method(repo, 'findDocumentByProjectAndNumber', async () => null);
+    t.mock.method(memberships, 'findActiveMembershipByProjectAndOfficialRole', async () => ({ userId: 7 }));
+    t.mock.method(repo, 'insertDocument', async (connection, value) => {
+      assert.equal(connection.transaction, true);
+      Object.assign(f.doc, { id: value.id, rev: value.rev });
+    });
+    t.mock.method(realtime, 'publishDocumentCreated', () => {});
+    const validation = validateDocumentCreate({ documentNumber: 'PFD-TEST-1', drawing: 'PFD', area: 'CDU',
+      temporaryFileId: 'TMP-1', ...(rev !== undefined ? { rev } : {}) });
+    assert.equal(validation.isValid, true);
+    const result = await documents.createDocument({ ...f.args, payload: validation.value });
+    assert.equal(result.rev, typeof rev === 'string' ? rev.trim() || null : null);
+    assert.equal(repo.insertDocument.mock.calls[0].arguments[1].rev, result.rev);
+    assert.equal(f.records.revisions.length, 1);
+  });
+}
+
+for (const [initial, patch, expected] of [[null, 'A', 'A'], ['A', 'B', 'B'], ['B', null, null], ['01', undefined, '01']]) {
+  test(`REV. metadata edit ${initial} -> ${patch} preserves file and workflow in Process Review`, async (t) => {
+    const f = fixture(t, { rev: initial });
+    f.args.payload = {
+      ...(patch !== undefined ? { rev: patch } : { description: 'Updated' }),
+      expectedWorkflowStatus: f.original.status,
+      expectedActiveRevisionId: f.original.activeRevisionId,
+      expectedCurrentAssigneeUserId: String(f.original.currentAssigneeUserId),
+    };
+    const result = await documents.updateDocument(f.args);
+    assert.equal(result.rev, expected);
+    for (const key of ['status', 'revision', 'activeRevisionId', 'activeFileId', 'slaStartedAt', 'currentAssigneeUserId']) {
+      assert.equal(result[key], f.original[key]);
+    }
+    assert.equal(f.records.files.length, 0);
+    assert.equal(f.records.revisions.length, 0);
+    assert.equal(storage.finalize.mock.callCount(), 0);
+    assert.equal(repo.completeStoredFileProvenance.mock.callCount(), 0);
+    assert.equal(repo.updateDocumentWorkflowState.mock.callCount(), 0);
+    assert.equal(sla.evaluateDocumentForSlaNotifications.mock.callCount(), 0);
+  });
+}
+
+for (const [status, nextStatus] of Object.entries(transitions)) {
+  test(`REV.-only Admin edit retains existing ${status} -> ${nextStatus} and SLA reset`, async (t) => {
+    const f = fixture(t, { status });
+    delete f.args.payload.description;
+    f.args.payload.rev = 'Rev.01';
+    const result = await documents.updateDocument(f.args);
+    assert.equal(result.rev, 'Rev.01');
+    assert.equal(result.status, nextStatus);
+    assert.equal(result.slaStartedAt, 'new-cycle');
+    assert.equal(result.currentAssigneeUserId, 8);
+    assert.equal(f.records.files.length, 0);
+    assert.equal(f.records.revisions.length, 0);
+    assert.equal(result.activeFileId, f.original.activeFileId);
+    assert.equal(repo.completeStoredFileProvenance.mock.callCount(), 0);
+  });
+}
 
 for (const status of Object.values(STATUS)) {
   for (const file of [false, true]) {

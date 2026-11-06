@@ -66,6 +66,7 @@ const DocumentRegisterPage = () => {
       const temporaryUpload = await DocumentApiService.uploadTemporaryFile(formValue.file);
 
       await DocumentApiService.createDocument({
+        rev: formValue.rev,
         area: formValue.area,
         daysUntilValidation: formValue.daysUntilValidation,
         description: formValue.description,

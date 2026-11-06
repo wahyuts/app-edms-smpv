@@ -119,6 +119,7 @@ const evaluateSla = (row) => {
 };
 
 const mapDocumentFoundationRow = (row) => row && ({
+  rev: row.rev ?? null,
   id: row.id,
   projectId: row.project_id,
   documentTypeId: row.document_type_id,
@@ -169,6 +170,7 @@ const mapDocumentFoundationRow = (row) => row && ({
 });
 
 const mapDocumentRegisterRow = (row) => row && ({
+  rev: row.rev ?? null,
   id: row.id,
   projectId: row.project_id,
   projectCode: row.project_code,
@@ -341,6 +343,7 @@ const mapDocumentRevisionRow = (row) => row && ({
 
 const documentRegisterSelect = `
   SELECT
+    documents.rev,
     documents.id,
     documents.project_id,
     documents.document_type_id,
@@ -905,12 +908,12 @@ const insertDocument = async (connection, document) => {
   await connection.execute(
     `
       INSERT INTO engineering_documents (
-        id, project_id, document_type_id, document_number, description, drawing, area,
+        id, project_id, document_type_id, document_number, description, drawing, area, rev,
         days_until_validation, workflow_status, lifecycle_status, revision_label,
         responsible_role, current_assignee_user_id, created_by_user_id, updated_by_user_id,
         sla_started_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))
     `,
     [
       document.id,
@@ -920,6 +923,7 @@ const insertDocument = async (connection, document) => {
       document.description,
       document.drawing,
       document.area,
+      document.rev ?? null,
       document.daysUntilValidation,
       document.workflowStatus,
       document.lifecycleStatus,
@@ -1019,6 +1023,7 @@ const lockDocumentForEdit = async (connection, documentId) => {
 };
 
 const updateDocumentMetadata = async (connection, {
+  rev,
   area,
   daysUntilValidation,
   description,
@@ -1031,6 +1036,7 @@ const updateDocumentMetadata = async (connection, {
     `
       UPDATE engineering_documents
       SET description = ?,
+          rev = CASE WHEN ? THEN ? ELSE rev END,
           drawing = ?,
           area = ?,
           days_until_validation = ?,
@@ -1040,6 +1046,8 @@ const updateDocumentMetadata = async (connection, {
     `,
     [
       description,
+      rev !== undefined,
+      rev ?? null,
       drawing,
       area,
       daysUntilValidation,

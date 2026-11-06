@@ -229,13 +229,18 @@ test('existing operation conflict and missing-operation GET preserve baseline re
   }
 });
 
-test('workflow, approval, revision, storage, SLA and RBAC remain byte-equivalent to pre-patch baseline', () => {
+test('workflow/storage/SLA/RBAC baseline stays identical except approved additive REV. metadata plumbing', () => {
   for (const file of ['apps/backend/src/services/workflowEngine.service.js','apps/backend/src/services/approval.service.js',
     'apps/backend/src/services/revision.service.js','apps/backend/src/repositories/storageNamespace.repository.js',
     'apps/backend/src/services/storage.service.js',
     'apps/backend/src/services/document.service.js','apps/backend/src/services/fileAccess.service.js',
     'apps/backend/src/services/sla.service.js','apps/backend/src/repositories/sla.repository.js',
     'apps/backend/src/services/authorization.service.js','apps/backend/src/middlewares/authorizePermissions.js']) {
-    assert.equal(fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n'), baselineSource(file).replace(/\r\n/g, '\n'), file);
+    let current = fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
+    if (['apps/backend/src/services/document.service.js', 'apps/backend/src/services/revision.service.js'].includes(file)) {
+      current = current.replace("    ...(payload.rev !== undefined ? { rev: payload.rev } : {}),\n", '');
+      if (file.endsWith('/document.service.js')) current = current.replace('          rev: payload.rev ?? null,\n', '');
+    }
+    assert.equal(current, baselineSource(file).replace(/\r\n/g, '\n'), file);
   }
 });

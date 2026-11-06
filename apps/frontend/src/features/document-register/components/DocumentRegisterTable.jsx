@@ -341,6 +341,7 @@ export const DocumentRegisterTable = ({
               ) : null}
               <th className="sticky top-0 z-20 min-w-40 bg-[#08233B] px-4 py-3 font-bold">Area</th>
               <th className="sticky top-0 z-20 min-w-36 bg-[#08233B] px-4 py-3 font-bold">Submission</th>
+              <th className="sticky top-0 z-20 min-w-24 bg-[#08233B] px-4 py-3 font-bold">REV.</th>
               {!isDashboard ? (
                 <th className="sticky top-0 z-20 min-w-36 bg-[#08233B] px-4 py-3 font-bold">Created Date</th>
               ) : null}
@@ -358,7 +359,7 @@ export const DocumentRegisterTable = ({
               <tr>
                 <td
                   className="px-4 py-8 text-center text-[#94A3B8]"
-                  colSpan={isDashboard ? 9 : 8}
+                  colSpan={isDashboard ? 10 : 9}
                 >
                   Loading Document Register...
                 </td>
@@ -369,7 +370,7 @@ export const DocumentRegisterTable = ({
               <tr>
                 <td
                   className="px-4 py-8 text-center font-semibold text-[#FCA5A5]"
-                  colSpan={isDashboard ? 9 : 8}
+                  colSpan={isDashboard ? 10 : 9}
                 >
                   {error instanceof Error ? error.message : "Document Register gagal dimuat."}
                 </td>
@@ -380,7 +381,7 @@ export const DocumentRegisterTable = ({
               <tr>
                 <td
                   className="px-4 py-8 text-center text-[#94A3B8]"
-                  colSpan={isDashboard ? 9 : 8}
+                  colSpan={isDashboard ? 10 : 9}
                 >
                   No Engineering Document found.
                 </td>
@@ -417,6 +418,9 @@ export const DocumentRegisterTable = ({
                     </td>
                     <td className="px-4 py-3 text-[#CBD5E1]">
                       {documentItem.revision}
+                    </td>
+                    <td className="max-w-40 break-words px-4 py-3 text-[#CBD5E1]">
+                      {documentItem.rev?.trim() ? documentItem.rev : "-"}
                     </td>
                     {!isDashboard ? (
                       <td className="whitespace-nowrap px-4 py-3 text-[#CBD5E1]">
