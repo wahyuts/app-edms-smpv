@@ -3,6 +3,22 @@
 > **Status:** Prepared - Live Verification and Owner Approval Required
 > **Last Updated:** 2026-11-04
 
+## 0. Current DBeaver SQL Path
+
+`STAGING-DELETE-RECOVERY-APPLY.sql` sekarang memakai procedure tanpa parameter. Operator tidak menyalin snapshot JSON, mencari application User ID, atau mengisi 15 variabel SQL. Generation dan business/control fingerprints ditangkap dari database setelah lock, kemudian dibandingkan sebelum commit.
+
+**Status: READY FOR OPERATOR PRECHECK.** Jalur one-time SQL tidak lagi memakai approval receipt JSON, allowlist context kosong, expiry lima menit, atau placeholder yang sengaja gagal. Mekanisme receipt sebelumnya merupakan konsep legacy dan tidak dipakai pada jalur DBeaver terbaru. Pemeriksaan kondisi internal tetap fail-closed melalui SIGNAL di dalam procedure.
+
+Sebelum eksekusi, operator wajib memastikan koneksi/service Railway Staging secara independen, backup yang dapat dipercaya, penghentian writer/scheduler/operator recovery lain, retirement worker lama, deployment cancellation guards, dan keutuhan object R2 Staging. Diagnostic menampilkan database, server UUID, dan authenticated SQL principal; nama database railway dan ID dokumen saja tidak membedakan Staging dari clone. SQL tidak memverifikasi backup, deployment, penghentian worker, atau physical object R2. Keberadaan file PROJECT-1 saja bukan bukti integritas kelima file. Prasyarat ini tidak diisikan ke SQL.
+
+Aktor SQL dicatat sebagai `CURRENT_USER()` bersama `USER()` dan connection ID. `actor_user_id` serta `official_role` bernilai NULL, bukan Admin fiktif; principal bersama seperti root tidak membuktikan individu manusia. Digest dalam marker dihitung otomatis dari baseline dan identitas session, bukan bukti approval eksternal. Initiating Admin pada operation lama tetap dipertahankan, tidak dianggap sebagai pelaku recovery SQL.
+
+DBeaver harus memakai koneksi baru khusus Staging, autocommit ON, tanpa transaksi existing, MySQL delimiter handling, dan Stop on Error. Setelah seluruh prasyarat operasional dipastikan, buka APPLY lalu Execute SQL Script tanpa mengedit parameter atau menjalankan COMMIT manual. Jangan memilih Ignore/Continue; jika CALL gagal atau COMMIT tidak terkonfirmasi, periksa outcome sebelum retry/cleanup dan tutup koneksi tanpa commit tambahan. CREATE collision tidak boleh diikuti DROP routine yang tidak dikenal. Kedua temporary table memakai `ENGINE=InnoDB`; runtime MySQL 9.7.2 tetap **NOT TESTED**. Tidak ada akses live pada pengerjaan ini.
+
+Named locks hanya menahan worker yang mengikuti protokol lock yang sama; row locks dan snapshot tidak membuktikan semua writer/storage writer eksternal telah berhenti. Binding namespace existing diperiksa terhadap key, provider, dan descriptor hash yang tersimpan, bukan dinyatakan cocok dengan bucket Staging live. Jangan menjalankan recovery apabila prasyarat tersebut belum dapat dipastikan.
+
+Bagian 3-5 di bawah mempertahankan prosedur internal JavaScript sebelumnya sebagai konteks alternatif/legacy, bukan instruksi parameter untuk jalur DBeaver SQL terbaru.
+
 ## 1. Target
 
 Railway environment `staging` saja. Railway `production` adalah EDMS Development; `real_production` dilarang digunakan.
