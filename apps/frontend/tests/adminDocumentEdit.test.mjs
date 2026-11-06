@@ -78,6 +78,25 @@ const submit = (tree) => tree.props.footer.props.children[1].props.onClick();
 const getUploadedDateField = (tree) => nodes(tree).find((node) =>
   node.type === 'div' && node.props?.children?.[0]?.props?.children === 'DATE UPLOADED');
 
+test('View Document renders independent REV. directly below Area with existing field styles', async () => {
+  const h = await createModalHarness();
+  for (const [rev, expected] of [[null, '-'], [undefined, '-'], ['', '-'], ['   ', '-'], ['A', 'A'], ['01', '01'], [' A ', ' A ']]) {
+    const doc = { area: 'CDU', rev, revision: 'AS-Built', status: 'Approved' };
+    const fields = nodes(h.renderView(doc)).filter(n => n.type === 'div' && n.props.children?.[0]?.type === 'p');
+    const areaIndex = fields.findIndex(n => n.props.children[0].props.children === 'Area');
+    const area = fields[areaIndex];
+    const field = fields[areaIndex + 1];
+    assert.equal(field.props.children[0].props.children, 'REV.');
+    assert.equal(field.props.children[1].props.children, expected);
+    assert.equal(field.props.children[0].props.className, area.props.children[0].props.className);
+    assert.equal(field.props.children[1].props.className, area.props.children[1].props.className);
+    const submission = fields[areaIndex + 2];
+    assert.equal(submission.props.children[0].props.children, 'Submission');
+    assert.equal(submission.props.children[1].props.children, 'AS-Built');
+    assert.equal(doc.rev, rev);
+  }
+});
+
 const revInput = (tree) => nodes(tree).find((node) =>
   node.type === 'label' && node.props.children?.[0]?.props.children === 'REV.').props.children[1];
 
