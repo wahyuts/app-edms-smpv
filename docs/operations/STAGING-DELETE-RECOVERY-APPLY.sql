@@ -1,66 +1,43 @@
--- STAGING PERMANENT DELETE / TARGETED RECOVERY APPLY / 2026-11-04
--- GENERATION ONLY: NOT EXECUTED. Review before any manual DBeaver execution.
--- Collation compatibility: byte-exact string comparisons across JSON_TABLE,
--- metadata, local variables and temporary tables; no SET NAMES or collation DDL.
--- Target: Railway staging ONLY. Never real_production or Railway production.
+-- ONE-TIME STAGING DELETE RECOVERY / NO MANUAL SQL INPUT / 2026-11-04
+-- GENERATION ONLY. CODEX HAS NOT EXECUTED THIS SQL.
+-- Oracle MySQL 9.7.2 target; MySQL 8.0.16+ features, not MariaDB syntax.
+-- Exact three owner-authorized document/operation pairs only.
 --
--- REQUIRED ORDER:
--- 1. Owner-approved deploy of prevention+cancellation guards, through a separate process.
--- 2. Verify deployed commit and retire EVERY old backend/worker/retry process.
--- 3. Verified maintenance (including out-of-band storage writers) + trustworthy backup.
--- 4. Run PREFLIGHT, externally verify ALL exact R2 keys, size and historical SHA-256.
--- 5. Obtain explicit owner approval of the fresh snapshots + external evidence.
--- 6. Configure the NULL inputs below, use ONE fresh dedicated DBeaver connection.
--- 7. Execute CREATE / CALL / DROP sections with MySQL delimiter handling enabled.
---    DBeaver MUST stop on error; never select Ignore/Continue for this script.
--- 8. Verify markers, retained operations, three audits, business fingerprints and access.
+-- OPERATOR PRECHECK (external facts are NOT verified by this SQL):
+-- 1. Independently confirm the selected Railway connection/service is staging.
+--    production is Development; real_production is forbidden. DATABASE()=railway
+--    and matching IDs alone do not distinguish staging from a cloned database.
+--    Inspect the diagnostic UUID/principal against the selected Staging service.
+-- 2. Have a trusted backup and stop writers, schedulers, recovery operators and
+--    old workers. Ensure deployed cancellation guards are active and old workers
+--    are retired. Named locks only fence workers using the same lock protocol.
+-- 3. Confirm the target objects remain intact in the Staging R2 namespace.
+--    SQL validates stored metadata only, not live object existence/bytes/checksum.
+-- Do not execute until these operational prerequisites are satisfied.
 --
--- REQUIREMENTS: Oracle MySQL 8.0.16+; SELECT/UPDATE/INSERT, CREATE ROUTINE,
--- EXECUTE and ALTER ROUTINE privileges. SQL SECURITY INVOKER; no privilege escalation.
--- No application rows/objects/bindings are created, deleted or rewritten.
--- The maintenance procedure is NOT a permanent schema change. There is no
--- CREATE TEMPORARY PROCEDURE in MySQL: explicit DROP at the end is mandatory.
--- CREATE/DROP PROCEDURE cause implicit commits: use a fresh connection with NO
--- unrelated transaction and autocommit ON. Routine DDL is outside recovery DML.
--- If DBeaver stops on an error, run section 04 cleanup manually after reviewing
--- the error and confirming this run created the routine. Do not drop an unknown
--- pre-existing routine; CREATE intentionally has no OR REPLACE or initial DROP.
--- If rollback/connection cleanup failed, close WITHOUT committing and use a NEW
--- independently verified Staging connection for routine cleanup. DROP is DDL.
--- Temporary tables are session-local, InnoDB, and removed by the procedure.
--- SQL cannot establish Railway service identity, actual R2 bytes, maintenance,
--- trustworthy backup, or deployed code: the operator must verify these externally.
--- No input is automatically TRUE. Unconfigured CALL fails before business writes.
--- On disconnect or lost COMMIT ACK: outcome UNKNOWN. Do not retry or unlock.
--- Reconnect read-only and inspect all three markers/gates/audits first.
--- If named-lock cleanup cannot be confirmed, close the dedicated connection.
+-- DBeaver: ONE NEW dedicated Staging connection, autocommit ON, no existing
+-- transaction; Execute SQL Script with MySQL DELIMITER support; STOP ON ERROR.
+-- No parameters, approval receipt, snapshot copying or manual COMMIT are required.
+-- CURRENT_USER()/USER()/connection ID are recorded as the technical SQL actor;
+-- actor_user_id and official_role remain NULL, never an invented application Admin.
+-- Shared SQL credentials cannot prove the identity of the individual operator.
+--
+-- CREATE/DROP PROCEDURE are one-use maintenance DDL outside the recovery DML
+-- transaction. CREATE collision => STOP; never overwrite/drop an unknown routine.
+-- If CALL fails, inspect outcome before cleanup. On transaction uncertainty,
+-- close WITHOUT committing and use a fresh verified connection.
+-- Lost COMMIT ACK is UNKNOWN, not proof of rollback; never force-retry.
+-- Re-execution after cancellation fails closed, without duplicate recovery.
+-- Syntax/runtime on actual MySQL: NOT TESTED. No live SQL/R2 access during editing.
 
--- 01: fill ONLY after the independently verified Staging preflight + approval.
-SET @expected_staging_database = NULL; -- normally railway, but copy verified identity
-SET @expected_staging_server_uuid = NULL; -- PREFLIGHT result, independently tied to staging
-SET @verified_railway_service_id = NULL; -- Staging MySQL service ID, NOT a credential
-SET @actor_user_id = NULL; -- active project Admin, existing user ID
-SET @reviewed_preflight_utc = NULL; -- exact reviewed_utc from PREFLIGHT (UTC)
-SET @approved_snapshot_json = NULL; -- entire approval_snapshot_json result, exactly 3 entries
-SET @external_r2_evidence_sha256 = NULL; -- hash of saved external exact-object verification report
-SET @verified_r2_namespace_id = NULL; -- verified Staging namespace ID (64 hex), not fabricated
-SET @verified_guards_git_commit = NULL; -- actual deployed 40-hex commit containing all guards
-SET @verified_backup_reference = NULL; -- verified backup record reference; no secrets/credentials
-SET @environment_confirmation = NULL; -- exact: VERIFIED_RAILWAY_STAGING_ONLY
-SET @guards_confirmation = NULL; -- exact: DEPLOYED_GUARDS_AND_NO_OLD_WORKERS
-SET @maintenance_confirmation = NULL; -- exact: ALL_DATABASE_AND_STORAGE_WRITERS_STOPPED
-SET @r2_confirmation = NULL; -- exact: ALL_INVENTORY_FILES_MATCH_SIZE_AND_SHA256
-SET @owner_confirmation = NULL; -- exact: RECOVER_THREE_STAGING_RESERVATIONS
+-- 01: read-only identity diagnostics, not automatic environment attestation.
+SELECT DATABASE() AS database_name,VERSION() AS mysql_version,@@server_uuid AS server_uuid,
+  @@hostname AS server_host,@@port AS server_port,CURRENT_USER() AS authenticated_sql_principal,
+  USER() AS sql_session_identity,CONNECTION_ID() AS connection_id,UTC_TIMESTAMP(3) AS observed_utc;
 
--- 02: create this one-use maintenance procedure only on verified Staging.
+-- 02: one-use, NO-ARGUMENT maintenance procedure. CREATE collision => STOP.
 DELIMITER $$
-CREATE PROCEDURE edms_staging_recovery_3_20261104(
-  IN p_database VARCHAR(64), IN p_server_uuid VARCHAR(64), IN p_service_id VARCHAR(128),
-  IN p_actor BIGINT UNSIGNED, IN p_reviewed_utc DATETIME(3), IN p_snapshots JSON,
-  IN p_external_sha VARCHAR(64), IN p_namespace_id VARCHAR(64), IN p_guards_commit VARCHAR(40),
-  IN p_backup_reference VARCHAR(255), IN p_environment VARCHAR(64), IN p_guards VARCHAR(64),
-  IN p_maintenance VARCHAR(64), IN p_r2 VARCHAR(64), IN p_owner VARCHAR(64)
-)
+CREATE PROCEDURE edms_staging_recovery_3_20261104()
 SQL SECURITY INVOKER
 recovery: BEGIN
   DECLARE v_i INT DEFAULT 0;
@@ -75,8 +52,9 @@ recovery: BEGIN
   DECLARE v_number VARCHAR(255);
   DECLARE v_identity VARCHAR(255);
   DECLARE v_actor_name VARCHAR(255);
-  DECLARE v_department VARCHAR(255);
   DECLARE v_digest CHAR(64);
+  DECLARE v_baseline_digest CHAR(64);
+  DECLARE v_baseline_utc DATETIME(3);
   DECLARE v_tx BOOLEAN DEFAULT FALSE;
   DECLARE v_commit_started BOOLEAN DEFAULT FALSE;
   DECLARE v_committed BOOLEAN DEFAULT FALSE;
@@ -107,33 +85,15 @@ recovery: BEGIN
       WHEN v_commit_started THEN 'UNKNOWN COMMIT OUTCOME - READ-BACK REQUIRED'
       WHEN v_cleanup_failed THEN 'ERROR - CLEANUP/ROLLBACK NOT CONFIRMED; CLOSE CONNECTION'
       ELSE 'STOP - NO RECOVERY COMMIT' END AS recovery_outcome;
-    RESIGNAL SQLSTATE '45000';
+    RESIGNAL;
   END;
 
-  -- Identity and all external attestations default to NULL at the caller.
-  IF p_database IS NULL OR p_server_uuid IS NULL OR p_service_id IS NULL
-    OR CHAR_LENGTH(TRIM(p_service_id))=0 OR NOT (CAST(DATABASE() AS BINARY) <=> CAST(p_database AS BINARY))
-    OR NOT (CAST(@@server_uuid AS BINARY) <=> CAST(p_server_uuid AS BINARY))
-    OR NOT (CAST(p_environment AS BINARY) <=> CAST('VERIFIED_RAILWAY_STAGING_ONLY' AS BINARY))
-    OR NOT (CAST(p_guards AS BINARY) <=> CAST('DEPLOYED_GUARDS_AND_NO_OLD_WORKERS' AS BINARY))
-    OR NOT (CAST(p_maintenance AS BINARY) <=> CAST('ALL_DATABASE_AND_STORAGE_WRITERS_STOPPED' AS BINARY))
-    OR NOT (CAST(p_r2 AS BINARY) <=> CAST('ALL_INVENTORY_FILES_MATCH_SIZE_AND_SHA256' AS BINARY))
-    OR NOT (CAST(p_owner AS BINARY) <=> CAST('RECOVER_THREE_STAGING_RESERVATIONS' AS BINARY))
-    OR p_actor IS NULL OR p_actor=0 OR p_backup_reference IS NULL OR CHAR_LENGTH(TRIM(p_backup_reference))=0
-    OR p_external_sha IS NULL OR NOT REGEXP_LIKE(p_external_sha,'^[0-9a-fA-F]{64}$','c')
-    OR p_namespace_id IS NULL OR NOT REGEXP_LIKE(p_namespace_id,'^[0-9a-fA-F]{64}$','c')
-    OR p_guards_commit IS NULL OR NOT REGEXP_LIKE(p_guards_commit,'^[0-9a-fA-F]{40}$','c')
-  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: verified Staging identity, evidence and explicit owner approval required'; END IF;
   IF VERSION() LIKE '%MariaDB%' OR @@version_comment NOT LIKE '%MySQL%'
     OR CAST(SUBSTRING_INDEX(VERSION(),'.',1) AS UNSIGNED)<8
     OR (CAST(SUBSTRING_INDEX(VERSION(),'.',1) AS UNSIGNED)=8 AND CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(VERSION(),'.',2),'.',-1) AS UNSIGNED)=0
       AND CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(VERSION(),'.',3),'.',-1) AS UNSIGNED)<16)
     OR @@autocommit<>1
   THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: Oracle MySQL 8.0.16+ and fresh autocommit session required'; END IF;
-  IF p_snapshots IS NULL OR CAST(JSON_TYPE(p_snapshots) AS BINARY)<>CAST('ARRAY' AS BINARY) OR JSON_LENGTH(p_snapshots)<>3
-    OR p_reviewed_utc IS NULL OR p_reviewed_utc>UTC_TIMESTAMP(3)
-    OR TIMESTAMPDIFF(MICROSECOND,p_reviewed_utc,UTC_TIMESTAMP(3))>300000000
-  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: exactly three fresh reviewed snapshots required (five minutes)'; END IF;
 
   -- Canonical columns are hashed below; extra/missing columns require review.
   WITH expected AS (
@@ -154,13 +114,14 @@ recovery: BEGIN
     AND EVENT_OBJECT_TABLE IN ('document_delete_operations','document_admission_coordinators','audit_trail');
   IF v_count<>0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: unreviewed trigger on mutation tables'; END IF;
 
-  -- Never overwrite a pre-existing temporary table. A failed CREATE is a STOP.
+  -- Session-local scratch only. Never overwrite a pre-existing temporary table.
   CREATE TEMPORARY TABLE tmp_edms_staging_recovery_targets (
     seq INT PRIMARY KEY, project_id VARCHAR(64) NOT NULL, document_id VARCHAR(64) NOT NULL UNIQUE,
     operation_id VARCHAR(64) NOT NULL UNIQUE, document_number VARCHAR(255) NOT NULL,
-    generation DECIMAL(20,0) NOT NULL, business_digest CHAR(64) NOT NULL, control_digest CHAR(64) NOT NULL,
+    generation DECIMAL(20,0) NULL, business_digest CHAR(64) NULL, control_digest CHAR(64) NULL,
     UNIQUE(project_id,document_id)
-  ) CAST(ENGINE AS BINARY)=CAST(InnoDB AS BINARY) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  ) ENGINE=InnoDB
+    DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   SET v_targets_created=TRUE;
   INSERT INTO tmp_edms_staging_recovery_targets
   WITH targets AS (
@@ -170,24 +131,14 @@ recovery: BEGIN
     projectId VARCHAR(64) PATH '$.projectId'
   )) AS j
 )
-  SELECT t.seq,t.projectId,t.documentId,t.operationId,t.documentNumber,j.generation,j.businessDigest,j.controlDigest
-  FROM targets t JOIN JSON_TABLE(p_snapshots,'$[*]' COLUMNS(
-    documentId VARCHAR(64) PATH '$.documentId' ERROR ON EMPTY ERROR ON ERROR,
-    operationId VARCHAR(64) PATH '$.operationId' ERROR ON EMPTY ERROR ON ERROR,
-    generation DECIMAL(20,0) PATH '$.generation' ERROR ON EMPTY ERROR ON ERROR,
-    businessDigest CHAR(64) PATH '$.businessDigest' ERROR ON EMPTY ERROR ON ERROR,
-    controlDigest CHAR(64) PATH '$.controlDigest' ERROR ON EMPTY ERROR ON ERROR
-  )) j ON CAST(j.documentId AS BINARY)=CAST(t.documentId AS BINARY) AND CAST(j.operationId AS BINARY)=CAST(t.operationId AS BINARY);
+  SELECT t.seq,t.projectId,t.documentId,t.operationId,t.documentNumber,NULL,NULL,NULL FROM targets t;
   SET v_count=ROW_COUNT();
-  IF v_count<>3 OR EXISTS(SELECT 1 FROM tmp_edms_staging_recovery_targets
-    WHERE generation<1 OR generation>=18446744073709551615
-      OR NOT REGEXP_LIKE(business_digest,'^[0-9a-fA-F]{64}$','c')
-      OR NOT REGEXP_LIKE(control_digest,'^[0-9a-fA-F]{64}$','c'))
-  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: exact allowlist/snapshot/generation mismatch'; END IF;
+  IF v_count<>3 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: exact allowlist must contain three targets'; END IF;
   CREATE TEMPORARY TABLE tmp_edms_staging_recovery_snapshots (
     phase VARCHAR(8) NOT NULL,document_id VARCHAR(64) NOT NULL,business_digest CHAR(64) NOT NULL,
     control_digest CHAR(64) NOT NULL,PRIMARY KEY(phase,document_id)
-  ) CAST(ENGINE AS BINARY)=CAST(InnoDB AS BINARY) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  ) ENGINE=InnoDB
+    DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   SET v_snapshots_created=TRUE;
 
   -- Same names as Delete engine; no other session can resume these operations.
@@ -200,6 +151,7 @@ recovery: BEGIN
 
   START TRANSACTION;
   SET v_tx=TRUE;
+  SET v_baseline_utc=UTC_TIMESTAMP(3);
   -- Lock all three coordinators, then their operation/document, in stable order.
   -- No consistent data read precedes these locks in this transaction.
   SET v_i=0;
@@ -209,7 +161,7 @@ recovery: BEGIN
     SELECT gate_state,delete_operation_id,generation INTO v_gate,v_pointer,v_generation
       FROM document_admission_coordinators WHERE CAST(project_id AS BINARY)=CAST(v_project AS BINARY) AND CAST(document_id AS BINARY)=CAST(v_document AS BINARY) FOR UPDATE;
     IF CAST(v_gate AS BINARY)<>CAST('CLOSED' AS BINARY) OR NOT (CAST(v_pointer AS BINARY)<=>CAST(v_operation AS BINARY))
-      OR v_generation<>(SELECT generation FROM tmp_edms_staging_recovery_targets WHERE CAST(document_id AS BINARY)=CAST(v_document AS BINARY))
+      OR v_generation<1 OR v_generation>=18446744073709551615
     THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: gate or generation changed'; END IF;
     SELECT status,pending_metadata,document_number_snapshot,document_id,project_id
       INTO v_status,v_saved_metadata,v_identity,v_pointer,v_project
@@ -225,6 +177,10 @@ recovery: BEGIN
       WHERE CAST(id AS BINARY)=CAST(v_document AS BINARY) AND CAST(project_id AS BINARY)=CAST(v_project AS BINARY) FOR UPDATE;
     IF NOT (CAST(v_identity AS BINARY)<=>CAST(v_number AS BINARY))
     THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: document number changed'; END IF;
+    UPDATE tmp_edms_staging_recovery_targets SET generation=v_generation
+      WHERE CAST(document_id AS BINARY)=CAST(v_document AS BINARY);
+    SET v_count=ROW_COUNT();
+    IF v_count<>1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: generation baseline capture failed'; END IF;
     SET v_i=v_i+1;
   END WHILE;
 
@@ -269,13 +225,14 @@ recovery: BEGIN
   WHERE f.file_id IS NULL OR NOT (CAST(f.project_id AS BINARY)<=>CAST(t.projectId AS BINARY))
     OR NOT (CAST(f.document_id AS BINARY)<=>CAST(t.documentId AS BINARY))
     OR f.checksum IS NULL OR NOT REGEXP_LIKE(f.checksum,'^[0-9a-fA-F]{64}$','c')
-    OR f.file_size<0 OR LOCATE(CHAR(0),f.storage_key)>0 OR LOCATE(CHAR(92),f.storage_key)>0
+    OR f.file_size IS NULL OR f.file_size<0 OR f.storage_key IS NULL OR CHAR_LENGTH(f.storage_key)=0
+    OR LOCATE(X'00',CAST(f.storage_key AS BINARY))>0 OR LOCATE(CHAR(92),f.storage_key)>0
     OR LOCATE('//',f.storage_key)>0 OR REGEXP_LIKE(f.storage_key,'(^|/)[.]{1,2}(/|$)','c')
     OR NOT (CAST(LEFT(f.storage_key,CHAR_LENGTH(CONCAT('projects/',CONVERT(p.project_code USING utf8mb4) COLLATE utf8mb4_bin,'/documents/',t.documentNumber,'/'))) AS BINARY)
       <=>CAST(CONCAT('projects/',CONVERT(p.project_code USING utf8mb4) COLLATE utf8mb4_bin,'/documents/',t.documentNumber,'/') AS BINARY))
     OR (f.relative_path IS NOT NULL AND CAST(f.relative_path AS BINARY)<>CAST('' AS BINARY) AND NOT (CAST(f.relative_path AS BINARY)<=>CAST(f.storage_key AS BINARY)))
     OR (b.file_id IS NOT NULL AND (NOT (CAST(b.storage_key_snapshot AS BINARY)<=>CAST(f.storage_key AS BINARY))
-      OR n.id IS NULL OR CAST(n.provider AS BINARY)<>CAST('r2' AS BINARY) OR NOT (CAST(n.id AS BINARY)<=>CAST(p_namespace_id AS BINARY))
+      OR n.id IS NULL OR CAST(n.provider AS BINARY)<>CAST('r2' AS BINARY) OR NOT REGEXP_LIKE(n.id,'^[0-9a-fA-F]{64}$','c')
       OR NOT (CAST(SHA2(n.descriptor,256) AS BINARY)<=>CAST(n.id AS BINARY))));
   IF v_count<>0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: missing checksum/file or scope/key/namespace mismatch'; END IF;
   WITH targets AS (
@@ -391,36 +348,35 @@ fingerprints AS (
 
   SELECT 'BEFORE',documentId,businessDigest,controlDigest FROM fingerprints;
   SET v_count=ROW_COUNT();
-  IF v_count<>3 OR EXISTS(SELECT 1 FROM tmp_edms_staging_recovery_targets t
-    LEFT JOIN tmp_edms_staging_recovery_snapshots s ON CAST(s.phase AS BINARY)=CAST('BEFORE' AS BINARY) AND CAST(s.document_id AS BINARY)=CAST(t.document_id AS BINARY)
-    WHERE s.document_id IS NULL OR NOT (CAST(s.business_digest AS BINARY)<=>CAST(t.business_digest AS BINARY))
-      OR NOT (CAST(s.control_digest AS BINARY)<=>CAST(t.control_digest AS BINARY)))
-  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: data changed since approved preflight'; END IF;
+  IF v_count<>3 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: baseline must contain exactly three targets'; END IF;
+  UPDATE tmp_edms_staging_recovery_targets t JOIN tmp_edms_staging_recovery_snapshots s
+    ON CAST(s.phase AS BINARY)=CAST('BEFORE' AS BINARY) AND CAST(s.document_id AS BINARY)=CAST(t.document_id AS BINARY)
+  SET t.business_digest=s.business_digest,t.control_digest=s.control_digest;
+  SET v_count=ROW_COUNT();
+  IF v_count<>3 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: automatic baseline capture must affect three targets'; END IF;
 
-  -- Validate actor and freeze the Admin membership during all writes.
-  SELECT u.full_name,u.department_name_snapshot INTO v_actor_name,v_department
-    FROM users u JOIN project_memberships m ON m.user_id=u.id JOIN projects p ON CAST(p.id AS BINARY)=CAST(m.project_id AS BINARY)
-    WHERE u.id=p_actor AND CAST(m.project_id AS BINARY)=CAST('PRJ-5cd0a5a3-3ce6-4cf2-b297-73e6ee9e520c' AS BINARY)
-      AND CAST(u.status AS BINARY)=CAST('Active' AS BINARY) AND CAST(m.status AS BINARY)=CAST('Active' AS BINARY) AND CAST(m.official_role AS BINARY)=CAST('Admin' AS BINARY) AND CAST(p.status AS BINARY)=CAST('Active' AS BINARY) FOR UPDATE;
-  IF v_actor_name IS NULL OR CHAR_LENGTH(TRIM(v_actor_name))=0
-  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: active project Admin required'; END IF;
+  -- Audit the authenticated SQL principal, not a randomly selected application Admin.
+  SET v_actor_name=LEFT(CONCAT('SQL principal ',CURRENT_USER()),255);
+  SELECT SHA2(CAST(JSON_ARRAYAGG(JSON_OBJECT('operationId',operation_id,
+      'businessDigest',business_digest,'controlDigest',control_digest,'generation',generation))
+    AS CHAR CHARACTER SET utf8mb4),256) INTO v_baseline_digest
+    FROM tmp_edms_staging_recovery_targets;
   SELECT COUNT(*) INTO v_count FROM audit_trail a JOIN tmp_edms_staging_recovery_targets t
     ON CAST(a.identity_key AS BINARY)=CAST(CONCAT('reservation-recovery:',SHA2(t.operation_id,256)) AS BINARY);
   IF v_count<>0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: recovery audit already exists; inspect previous outcome'; END IF;
-  SET v_digest=SHA2(CAST(JSON_OBJECT('version',1,'database',p_database,'serverUuid',p_server_uuid,
-    'serviceId',p_service_id,'snapshots',p_snapshots,'reviewedUtc',p_reviewed_utc,
-    'externalR2EvidenceSha256',p_external_sha,'namespaceId',p_namespace_id,'guardsCommit',p_guards_commit,
-    'backupReference',p_backup_reference) AS CHAR CHARACTER SET utf8mb4),256);
-  IF TIMESTAMPDIFF(MICROSECOND,p_reviewed_utc,UTC_TIMESTAMP(3))>300000000
-  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: reviewed evidence expired during validation'; END IF;
+  SET v_digest=SHA2(CAST(JSON_OBJECT('version',3,'source','ONE_TIME_STAGING_DBEAVER_RECOVERY',
+    'database',DATABASE(),'serverUuid',@@server_uuid,'authenticatedSqlPrincipal',CURRENT_USER(),
+    'sqlSessionUser',USER(),'connectionId',CONNECTION_ID(),'baselineUtc',v_baseline_utc,
+    'baselineDigest',v_baseline_digest) AS CHAR CHARACTER SET utf8mb4),256);
 
   UPDATE document_delete_operations o JOIN tmp_edms_staging_recovery_targets t
     ON CAST(o.id AS BINARY)=CAST(t.operation_id AS BINARY) AND CAST(o.project_id AS BINARY)=CAST(t.project_id AS BINARY) AND CAST(o.document_id AS BINARY)=CAST(t.document_id AS BINARY)
   SET o.pending_metadata=JSON_SET(COALESCE(o.pending_metadata,'{}'),'$.reservationRecovery',
     JSON_OBJECT('state','CANCELLED_BEFORE_IO','operationId',o.id,'approvalDigest',v_digest,
-      'actorUserId',p_actor,'recoveredAt',DATE_FORMAT(UTC_TIMESTAMP(3),'%Y-%m-%dT%H:%i:%s.%fZ'),
+      'actorUserId',NULL,'authenticatedSqlPrincipal',CURRENT_USER(),
+      'sqlSessionUser',USER(),'sqlConnectionId',CONNECTION_ID(),'recoveredAt',DATE_FORMAT(UTC_TIMESTAMP(3),'%Y-%m-%dT%H:%i:%s.%fZ'),
       'snapshotDigest',SHA2(CONCAT(t.business_digest,t.control_digest),256),
-      'source','OWNER_REVIEWED_DBEAVER_RECOVERY','externalEvidenceSha256',p_external_sha)),
+      'source','ONE_TIME_STAGING_DBEAVER_RECOVERY')),
     o.updated_at=UTC_TIMESTAMP(3)
   WHERE CAST(o.status AS BINARY)=CAST('QUIESCENCE_CONFIRMED' AS BINARY) AND CAST(o.document_number_snapshot AS BINARY)=CAST(t.document_number AS BINARY)
     AND JSON_CONTAINS_PATH(COALESCE(o.pending_metadata,'{}'),'one','$.reservationRecovery')=0;
@@ -434,7 +390,7 @@ fingerprints AS (
   IF v_count<>3 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: generation-guarded gate affected rows must be three'; END IF;
   INSERT INTO audit_trail (id,identity_key,project_id,actor_user_id,actor_name,department,official_role,
     action,business_event,detail,resource_type,resource_id,reference,metadata,occurred_at)
-  SELECT UUID(),CONCAT('reservation-recovery:',SHA2(t.operation_id,256)),t.project_id,p_actor,v_actor_name,v_department,'Admin',
+  SELECT UUID(),CONCAT('reservation-recovery:',SHA2(t.operation_id,256)),t.project_id,NULL,v_actor_name,NULL,NULL,
     'Delete Reservation Cancelled','Staging Document Recovery','Reservation cancelled before storage deletion.',
     'Document',t.document_id,t.document_number,JSON_EXTRACT(o.pending_metadata,'$.reservationRecovery'),UTC_TIMESTAMP(3)
   FROM tmp_edms_staging_recovery_targets t JOIN document_delete_operations o ON CAST(o.id AS BINARY)=CAST(t.operation_id AS BINARY);
@@ -534,7 +490,7 @@ fingerprints AS (
   IF v_count<>3 OR EXISTS(SELECT 1 FROM tmp_edms_staging_recovery_targets t
     LEFT JOIN tmp_edms_staging_recovery_snapshots s ON CAST(s.phase AS BINARY)=CAST('AFTER' AS BINARY) AND CAST(s.document_id AS BINARY)=CAST(t.document_id AS BINARY)
     WHERE s.document_id IS NULL OR NOT (CAST(s.business_digest AS BINARY)<=>CAST(t.business_digest AS BINARY)))
-  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: business/file snapshot changed; entire recovery rolled back'; END IF;
+  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: business/file snapshot changed; recovery aborted'; END IF;
   SELECT COUNT(*) INTO v_count FROM tmp_edms_staging_recovery_targets t
     JOIN document_admission_coordinators c ON CAST(c.project_id AS BINARY)=CAST(t.project_id AS BINARY) AND CAST(c.document_id AS BINARY)=CAST(t.document_id AS BINARY)
     JOIN document_delete_operations o ON CAST(o.id AS BINARY)=CAST(t.operation_id AS BINARY) AND CAST(o.project_id AS BINARY)=CAST(t.project_id AS BINARY) AND CAST(o.document_id AS BINARY)=CAST(t.document_id AS BINARY)
@@ -543,7 +499,9 @@ fingerprints AS (
     AND CAST(JSON_UNQUOTE(JSON_EXTRACT(o.pending_metadata,'$.reservationRecovery.state')) AS BINARY)=CAST('CANCELLED_BEFORE_IO' AS BINARY)
     AND CAST(JSON_UNQUOTE(JSON_EXTRACT(o.pending_metadata,'$.reservationRecovery.operationId')) AS BINARY)=CAST(o.id AS BINARY)
     AND CAST(JSON_UNQUOTE(JSON_EXTRACT(o.pending_metadata,'$.reservationRecovery.approvalDigest')) AS BINARY)=CAST(v_digest AS BINARY)
-    AND CAST(a.project_id AS BINARY)=CAST(t.project_id AS BINARY) AND CAST(a.resource_id AS BINARY)=CAST(t.document_id AS BINARY) AND a.actor_user_id=p_actor;
+    AND CAST(a.project_id AS BINARY)=CAST(t.project_id AS BINARY) AND CAST(a.resource_id AS BINARY)=CAST(t.document_id AS BINARY) AND a.actor_user_id IS NULL AND a.official_role IS NULL
+    AND CAST(a.actor_name AS BINARY)=CAST(v_actor_name AS BINARY)
+    AND CAST(JSON_UNQUOTE(JSON_EXTRACT(a.metadata,'$.authenticatedSqlPrincipal')) AS BINARY)=CAST(CURRENT_USER() AS BINARY);
   IF v_count<>3 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='STOP: final marker/gate/audit count must be three'; END IF;
 
   SET v_commit_started=TRUE;
@@ -572,20 +530,14 @@ fingerprints AS (
 END$$
 DELIMITER ;
 
--- 03: this CALL fails closed with the shipped NULL inputs. No manual COMMIT follows.
-CALL edms_staging_recovery_3_20261104(
-  @expected_staging_database,@expected_staging_server_uuid,@verified_railway_service_id,
-  @actor_user_id,@reviewed_preflight_utc,@approved_snapshot_json,@external_r2_evidence_sha256,
-  @verified_r2_namespace_id,@verified_guards_git_commit,@verified_backup_reference,
-  @environment_confirmation,@guards_confirmation,@maintenance_confirmation,@r2_confirmation,@owner_confirmation
-);
+-- 03: zero input. No manual COMMIT after CALL.
+CALL edms_staging_recovery_3_20261104();
 
--- 04: mandatory routine cleanup; execute separately if DBeaver stopped at CALL.
--- Only if this run successfully created this exact routine; never drop an unknown object.
+-- 04: cleanup ONLY for this successfully created one-use routine.
+-- If DBeaver stopped at CALL, review outcome and execute cleanup separately.
+-- Never run this DROP after a CREATE collision or on an unknown routine.
 DROP PROCEDURE edms_staging_recovery_3_20261104;
 SELECT COUNT(*) AS maintenance_routine_remaining FROM information_schema.ROUTINES
-  WHERE CAST(ROUTINE_SCHEMA AS BINARY)=CAST(DATABASE() AS BINARY) AND CAST(ROUTINE_NAME AS BINARY)=CAST('edms_staging_recovery_3_20261104' AS BINARY);
--- Expected 0. Routine DDL is not transactional; clean up even after a rolled-back CALL.
--- Do not rerun APPLY on recovered targets. Verify the persisted marker and audit instead.
--- Sources: MySQL 8.0 manual /declare-handler.html /create-procedure.html /implicit-commit.html.
--- Integration execution against actual MySQL: NOT VERIFIED by script generation.
+WHERE CAST(ROUTINE_SCHEMA AS BINARY)=CAST(DATABASE() AS BINARY)
+  AND CAST(ROUTINE_NAME AS BINARY)=CAST('edms_staging_recovery_3_20261104' AS BINARY);
+-- Expected 0 after a completed run. No permanent schema change intended.

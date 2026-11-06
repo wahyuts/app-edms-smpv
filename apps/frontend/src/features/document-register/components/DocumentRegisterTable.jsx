@@ -340,7 +340,7 @@ export const DocumentRegisterTable = ({
                 <th className="sticky top-0 z-20 min-w-24 bg-[#08233B] px-4 py-3 font-bold">Drawing</th>
               ) : null}
               <th className="sticky top-0 z-20 min-w-40 bg-[#08233B] px-4 py-3 font-bold">Area</th>
-              <th className="sticky top-0 z-20 min-w-36 bg-[#08233B] px-4 py-3 font-bold">Revision</th>
+              <th className="sticky top-0 z-20 min-w-36 bg-[#08233B] px-4 py-3 font-bold">Submission</th>
               {!isDashboard ? (
                 <th className="sticky top-0 z-20 min-w-36 bg-[#08233B] px-4 py-3 font-bold">Created Date</th>
               ) : null}
