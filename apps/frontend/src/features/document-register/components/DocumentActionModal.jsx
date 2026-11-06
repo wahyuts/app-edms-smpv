@@ -535,7 +535,11 @@ export const ViewDocumentModal = ({
               <p className={valueClassName}>{documentItem.area}</p>
             </div>
             <div>
-              <p className={fieldLabelClassName}>Revision</p>
+              <p className={fieldLabelClassName}>REV.</p>
+              <p className={valueClassName}>{documentItem.rev?.trim() ? documentItem.rev : "-"}</p>
+            </div>
+            <div>
+              <p className={fieldLabelClassName}>Submission</p>
               <p className={valueClassName}>{documentItem.revision}</p>
             </div>
             <div>
