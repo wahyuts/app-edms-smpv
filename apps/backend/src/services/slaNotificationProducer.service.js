@@ -16,6 +16,45 @@ const SLA_STATUS = Object.freeze({
 });
 
 const DAY_MINUTES = 24 * 60;
+// Three total attempts; both delays occur after transaction cleanup, without held locks.
+const RETRY_DELAYS_MS = Object.freeze([25, 50]);
+
+const runEvaluationTransaction = async ({ scope, evaluate, getDocument, resetDocument, triggerSource }) => {
+  for (let attempt = 1; ; attempt += 1) {
+    resetDocument();
+    const postCommitNotifications = [];
+    try {
+      const { value, transactionEvidence } = await slaRepository.runInTransaction(scope,
+        connection => evaluate(connection, postCommitNotifications), { transactionEvidence: true });
+      if (!transactionEvidence?.commitConfirmed || transactionEvidence.outcome !== 'COMMITTED') {
+        throw new Error('SLA transaction requires confirmed COMMIT evidence');
+      }
+      return { result: value, postCommitNotifications };
+    } catch (error) {
+      const evidence = slaRepository.getTransactionEvidence?.(error);
+      const transient = ['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT'].includes(error?.code)
+        || [1213, 1205].includes(error?.errno);
+      const safelySettled = evidence && !evidence.commitAttempted
+        && ((evidence.outcome === 'ROLLED_BACK' && evidence.rollbackConfirmed)
+          || (evidence.outcome === 'NOT_STARTED' && !evidence.beginAttempted))
+        && ['NONE', 'RELEASED', 'DESTROYED'].includes(evidence.connectionDisposition);
+      const retry = transient && safelySettled && attempt <= RETRY_DELAYS_MS.length;
+      try {
+        const document = getDocument();
+        logger.error('[SLA_NOTIFICATION_PRODUCER]',
+          `event=${evidence?.outcome === 'UNKNOWN' ? 'transaction_outcome_unknown' : 'transaction_failed'}`,
+          `triggerSource=${triggerSource}`, `projectId=${scope.projectId}`, `documentId=${scope.documentId}`,
+          `cycleId=${document ? createSlaCycleId(document) : '-'}`, `attempt=${attempt}`,
+          `errorCode=${error?.code || '-'}`, `errno=${error?.errno || '-'}`, `sqlState=${error?.sqlState || '-'}`,
+          `phase=${evidence?.failurePhase || 'UNVERIFIED'}`, `outcome=${evidence?.outcome || 'UNVERIFIED'}`,
+          `rollbackConfirmed=${evidence?.rollbackConfirmed === true}`,
+          `connectionDisposition=${evidence?.connectionDisposition || 'UNVERIFIED'}`, `retry=${Boolean(retry)}`);
+      } catch { /* Diagnostics must not replace the original transaction failure. */ }
+      if (!retry) throw error;
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS_MS[attempt - 1]));
+    }
+  }
+};
 
 const normalizeDate = (value) => {
   if (!value) return null;
@@ -124,7 +163,7 @@ const logProducerResult = ({
   );
 };
 
-const createNotificationForSlaStatus = async ({ decision, document, eventType }) => {
+const createNotificationForSlaStatus = async ({ connection, decision, document, eventType, postCommitNotifications }) => {
   const result = await notificationService.createSlaStateNotifications({
     cycleId: createSlaCycleId(document),
     document,
@@ -143,7 +182,7 @@ const createNotificationForSlaStatus = async ({ decision, document, eventType })
           suppressionPolicy: 'meaningful_sla_state_transition',
         },
     skipCycleDuplicateCheck: true,
-  });
+  }, { connection, postCommitNotifications });
 
   return {
     attemptedRecipientCount: Number(result?.attemptedRecipientCount || 0),
@@ -151,7 +190,7 @@ const createNotificationForSlaStatus = async ({ decision, document, eventType })
   };
 };
 
-const persistEvaluation = async ({ currentState, cycleId, document, existing }) => {
+const persistEvaluation = async ({ connection, currentState, cycleId, document, existing }) => {
   if (!currentState || currentState === SLA_STATUS.FINAL_AS_BUILT) return;
 
   await slaRepository.upsertSlaEvaluation({
@@ -161,15 +200,14 @@ const persistEvaluation = async ({ currentState, cycleId, document, existing }) 
     evaluationId: existing?.id || createEntityId('SLA'),
     notifiedStates: existing?.notified_states || {},
     projectId: document.projectId,
-  });
+  }, { connection });
 };
 
 const evaluateDocumentForSlaNotifications = async ({
   document,
-  serverNow = null,
   triggerSource = 'unknown',
 }) => {
-  if (!document || document.status === 'Approved') {
+  if (!document) {
     logProducerResult({
       document,
       result: 'not_eligible',
@@ -181,110 +219,120 @@ const evaluateDocumentForSlaNotifications = async ({
     };
   }
 
-  const authoritativeTime = serverNow || (await timeService.getServerTime()).serverNow;
-  const evaluatedDocument = evaluateDocumentWithServerTime(document, authoritativeTime);
-  if (!evaluatedDocument?.slaStatus) {
-    logProducerResult({
-      document: evaluatedDocument || document,
-      result: 'missing_sla_baseline',
-      triggerSource,
+  // Incoming document/serverNow may predate a wait for the coordinator; use only the scope.
+  const scope = { documentId: document.id, projectId: document.projectId };
+  let evaluatedDocument = null;
+  const evaluate = async (connection, postCommitNotifications) => {
+    const snapshot = await documentRepository.findSlaEvaluationSnapshot(connection, scope);
+    evaluatedDocument = snapshot?.document || null;
+    if (!snapshot?.eligible) return { createdCount: 0, result: 'not_eligible' };
+
+    evaluatedDocument = evaluateDocumentWithServerTime(evaluatedDocument, snapshot.serverNow);
+    if (!evaluatedDocument?.slaStatus) return { createdCount: 0, result: 'missing_sla_baseline' };
+
+    const cycleId = createSlaCycleId(evaluatedDocument);
+    const latestEvaluation = await slaRepository.findLatestSlaEvaluationByDocument({
+      documentId: evaluatedDocument.id,
+    }, { connection });
+    const currentCycleEvaluation = latestEvaluation?.cycle_id === cycleId
+      ? latestEvaluation
+      : await slaRepository.findSlaEvaluationByCycle({
+          cycleId,
+          documentId: evaluatedDocument.id,
+        }, { connection });
+    const previousSlaStatus = latestEvaluation?.current_state || null;
+    const decision = notificationSuppressionPolicy.evaluateSlaNotificationDecision({
+      cycleId,
+      document: evaluatedDocument,
+      previousEvaluation: latestEvaluation,
+      previousSlaStatus,
     });
-    return {
-      createdCount: 0,
-      result: 'missing_sla_baseline',
-    };
-  }
 
-  const cycleId = createSlaCycleId(evaluatedDocument);
-  const latestEvaluation = await slaRepository.findLatestSlaEvaluationByDocument({
-    documentId: evaluatedDocument.id,
-  });
-  const currentCycleEvaluation = latestEvaluation?.cycle_id === cycleId
-    ? latestEvaluation
-    : await slaRepository.findSlaEvaluationByCycle({
+    if (!decision.shouldGenerate) {
+      await persistEvaluation({
+        connection,
+        currentState: evaluatedDocument.slaStatus,
         cycleId,
-        documentId: evaluatedDocument.id,
+        document: evaluatedDocument,
+        existing: currentCycleEvaluation,
       });
-  const previousSlaStatus = latestEvaluation?.current_state || null;
-  const decision = notificationSuppressionPolicy.evaluateSlaNotificationDecision({
-    cycleId,
-    document: evaluatedDocument,
-    previousEvaluation: latestEvaluation,
-    previousSlaStatus,
-  });
+      return {
+        createdCount: 0,
+        previousSlaStatus,
+        result: decision.reason || 'suppressed',
+        slaStatus: evaluatedDocument.slaStatus,
+      };
+    }
 
-  if (!decision.shouldGenerate) {
+    const eventType = decision.eventType;
+    const notificationResult = await createNotificationForSlaStatus({
+      connection,
+      decision,
+      document: evaluatedDocument,
+      eventType,
+      postCommitNotifications,
+    });
+    const duplicateCount = Math.max(0, notificationResult.attemptedRecipientCount - notificationResult.createdCount);
+
     await persistEvaluation({
+      connection,
       currentState: evaluatedDocument.slaStatus,
       cycleId,
       document: evaluatedDocument,
       existing: currentCycleEvaluation,
     });
-    logProducerResult({
-      document: evaluatedDocument,
-      previousSlaStatus,
-      result: decision.reason || 'suppressed',
-      triggerSource,
-    });
+
+    if (eventType === notificationService.NOTIFICATION_EVENT_TYPE.SLA_OVERDUE) {
+      const escalationMetadata = createEscalationMetadata(evaluatedDocument);
+      await auditService.recordActivity({
+        action: 'Escalation Created',
+        actorUserId: null,
+        identityKey: ['Escalation Created', evaluatedDocument.projectId, evaluatedDocument.id, cycleId].join(':'),
+        metadata: {
+          daysOverdue: escalationMetadata.daysOverdue,
+          escalationLevel: escalationMetadata.escalationLevel,
+          slaStatus: evaluatedDocument.slaStatus,
+          triggerSource,
+        },
+        projectId: evaluatedDocument.projectId,
+        reference: evaluatedDocument.documentNumber,
+        resourceId: evaluatedDocument.id,
+        resourceType: 'Escalation',
+      }, { connection });
+    }
+
     return {
-      createdCount: 0,
+      createdCount: notificationResult.createdCount,
+      duplicateCount,
+      eventType,
       previousSlaStatus,
-      result: decision.reason || 'suppressed',
+      result: notificationResult.createdCount > 0 ? 'created' : 'duplicate_or_no_recipient',
       slaStatus: evaluatedDocument.slaStatus,
     };
-  }
-
-  const eventType = decision.eventType;
-  const notificationResult = await createNotificationForSlaStatus({
-    decision,
-    document: evaluatedDocument,
-    eventType,
-  });
-  const duplicateCount = Math.max(0, notificationResult.attemptedRecipientCount - notificationResult.createdCount);
-
-  await persistEvaluation({
-    currentState: evaluatedDocument.slaStatus,
-    cycleId,
-    document: evaluatedDocument,
-    existing: currentCycleEvaluation,
+  };
+  const { result, postCommitNotifications } = await runEvaluationTransaction({
+    scope, evaluate, getDocument: () => evaluatedDocument,
+    resetDocument: () => { evaluatedDocument = null; }, triggerSource,
   });
 
-  if (eventType === notificationService.NOTIFICATION_EVENT_TYPE.SLA_OVERDUE) {
-    const escalationMetadata = createEscalationMetadata(evaluatedDocument);
-    await auditService.recordActivitySafely({
-      action: 'Escalation Created',
-      identityKey: ['Escalation Created', evaluatedDocument.projectId, evaluatedDocument.id, cycleId].join(':'),
-      metadata: {
-        daysOverdue: escalationMetadata.daysOverdue,
-        escalationLevel: escalationMetadata.escalationLevel,
-        slaStatus: evaluatedDocument.slaStatus,
-        triggerSource,
-      },
-      projectId: evaluatedDocument.projectId,
-      reference: evaluatedDocument.documentNumber,
-      resourceId: evaluatedDocument.id,
-      resourceType: 'Escalation',
-    });
+  for (const event of postCommitNotifications) {
+    try {
+      notificationService.publishNotificationCreatedSafely(event);
+    } catch (error) {
+      // Persistence is already committed; delivery failure is not a DB failure.
+      logger.error('[SLA_NOTIFICATION_PRODUCER]', 'event=post_commit_sse_failed', `errorCode=${error.code || '-'}`);
+    }
   }
-
   logProducerResult({
-    createdCount: notificationResult.createdCount,
+    createdCount: result.createdCount,
     document: evaluatedDocument,
-    duplicateCount,
-    eventType,
-    previousSlaStatus,
-    result: notificationResult.createdCount > 0 ? 'created' : 'duplicate_or_no_recipient',
+    duplicateCount: result.duplicateCount,
+    eventType: result.eventType,
+    previousSlaStatus: result.previousSlaStatus,
+    result: result.result,
     triggerSource,
   });
-
-  return {
-    createdCount: notificationResult.createdCount,
-    duplicateCount,
-    eventType,
-    previousSlaStatus,
-    result: notificationResult.createdCount > 0 ? 'created' : 'duplicate_or_no_recipient',
-    slaStatus: evaluatedDocument.slaStatus,
-  };
+  return result;
 };
 
 const evaluateDocumentsForSlaNotifications = async ({
@@ -326,18 +374,72 @@ const runScheduledEvaluation = async ({
   batchSize = 200,
   triggerSource = 'scheduled_evaluation',
 } = {}) => {
-  const documents = await documentRepository.listSlaNotificationCandidateDocuments({ limit: batchSize });
-  const results = await evaluateDocumentsForSlaNotifications({
-    documents,
-    triggerSource,
-  });
-
-  return {
-    processedCount: documents.length,
-    createdCount: results.reduce((total, result) => total + Number(result?.createdCount || 0), 0),
-    failedCount: results.filter((result) => result?.result === 'failed').length,
-    results,
+  const startedAt = Date.now();
+  const limit = Math.min(1000, Math.max(1, Number.parseInt(batchSize, 10) || 200));
+  const summary = {
+    processedCount: 0,
+    createdCount: 0,
+    failedCount: 0,
+    succeededCount: 0,
+    skippedCount: 0,
+    batchCount: 0,
+    highWaterId: null,
+    lastCursorId: null,
+    traversalComplete: false,
+    evaluationComplete: false,
+    results: [],
+    resultsTruncated: false,
   };
+  logger.log('[SLA_NOTIFICATION_SCAN]', 'event=started', `triggerSource=${triggerSource}`);
+  try {
+    summary.highWaterId = await documentRepository.getSlaScanBoundary();
+    logger.log('[SLA_NOTIFICATION_SCAN]', 'event=boundary_selected', `highWaterId=${summary.highWaterId || '-'}`);
+    while (summary.highWaterId != null) {
+      const candidates = await documentRepository.listSlaScanCandidates({
+        afterId: summary.lastCursorId,
+        highWaterId: summary.highWaterId,
+        limit,
+      });
+      if (!candidates.length) break;
+      summary.batchCount += 1;
+      const authoritativeTime = (await timeService.getServerTime()).serverNow;
+      for (const candidate of candidates) {
+        let result;
+        try {
+          const document = await documentRepository.findSlaScanDocument(candidate);
+          result = await evaluateDocumentForSlaNotifications({ document: document || candidate, serverNow: authoritativeTime, triggerSource });
+        } catch (error) {
+          logger.error('[SLA_NOTIFICATION_SCAN]', 'event=evaluation_failed', `documentId=${candidate.id}`, `errorCode=${error.code || '-'}`);
+          result = { createdCount: 0, result: 'failed' };
+        }
+        summary.processedCount += 1;
+        summary.createdCount += Number(result.createdCount || 0);
+        if (['failed', 'missing_sla_baseline'].includes(result.result)) summary.failedCount += 1;
+        else if (result.result === 'not_eligible') summary.skippedCount += 1;
+        else summary.succeededCount += 1;
+        // Preserve the result array shape, but retain only a bounded diagnostic sample.
+        if (summary.results.length < limit) summary.results.push(result);
+        else summary.resultsTruncated = true;
+      }
+      summary.lastCursorId = candidates[candidates.length - 1].id;
+      logger.log('[SLA_NOTIFICATION_SCAN]', 'event=batch_completed', `batchCount=${summary.batchCount}`,
+        `processedCount=${summary.processedCount}`, `lastCursorId=${summary.lastCursorId}`);
+    }
+    summary.traversalComplete = true;
+    summary.evaluationComplete = summary.failedCount === 0;
+  } catch (error) {
+    summary.error = 'SLA scan interrupted';
+    logger.error('[SLA_NOTIFICATION_SCAN]', 'event=interrupted', `errorCode=${error.code || '-'}`);
+  }
+  summary.durationMs = Date.now() - startedAt;
+  logger.log('[SLA_NOTIFICATION_SCAN]', 'event=finished', `triggerSource=${triggerSource}`,
+    `highWaterId=${summary.highWaterId || '-'}`, `lastCursorId=${summary.lastCursorId || '-'}`,
+    `batchCount=${summary.batchCount}`, `processedCount=${summary.processedCount}`,
+    `succeededCount=${summary.succeededCount}`, `failedCount=${summary.failedCount}`,
+    `skippedCount=${summary.skippedCount}`, `createdCount=${summary.createdCount}`,
+    `durationMs=${summary.durationMs}`, `traversalComplete=${summary.traversalComplete}`,
+    `evaluationComplete=${summary.evaluationComplete}`);
+  return summary;
 };
 
 module.exports = {

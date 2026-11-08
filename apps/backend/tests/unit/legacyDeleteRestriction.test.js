@@ -229,7 +229,7 @@ test('existing operation conflict and missing-operation GET preserve baseline re
   }
 });
 
-test('workflow/storage/SLA/RBAC baseline stays identical except approved additive REV. metadata plumbing', () => {
+test('workflow/storage/SLA/RBAC baseline stays identical except approved REV. and SLA transaction connection plumbing', () => {
   for (const file of ['apps/backend/src/services/workflowEngine.service.js','apps/backend/src/services/approval.service.js',
     'apps/backend/src/services/revision.service.js','apps/backend/src/repositories/storageNamespace.repository.js',
     'apps/backend/src/services/storage.service.js',
@@ -240,6 +240,23 @@ test('workflow/storage/SLA/RBAC baseline stays identical except approved additiv
     if (['apps/backend/src/services/document.service.js', 'apps/backend/src/services/revision.service.js'].includes(file)) {
       current = current.replace("    ...(payload.rev !== undefined ? { rev: payload.rev } : {}),\n", '');
       if (file.endsWith('/document.service.js')) current = current.replace('          rev: payload.rev ?? null,\n', '');
+    }
+    if (file === 'apps/backend/src/repositories/sla.repository.js') {
+      // Allow only approved B1/B2C transaction plumbing; every other baseline byte remains checked.
+      current = current.replace(
+        '}, { connection } = {}) => {\n  const write = async (connection) => {',
+        '}) => {\n  return admission.mutate({ projectId, documentId }, async (connection) => {'
+      ).replace(
+        '  };\n  return connection ? write(connection) : admission.mutate({ projectId, documentId }, write);',
+        '  });'
+      ).replace(
+        'const findSlaEvaluationByCycle = async ({ cycleId, documentId }, { connection = pool } = {}) => {\n  const [rows] = await connection.execute(',
+        'const findSlaEvaluationByCycle = async ({ cycleId, documentId }) => {\n  const [rows] = await pool.execute('
+      ).replace(
+        'const findLatestSlaEvaluationByDocument = async ({ documentId }, { connection = pool } = {}) => {\n  const [rows] = await connection.execute(',
+        'const findLatestSlaEvaluationByDocument = async ({ documentId }) => {\n  const [rows] = await pool.execute('
+      ).replace('  runInTransaction: (scope, callback, options) => admission.mutate(scope, callback, options),\n', '')
+        .replace('  getTransactionEvidence: admission.getTransactionEvidence,\n', '');
     }
     assert.equal(current, baselineSource(file).replace(/\r\n/g, '\n'), file);
   }

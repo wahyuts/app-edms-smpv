@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   DOCUMENT_STATUS,
@@ -11,6 +11,8 @@ import {
 } from "@/features/sla-management/utils/sla-timer-display";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 import { useRealtimePermanentDeleteSync } from "@/features/document-register/hooks/useRealtimePermanentDeleteSync";
+import { createRealtimeRefetchCoalescer } from "@/features/document-register/utils/realtimeRefetchCoalescer";
+import { REALTIME_EVENT_TYPE, useRealtimeEvent } from "@/shared/realtime";
 
 import { SlaMonitoringService } from "../services/sla-monitoring.service";
 
@@ -126,6 +128,43 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
   const refreshResolverRef = useRef(null);
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
   const currentTimestamp = useSlaRuntimeClock();
+  const workflowRefreshRef = useRef(null);
+
+  useEffect(() => {
+    const seenEvents = new Set();
+    const coalescer = createRealtimeRefetchCoalescer({
+      delayMs: 500,
+      onFlush: () => {
+        const currentProjectId = useProjectContextStore.getState().activeProject?.id;
+        if (activeProjectId && String(currentProjectId) === String(activeProjectId)) {
+          setRefreshKey((currentKey) => currentKey + 1);
+        }
+      },
+    });
+    workflowRefreshRef.current = { coalescer, seenEvents };
+
+    return () => {
+      coalescer.cancel();
+      workflowRefreshRef.current = null;
+    };
+  }, [activeProjectId]);
+
+  const handleWorkflowChanged = useCallback((event) => {
+    if (event.type !== REALTIME_EVENT_TYPE.WORKFLOW_CHANGED || !activeProjectId) return;
+    if (String(event.projectId ?? "") !== String(activeProjectId)) return;
+    const refresh = workflowRefreshRef.current;
+    if (!refresh) return;
+    if (event.eventId) {
+      if (refresh.seenEvents.has(event.eventId)) return;
+      refresh.seenEvents.add(event.eventId);
+      if (refresh.seenEvents.size > 1000) {
+        refresh.seenEvents.delete(refresh.seenEvents.values().next().value);
+      }
+    }
+    refresh.coalescer.schedule();
+  }, [activeProjectId]);
+
+  useRealtimeEvent(handleWorkflowChanged);
 
   useEffect(() => {
     const resetTimeoutId = window.setTimeout(() => {

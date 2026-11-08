@@ -187,12 +187,12 @@ const findActiveMembershipByProjectAndOfficialRole = async ({ officialRole, proj
   return mapMembershipRow(rows[0]);
 };
 
-const listActiveMembershipsByProjectAndOfficialRoles = async ({ officialRoles = [], projectId }) => {
+const listActiveMembershipsByProjectAndOfficialRoles = async ({ officialRoles = [], projectId }, { connection = pool } = {}) => {
   const sourceRoles = Array.isArray(officialRoles) ? officialRoles : [];
   const roles = [...new Set(sourceRoles.map(normalizeLookupText).filter(Boolean))];
   if (roles.length === 0) return [];
   const placeholders = roles.map(() => '?').join(', ');
-  const [rows] = await pool.execute(
+  const [rows] = await connection.execute(
     `
       ${baseSelect}
       WHERE project_memberships.project_id = ?

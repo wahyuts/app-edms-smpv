@@ -9,12 +9,11 @@ let slaNotificationScheduler;
 let temporaryUploadCleanupScheduler;
 let isShuttingDown = false;
 
+const log = (method, ...args) => {
+  try { logger[method](...args); } catch { /* Diagnostics must not interrupt shutdown. */ }
+};
 const getSafeErrorSummary = (error) => {
-  if (error instanceof Error) {
-    return `${error.name}: ${error.message}`;
-  }
-
-  return typeof error === 'string' ? error : 'Unknown process error';
+  return `errorCode=${error?.code || 'UNKNOWN'}`;
 };
 
 const shutdown = async (signalOrReason, exitCode = 0) => {
@@ -23,21 +22,26 @@ const shutdown = async (signalOrReason, exitCode = 0) => {
   }
 
   isShuttingDown = true;
-  logger.log(`[SHUTDOWN] ${signalOrReason} received`);
+  log('log', `[SHUTDOWN] ${signalOrReason} received`);
 
   const forceExitTimeout = setTimeout(() => {
-    logger.error('[SHUTDOWN] Forced shutdown after timeout');
+    log('error', '[SHUTDOWN] Forced shutdown after timeout');
     process.exit(1);
   }, 10000);
   forceExitTimeout.unref();
 
   try {
+    // stop() closes SLA admission synchronously; drain runs alongside HTTP shutdown.
+    const drainPromise = slaNotificationScheduler
+      ? slaNotificationScheduler.stop({ terminal: true })
+      : Promise.resolve({ drained: true, timedOut: false });
+    let closeServerPromise = Promise.resolve({ closed: true });
     if (server) {
-      const closeServerPromise = new Promise((resolve, reject) => {
+      closeServerPromise = new Promise((resolve, reject) => {
         server.close((error) => {
           if (error) {
             if (error.code === 'ERR_SERVER_NOT_RUNNING') {
-              logger.log('[SHUTDOWN] HTTP server closed');
+              log('log', '[SHUTDOWN] HTTP server closed');
               resolve();
               return;
             }
@@ -46,21 +50,29 @@ const shutdown = async (signalOrReason, exitCode = 0) => {
             return;
           }
 
-          logger.log('[SHUTDOWN] HTTP server closed');
+          log('log', '[SHUTDOWN] HTTP server closed');
           resolve();
         });
-      });
+      }).then(() => ({ closed: true }), error => ({ closed: false, error }));
 
       if (realtimeConnectionRegistry) {
-        realtimeConnectionRegistry.closeAll({ reason: 'shutdown' });
+        try { realtimeConnectionRegistry.closeAll({ reason: 'shutdown' }); } catch (error) {
+          closeServerPromise = Promise.resolve({ closed: false, error });
+        }
       }
-
-      await closeServerPromise;
     }
 
-    if (slaNotificationScheduler) {
-      slaNotificationScheduler.stop();
+    let drain;
+    try { drain = await drainPromise; } catch (error) {
+      log('error', '[SHUTDOWN] SLA drain unverified; pool remains open', getSafeErrorSummary(error));
+      return; // Keep the existing forced-exit deadline; do not assume transaction settlement.
     }
+    if (!drain?.drained) {
+      log('error', '[SHUTDOWN] Incomplete shutdown: SLA scan not drained; pool remains open');
+      return;
+    }
+    const http = await closeServerPromise;
+    if (!http.closed) throw http.error;
     if (temporaryUploadCleanupScheduler) {
       temporaryUploadCleanupScheduler.stop();
     }
@@ -69,18 +81,19 @@ const shutdown = async (signalOrReason, exitCode = 0) => {
       await closeDatabasePool();
     }
 
-    logger.log('[SHUTDOWN] Backend stopped');
+    log('log', '[SHUTDOWN] Backend stopped');
     clearTimeout(forceExitTimeout);
     process.exit(exitCode);
   } catch (error) {
-    logger.error('[SHUTDOWN] Backend shutdown failed');
-    logger.error(getSafeErrorSummary(error));
+    log('error', '[SHUTDOWN] Backend shutdown failed');
+    log('error', getSafeErrorSummary(error));
     clearTimeout(forceExitTimeout);
     process.exit(1);
   }
 };
 
 const startServer = async () => {
+  if (isShuttingDown) return;
   try {
     env = require('./config/env');
     const database = require('./config/database');
@@ -95,48 +108,46 @@ const startServer = async () => {
     const { initializeStorage, testStorageAccess } = storage;
 
     await testDatabaseConnection();
+    if (isShuttingDown) return;
     await initializeStorage();
+    if (isShuttingDown) return;
     await testStorageAccess();
+    if (isShuttingDown) return;
 
     server = app.listen(env.port, () => {
-      logger.log(`${env.appName} ${env.appVersion} running on port ${env.port}`);
+      log('log', `${env.appName} ${env.appVersion} running on port ${env.port}`);
     });
     slaNotificationScheduler.start();
     temporaryUploadCleanupScheduler.start();
   } catch (error) {
-    logger.error('[BOOT] Backend startup failed');
-    logger.error(error.message);
-
-    if (closeDatabasePool) {
-      try {
-        await closeDatabasePool();
-      } catch (shutdownError) {
-        logger.error('[DATABASE] Unable to close MySQL pool after startup failure');
-      }
-    }
-
-    process.exit(1);
+    log('error', '[BOOT] Backend startup failed', getSafeErrorSummary(error));
+    await shutdown('startup_failure', 1);
   }
 };
 
+const requestShutdown = (reason, exitCode = 0) => {
+  void shutdown(reason, exitCode).catch(error => {
+    log('error', '[SHUTDOWN] Unexpected shutdown rejection', getSafeErrorSummary(error));
+    process.exit(1);
+  });
+};
+
 process.once('SIGINT', () => {
-  shutdown('SIGINT');
+  requestShutdown('SIGINT');
 });
 
 process.once('SIGTERM', () => {
-  shutdown('SIGTERM');
+  requestShutdown('SIGTERM');
 });
 
 process.once('uncaughtException', (error) => {
-  logger.error('[PROCESS] Uncaught exception');
-  logger.error(getSafeErrorSummary(error));
-  shutdown('uncaughtException', 1);
+  log('error', '[PROCESS] Uncaught exception', getSafeErrorSummary(error));
+  requestShutdown('uncaughtException', 1);
 });
 
 process.once('unhandledRejection', (reason) => {
-  logger.error('[PROCESS] Unhandled rejection');
-  logger.error(getSafeErrorSummary(reason));
-  shutdown('unhandledRejection', 1);
+  log('error', '[PROCESS] Unhandled rejection', getSafeErrorSummary(reason));
+  requestShutdown('unhandledRejection', 1);
 });
 
 if (require.main === module) {

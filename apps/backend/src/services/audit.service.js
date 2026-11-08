@@ -46,7 +46,7 @@ const recordActivity = async ({
   reference = null,
   resourceId = null,
   resourceType = 'Document',
-}) => {
+}, { connection } = {}) => {
   const dictionary = auditDictionary[action] || {
     businessEvent: action,
     detail: `${action}.`,
@@ -75,7 +75,7 @@ const recordActivity = async ({
     resourceId,
     reference,
     metadata,
-  });
+  }, { connection });
 };
 
 const parseDateOrNull = (value) => {
