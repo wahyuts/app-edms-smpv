@@ -8,8 +8,8 @@ const upsertSlaEvaluation = async ({
   evaluationId,
   notifiedStates = {},
   projectId,
-}) => {
-  return admission.mutate({ projectId, documentId }, async (connection) => {
+}, { connection } = {}) => {
+  const write = async (connection) => {
     await connection.execute(
       `
         INSERT INTO document_sla_evaluations (
@@ -29,11 +29,12 @@ const upsertSlaEvaluation = async ({
         JSON.stringify(notifiedStates),
       ]
     );
-  });
+  };
+  return connection ? write(connection) : admission.mutate({ projectId, documentId }, write);
 };
 
-const findSlaEvaluationByCycle = async ({ cycleId, documentId }) => {
-  const [rows] = await pool.execute(
+const findSlaEvaluationByCycle = async ({ cycleId, documentId }, { connection = pool } = {}) => {
+  const [rows] = await connection.execute(
     `
       SELECT id, project_id, document_id, cycle_id, current_state, notified_states, updated_at
       FROM document_sla_evaluations
@@ -47,8 +48,8 @@ const findSlaEvaluationByCycle = async ({ cycleId, documentId }) => {
   return rows[0] || null;
 };
 
-const findLatestSlaEvaluationByDocument = async ({ documentId }) => {
-  const [rows] = await pool.execute(
+const findLatestSlaEvaluationByDocument = async ({ documentId }, { connection = pool } = {}) => {
+  const [rows] = await connection.execute(
     `
       SELECT id, project_id, document_id, cycle_id, current_state, notified_states, updated_at
       FROM document_sla_evaluations
@@ -63,6 +64,8 @@ const findLatestSlaEvaluationByDocument = async ({ documentId }) => {
 };
 
 module.exports = {
+  runInTransaction: (scope, callback, options) => admission.mutate(scope, callback, options),
+  getTransactionEvidence: admission.getTransactionEvidence,
   findSlaEvaluationByCycle,
   findLatestSlaEvaluationByDocument,
   upsertSlaEvaluation,

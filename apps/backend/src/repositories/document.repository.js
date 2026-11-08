@@ -843,6 +843,79 @@ const getDashboardStatisticsByProject = async (projectId) => {
   };
 };
 
+const slaScanEligibility = `
+  documents.lifecycle_status = 'Active'
+  AND documents.workflow_status <> 'Approved'
+  AND documents.sla_started_at IS NOT NULL
+  AND LOWER(TRIM(projects.status)) = 'active'
+`;
+
+const getSlaScanBoundary = async () => {
+  const [rows] = await pool.execute(`
+    SELECT MAX(documents.id) AS high_water_id
+    FROM engineering_documents documents
+    INNER JOIN projects ON projects.id = documents.project_id
+    WHERE ${slaScanEligibility}
+  `);
+  return rows[0]?.high_water_id ?? null;
+};
+
+const listSlaScanCandidates = async ({ afterId = null, highWaterId, limit = 200 }) => {
+  if (highWaterId == null) return [];
+  const normalizedLimit = Math.min(1000, Math.max(1, Number.parseInt(limit, 10) || 200));
+  // MAX, comparisons, and ordering all use the ID column's native collation.
+  const [rows] = await pool.execute(`
+    SELECT documents.id, documents.project_id
+    FROM engineering_documents documents
+    INNER JOIN projects ON projects.id = documents.project_id
+    WHERE ${slaScanEligibility}
+      AND documents.id <= ?
+      ${afterId == null ? '' : 'AND documents.id > ?'}
+    ORDER BY documents.id ASC
+    LIMIT ?
+  `, [highWaterId, ...(afterId == null ? [] : [afterId]), normalizedLimit]);
+  return rows.map((row) => ({ id: row.id, projectId: row.project_id }));
+};
+
+const findSlaScanDocument = async ({ id, projectId }) => {
+  const [rows] = await pool.execute(`
+    SELECT documents.id, documents.project_id, documents.document_number,
+      documents.workflow_status, documents.revision_label, documents.sla_started_at,
+      documents.days_until_validation, documents.current_assignee_user_id
+    FROM engineering_documents documents
+    INNER JOIN projects ON projects.id = documents.project_id
+    WHERE ${slaScanEligibility} AND documents.id = ? AND documents.project_id = ?
+    LIMIT 1
+  `, [id, projectId]);
+  return rows[0] ? mapDocumentRegisterRow(rows[0]) : null;
+};
+
+const findSlaEvaluationSnapshot = async (connection, { documentId, projectId }) => {
+  const [rows] = await connection.execute(`
+    SELECT documents.id, documents.project_id, documents.document_number,
+      documents.workflow_status, documents.lifecycle_status, documents.revision_label,
+      documents.responsible_role, documents.current_assignee_user_id,
+      documents.active_revision_id, documents.active_file_id,
+      documents.sla_started_at, documents.days_until_validation,
+      UTC_TIMESTAMP(3) AS evaluation_server_now,
+      CASE WHEN documents.lifecycle_status = 'Active'
+        AND documents.workflow_status <> 'Approved'
+        AND LOWER(TRIM(projects.status)) = 'active'
+        THEN 1 ELSE 0 END AS notification_eligible
+    FROM engineering_documents documents
+    INNER JOIN projects ON projects.id = documents.project_id
+    WHERE documents.id = ? AND documents.project_id = ?
+    LIMIT 1
+  `, [documentId, projectId]);
+  if (!rows[0]) return null;
+  // Missing baseline must reach the evaluator's failure classification, not disappear in WHERE.
+  return {
+    document: mapDocumentFoundationRow(rows[0]),
+    eligible: Number(rows[0].notification_eligible) === 1,
+    serverNow: rows[0].evaluation_server_now,
+  };
+};
+
 const listSlaNotificationCandidateDocuments = async ({ limit = 200 } = {}) => {
   const normalizedLimit = Math.min(1000, Math.max(1, Number.parseInt(limit, 10) || 200));
   const sql = `
@@ -1406,6 +1479,10 @@ const listDocumentRevisions = async ({ documentId, projectId }) => {
 };
 
 module.exports = {
+  findSlaEvaluationSnapshot,
+  getSlaScanBoundary,
+  listSlaScanCandidates,
+  findSlaScanDocument,
   findDocumentByProjectAndNumber,
   findDocumentFoundationById,
   findDocumentRegisterById,

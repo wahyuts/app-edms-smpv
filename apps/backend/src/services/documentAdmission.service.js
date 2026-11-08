@@ -78,7 +78,105 @@ const noteDbOutcome = (outcome) => {
   }
 };
 
-const mutate = async (scope, callback) => withContinuation(async () => {
+// Internal evidence is kept off the original error/public response, including frozen driver errors.
+const transactionEvidenceByError = new WeakMap();
+const getTransactionEvidence = (error) => transactionEvidenceByError.get(error);
+const mutateWithEvidence = async (scope, callback) => {
+  let connection, value, primaryError;
+  let failed = false;
+  const evidence = {
+    phase: 'BEFORE_BEGIN', phases: ['BEFORE_BEGIN'], failurePhase: null,
+    outcome: 'NOT_STARTED', beginAttempted: false, beginConfirmed: false,
+    commitAttempted: false, commitConfirmed: false,
+    rollbackAttempted: false, rollbackConfirmed: false, rollbackFailed: false,
+    connectionDisposition: 'NONE', cleanupErrors: [],
+  };
+  const phase = (next) => { evidence.phase = next; evidence.phases.push(next); };
+  const diagnostic = (operation, error) => {
+    evidence.cleanupErrors.push(Object.freeze({ operation, code: error?.code || 'UNKNOWN' }));
+  };
+  try {
+    connection = await pool.getConnection();
+    phase('BEGIN_IN_PROGRESS');
+    evidence.beginAttempted = true;
+    evidence.outcome = 'UNKNOWN';
+    await connection.beginTransaction();
+    evidence.beginConfirmed = true;
+    phase('TRANSACTION_ACTIVE');
+    await repository.assertGate(connection, scope, tokenFor(scope));
+    value = await callback(connection);
+    phase('COMMIT_IN_PROGRESS');
+    evidence.commitAttempted = true;
+    await connection.commit();
+    evidence.commitConfirmed = true;
+    evidence.outcome = 'COMMITTED';
+    phase('COMMIT_CONFIRMED');
+  } catch (error) {
+    failed = true;
+    primaryError = error;
+    evidence.failurePhase = evidence.phase;
+    if (connection && evidence.beginAttempted) {
+      phase('ROLLBACK_IN_PROGRESS');
+      evidence.rollbackAttempted = true;
+      try {
+        await connection.rollback();
+        evidence.rollbackConfirmed = true;
+        phase('ROLLBACK_CONFIRMED');
+        // Even an acknowledged ROLLBACK cannot disprove a previously attempted COMMIT.
+        if (!evidence.commitAttempted) evidence.outcome = 'ROLLED_BACK';
+      } catch (rollbackError) {
+        evidence.rollbackFailed = true;
+        diagnostic('rollback', rollbackError);
+      }
+    }
+    if (evidence.outcome === 'UNKNOWN') {
+      phase('OUTCOME_UNKNOWN');
+      noteDbOutcome('UNKNOWN');
+    }
+  } finally {
+    phase('CLEANUP');
+    if (connection) {
+      const discard = () => {
+        try {
+          connection.destroy();
+          evidence.connectionDisposition = 'DESTROYED';
+        } catch (destroyError) {
+          evidence.connectionDisposition = 'DESTROY_FAILED';
+          diagnostic('destroy', destroyError);
+        }
+      };
+      if (evidence.outcome === 'UNKNOWN') discard();
+      else {
+        try {
+          connection.release();
+          evidence.connectionDisposition = 'RELEASED';
+        } catch (releaseError) {
+          diagnostic('release', releaseError);
+          discard();
+        }
+      }
+    }
+  }
+  const transactionEvidence = Object.freeze({ ...evidence,
+    phases: Object.freeze(evidence.phases), cleanupErrors: Object.freeze(evidence.cleanupErrors) });
+  if (evidence.cleanupErrors.length) {
+    try {
+      logger.error('[DOCUMENT_ADMISSION]', 'event=transaction_cleanup_error',
+        `outcome=${evidence.outcome}`, `connectionDisposition=${evidence.connectionDisposition}`,
+        ...evidence.cleanupErrors.map(item => `${item.operation}Code=${item.code}`));
+    } catch { /* Diagnostics must not replace the primary error or a confirmed COMMIT. */ }
+  }
+  if (failed) {
+    if (primaryError && ['object', 'function'].includes(typeof primaryError)) {
+      transactionEvidenceByError.set(primaryError, transactionEvidence);
+    }
+    throw primaryError;
+  }
+  return { value, transactionEvidence };
+};
+
+const mutate = async (scope, callback, { transactionEvidence = false } = {}) => withContinuation(async () => {
+  if (transactionEvidence === true) return mutateWithEvidence(scope, callback);
   const connection = await pool.getConnection();
   let committing = false;
   try {
@@ -177,5 +275,5 @@ const reserveDelete = async ({ activeProject, actorUserId, documentId, requestId
 };
 
 module.exports = { current, runWriter, documentWriter, trackIo, guardTransaction, noteDbOutcome,
-  mutate, mutateSelected, withContinuation, guardBulkDocument, assertReadable, reserveDelete,
+  mutate, getTransactionEvidence, mutateSelected, withContinuation, guardBulkDocument, assertReadable, reserveDelete,
   evaluateQuiescence: repository.evaluateQuiescence };

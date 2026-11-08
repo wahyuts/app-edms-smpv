@@ -149,11 +149,12 @@ const createAuditOrderClause = ({ direction, sortBy }) => {
   return `ORDER BY ${sortColumn} ${order}, occurred_at DESC, id DESC`;
 };
 
-const insertAuditRecord = async (record) => {
+const insertAuditRecord = async (record, { connection } = {}) => {
+  const transactional = Boolean(connection);
   const write = async (connection) => {
     await connection.execute(
       `
-        INSERT IGNORE INTO audit_trail (
+        INSERT ${transactional ? '' : 'IGNORE '}INTO audit_trail (
           id, identity_key, project_id, actor_user_id, actor_name, department,
           official_role, action, business_event, detail, resource_type,
           resource_id, reference, metadata
@@ -178,6 +179,18 @@ const insertAuditRecord = async (record) => {
       ]
     );
   };
+  if (connection) {
+    try {
+      return await write(connection);
+    } catch (error) {
+      if (error.code !== 'ER_DUP_ENTRY') throw error;
+      const [existing] = await connection.execute(
+        'SELECT id FROM audit_trail WHERE identity_key = ? LIMIT 1', [record.identityKey]
+      );
+      if (!existing.length) throw error;
+      return;
+    }
+  }
   if (record.resourceType === 'Document' && record.projectId && record.resourceId) {
     return admission.mutate({ projectId: record.projectId, documentId: record.resourceId }, write);
   }
