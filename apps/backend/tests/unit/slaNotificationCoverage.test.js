@@ -443,7 +443,11 @@ for (const [event, target] of [['SLA_AT_RISK', '/sla-monitoring'], ['SLA_OVERDUE
     let recipientQuery;
     const realtime = load('constants/realtime.constants.js');
     const service = load('services/notification.service.js', {
-      '../repositories/notification.repository': { async createNotification(value) { writes.push(value); return 1; } },
+      'node:crypto': require('node:crypto'),
+      '../repositories/notification.repository': {
+        async listSlaNotificationsByBusinessKey() { return []; },
+        async createNotification(value) { writes.push(value); return 1; },
+      },
       '../repositories/projectMembership.repository': { async listActiveMembershipsByProjectAndOfficialRoles(args) {
         recipientQuery = args;
         return args.officialRoles.map((officialRole, n) => ({ id: `M${n}`, userId: n + 1, officialRole }));
@@ -465,7 +469,9 @@ for (const [event, target] of [['SLA_AT_RISK', '/sla-monitoring'], ['SLA_OVERDUE
       assert.equal(notification.metadata.revision, document.revision);
       assert.equal(notification.metadata.workflowStatus, document.status);
       assert.equal(notification.identityKey,
-        `${service.NOTIFICATION_EVENT_TYPE[event]}:P0:${document.id}:${notification.recipientUserId}:basis`);
+        `sla:v1:${require('node:crypto').createHash('sha256')
+          .update(`${service.NOTIFICATION_EVENT_TYPE[event]}:P0:${document.id}:${notification.recipientUserId}:basis`).digest('hex')}`);
+      assert.equal(notification.metadata.notificationIdentityBasis, 'basis');
       assert.notEqual(notification.recipientRole, 'Viewer');
     }
     for (const eventPayload of events) {

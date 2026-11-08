@@ -133,6 +133,30 @@ const fixture = (t, options = {}) => {
   return { args, records, original, physicalFiles, get doc() { return doc; } };
 };
 
+for (const file of [false, true]) {
+  test(`Edit Document with real isolated SLA identity persistence, upload=${file}`, async t => {
+    const f = fixture(t, { file });
+    const { fixture: slaFixture, document: slaDocument } = require('../helpers/slaTransactionFixture.cjs');
+    const isolated = slaFixture({ documents: [slaDocument('DOC-1', { projectId: 'PRJ-1' })] });
+    f.args.payload.daysUntilValidation = 3;
+    sla.evaluateDocumentForSlaNotifications.mock.mockImplementation(async ({ document: updated }) => {
+      Object.assign(isolated.documents[0], updated);
+      return isolated.evaluate();
+    });
+    const result = await documents.updateDocument(f.args);
+    assert.equal(result.description, 'Updated');
+    assert.equal(f.records.files.length, Number(file));
+    assert.equal(f.records.revisions.length, Number(file));
+    assert.equal(file ? result.activeFileId !== f.original.activeFileId : result.activeFileId === f.original.activeFileId, true);
+    assert.equal(isolated.state.notifications.length, 4);
+    assert.ok(isolated.state.notifications.every(row => /^sla:v1:[a-f0-9]{64}$/.test(row.identity_key)));
+    assert.equal(isolated.state.evaluations.length, 1);
+    assert.equal(isolated.state.audits.length, 1);
+    assert.equal(isolated.events.length, 4);
+    assert.equal(realtime.publishDocumentUpdated.mock.callCount() + realtime.publishRevisionUploaded.mock.callCount(), 1);
+  });
+}
+
 for (const rev of ['A', '01', undefined, '', '   ', null]) {
   test(`Create service persists normalized REV. ${JSON.stringify(rev)} and returns it`, async (t) => {
     const f = fixture(t);
