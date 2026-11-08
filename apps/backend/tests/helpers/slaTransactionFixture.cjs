@@ -68,8 +68,9 @@ const fixture = (options = {}) => {
       assert.match(normalized, /project_memberships\.status\)\) = 'active'/);
       assert.match(normalized, /users\.status\)\) = 'active'/);
       assert.match(normalized, /projects\.status\)\) = 'active'/);
-      assert.deepEqual(Array.from(values), ['P1', 'admin', 'document owner', 'team process', 'team project']);
-      return [values.slice(1).map((role, n) => ({ id: `M${n}`, user_id: n + 1, project_id: 'P1', official_role: role,
+      assert.ok(docs.some(doc => doc.projectId === values[0]));
+      assert.deepEqual(Array.from(values.slice(1)), ['admin', 'document owner', 'team process', 'team project']);
+      return [values.slice(1).map((role, n) => ({ id: `M${n}`, user_id: n + 1, project_id: values[0], official_role: role,
         status: 'Active', user_status: 'Active', project_status: 'Active' }))];
     }
     if (normalized.includes('FROM document_sla_evaluations')) {
@@ -86,6 +87,7 @@ const fixture = (options = {}) => {
         && row.recipient_user_id === values[2] && row.related_resource_id === values[3])];
     }
     if (/^INSERT (?:IGNORE )?INTO notifications/.test(normalized)) {
+      assert.ok(values[1].length <= 255, 'Notification identity must fit canonical VARCHAR(255)');
       trace.push(`notification:${values[3]}`);
       fail(`recipient-${values[3]}`, values);
       if (control.collision === 'notification') throw duplicate();

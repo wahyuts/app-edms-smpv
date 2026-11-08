@@ -1,3 +1,4 @@
+const { createHash } = require('node:crypto');
 const notificationRepository = require('../repositories/notification.repository');
 const projectMembershipRepository = require('../repositories/projectMembership.repository');
 const logger = require('../config/logger');
@@ -157,9 +158,10 @@ const hasExistingSlaNotificationForCycle = async ({
   document,
   eventType,
   recipient,
+  notifications,
 }, { connection } = {}) => {
   const targetCycleId = normalizeSlaCycleId(cycleId || document.slaStartedAt || document.updatedAt || document.lastUpdated);
-  const existingNotifications = await notificationRepository.listSlaNotificationsByBusinessKey({
+  const existingNotifications = notifications || await notificationRepository.listSlaNotificationsByBusinessKey({
     eventType,
     projectId: document.projectId,
     recipientUserId: recipient.userId,
@@ -390,11 +392,30 @@ const createSlaStateNotifications = async ({
   const normalizedCycleId = normalizeSlaCycleId(cycleId || document.slaStartedAt || document.updatedAt || document.lastUpdated);
 
   const persistRecipient = async (recipient) => {
+    const basis = identityBasis || normalizedCycleId;
+    const legacyIdentityKey = [eventType, document.projectId, document.id, recipient.userId, basis].join(':');
+    const identityKey = `sla:v1:${createHash('sha256').update(legacyIdentityKey, 'utf8').digest('hex')}`;
+    const existingNotifications = await notificationRepository.listSlaNotificationsByBusinessKey({
+      eventType,
+      projectId: document.projectId,
+      recipientUserId: recipient.userId,
+      relatedResourceId: document.id,
+    }, { connection });
+
+    // Match the same complete legacy identity, including rows whose old key was
+    // truncated by a non-strict server but whose metadata retained the full basis.
+    if (existingNotifications.some((notification) =>
+      notification.identityKey === legacyIdentityKey ||
+      (!String(notification.identityKey).startsWith('sla:v1:') &&
+        notification.metadata?.notificationIdentityBasis === basis)
+    )) return { created: false, skipped: 'duplicate' };
+
     if (!skipCycleDuplicateCheck && await hasExistingSlaNotificationForCycle({
       cycleId,
       document,
       eventType,
       recipient,
+      notifications: existingNotifications,
     }, { connection })) {
       return { created: false, skipped: 'duplicate' };
     }
@@ -402,13 +423,7 @@ const createSlaStateNotifications = async ({
     const notificationId = createEntityId('NTF');
     const affectedRows = await notificationRepository.createNotification({
       id: notificationId,
-      identityKey: [
-        eventType,
-        document.projectId,
-        document.id,
-        recipient.userId,
-        identityBasis || normalizedCycleId,
-      ].join(':'),
+      identityKey,
       projectId: document.projectId,
       recipientUserId: recipient.userId,
       recipientProjectMembershipId: recipient.id,
