@@ -152,6 +152,8 @@ for (const surface of ['sla', 'escalation']) test(`${surface} local-state datase
     react: h.hooks,
     '@/features/document-register/constants/document.constants': documentConstants,
     '@/features/document-register/hooks/useRealtimePermanentDeleteSync': { useRealtimePermanentDeleteSync: h.deleteHook },
+    '@/features/document-register/utils/realtimeRefetchCoalescer': { createRealtimeRefetchCoalescer },
+    '@/shared/realtime': h.realtime,
     '@/features/sla-management/hooks/useSlaRuntimeClock': { useSlaRuntimeClock: () => 0 },
     '@/features/sla-management/utils/sla-timer-display': { resolveLiveSlaTimer: row => row, resolveCurrentAssigneeRoleDisplay: () => 'Team Process' },
     '@/shared/stores/project-context.store': { useProjectContextStore: h.store },
@@ -171,6 +173,66 @@ for (const surface of ['sla', 'escalation']) test(`${surface} local-state datase
   assert.equal(state.rows.length, 5);
   h.reconnect('P1'); t.mock.timers.tick(500); await settle(); h.render(hook); await settle();
   assert.equal(loads, before + 2);
+  if (surface === 'sla') {
+    for (const [index, status] of ['Project Review', 'Process Comment', 'Process Reject'].entries()) {
+      const beforeWorkflow = loads;
+      const workflow = event({ type: 'workflow.changed', eventId: `APPROVAL-${index}` });
+      h.emit({ ...workflow, projectId: 'OTHER' });
+      h.emit(event({ type: 'notification.created' }));
+      t.mock.timers.tick(500); h.render(hook); await settle();
+      assert.equal(loads, beforeWorkflow, 'Unrelated events must not reload monitoring');
+      rows = [{ ...rows[0], status }];
+      h.emit(workflow); h.emit(workflow);
+      t.mock.timers.tick(500); h.render(hook); await settle(); state = h.render(hook);
+      assert.equal(loads, beforeWorkflow + 1);
+      assert.equal(state.rows[0].status, status);
+      assert.equal(state.searchValue, 'keep');
+      h.emit(workflow); t.mock.timers.tick(500); h.render(hook); await settle();
+      assert.equal(loads, beforeWorkflow + 1, 'Duplicate event must not reload again');
+    }
+    const beforeStale = loads;
+    h.emit(event({ type: 'workflow.changed', eventId: 'OLD-PROJECT' }));
+    h.context = { ...h.context, activeProject: { id: 'P2' } };
+    h.render(hook); await settle();
+    assert.equal(loads, beforeStale + 1, 'Project switch loads its own dataset');
+    t.mock.timers.tick(500); h.render(hook); await settle();
+    assert.equal(loads, beforeStale + 1, 'Old project timer is cancelled');
+    h.emit(event({ type: 'workflow.changed', projectId: 'P2', eventId: 'UNMOUNT' }));
+    h.dispose();
+    assert.equal(h.events.size, 0);
+    t.mock.timers.tick(500); await settle();
+    assert.equal(loads, beforeStale + 1, 'Unmount cancels pending workflow refresh');
+  }
+});
+
+for (const approval of ['A', 'B', 'C']) test(`Approval ${approval} workflow event refetches active PFD and PID register queries once`, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = await harness(); t.after(h.dispose);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity, gcTime: Infinity } } });
+  t.after(() => client.clear());
+  const calls = [];
+  const keys = ['PFD', 'P&ID'].map(drawing => ['documents', 'register', 'P1', { drawing }]);
+  const unsubscribers = keys.map(key => {
+    client.setQueryData(key, 'before');
+    return new QueryObserver(client, { queryKey: key, queryFn: async () => { calls.push(key); return `after-${approval}`; } }).subscribe(() => {});
+  });
+  t.after(() => unsubscribers.forEach(unsubscribe => unsubscribe()));
+  const runtime = await load('features/document-register/hooks/useRealtimeDocumentRuntimeSync.js', {
+    react: h.hooks, '@/shared/api/query-client': { queryClient: client }, '@/shared/realtime': h.realtime,
+    '@/shared/stores/project-context.store': { useProjectContextStore: h.store },
+    '../utils/realtimeRefetchCoalescer': { createRealtimeRefetchCoalescer },
+    './useRealtimePermanentDeleteSync': { useRealtimePermanentDeleteSync: h.deleteHook },
+  });
+  h.render(runtime.useRealtimeDocumentRuntimeSync);
+  h.emit(event({ type: 'workflow.changed', projectId: 'OTHER' }));
+  t.mock.timers.tick(500); await settle(); assert.equal(calls.length, 0);
+  h.emit(event({ type: 'workflow.changed', eventId: `APPROVAL-${approval}` }));
+  h.emit(event({ type: 'workflow.changed', eventId: `APPROVAL-${approval}` }));
+  t.mock.timers.tick(500); await settle();
+  assert.equal(calls.length, 2);
+  for (const key of keys) assert.equal(client.getQueryData(key), `after-${approval}`);
+  h.emit(event({ type: 'workflow.changed', eventId: 'CANCELLED' })); h.dispose();
+  t.mock.timers.tick(500); await settle(); assert.equal(calls.length, 2);
 });
 
 test('Server-paginated register refetches a valid page after deletion without clearing drawing/search filters', async t => {
@@ -215,8 +277,10 @@ test('Existing EventSource registers document.deleted and still delivers notific
     assert.equal(names.filter(([name]) => name === 'document.deleted').length, 1);
     names.find(([name]) => name === 'document.deleted')[1]({ data: JSON.stringify(event()) });
     names.find(([name]) => name === 'notification.created')[1]({ data: JSON.stringify(event({ type: 'notification.created' })) });
+    assert.equal(names.filter(([name]) => name === 'workflow.changed').length, 1);
+    names.find(([name]) => name === 'workflow.changed')[1]({ data: JSON.stringify(event({ type: 'workflow.changed' })) });
     names.find(([name]) => name === 'document.deleted')[1]({ data: JSON.stringify(event({ projectId: 'OTHER' })) });
-    assert.deepEqual(emitted.map(e => e.type), ['document.deleted','notification.created']);
+    assert.deepEqual(emitted.map(e => e.type), ['document.deleted','notification.created','workflow.changed']);
     client.reconnectAttempt = 1; source.onopen(); assert.equal(recovery.length, 1); assert.equal(recovery[0].projectId, 'P1');
     client.stop();
   } finally { globalThis.EventSource = oldSource; }

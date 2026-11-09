@@ -1297,7 +1297,7 @@ export const CreateDocumentModal = ({
           ) : null}
         </label>
         <label className="block">
-          <span className={fieldLabelClassName}>REV.</span>
+          <span className={fieldLabelClassName}>REV. (Opsional)</span>
           <input
             className={inputClassName}
             maxLength={50}

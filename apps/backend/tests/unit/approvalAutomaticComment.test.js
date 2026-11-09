@@ -82,6 +82,39 @@ const fixture = (t, { role = 'Team Process', status, failInsert = false, noMembe
     startNewReviewCycle() { doc = { ...original, activeRevisionId: 'REV-2' }; } };
 };
 
+for (const role of Object.keys(messages)) for (const type of ['approve', 'approveWithComment', 'reject']) {
+  test(`Approval workflow SSE emitted once after SLA settles: ${role}, ${type}`, async (t) => {
+    const f = fixture(t, { role });
+    let finishSla;
+    let reachedSla;
+    const slaStarted = new Promise(resolve => { reachedSla = resolve; });
+    sla.evaluateDocumentForSlaNotifications.mock.mockImplementation(() => {
+      reachedSla();
+      return new Promise(resolve => { finishSla = resolve; });
+    });
+    const result = approval.processApproval({ ...f.args, type, comment: 'Synthetic reviewer comment' });
+    await slaStarted;
+    assert.equal(realtime.publishWorkflowChanged.mock.callCount(), 0);
+    finishSla(); await result;
+    assert.equal(realtime.publishWorkflowChanged.mock.callCount(), 1);
+    const payload = realtime.publishWorkflowChanged.mock.calls[0].arguments[0];
+    assert.equal(payload.document.id, 'DOC-1');
+    assert.equal(payload.document.projectId, 'PRJ-1');
+    assert.equal(payload.document.status, f.doc.status);
+    await assert.rejects(approval.processApproval({ ...f.args, type, comment: 'Synthetic reviewer comment' }), { code: 'WORKFLOW_CONFLICT' });
+    assert.equal(realtime.publishWorkflowChanged.mock.callCount(), 1);
+  });
+}
+
+test('Diagnostic: SLA failure after committed approval prevents workflow SSE in current backend', async t => {
+  const f = fixture(t);
+  sla.evaluateDocumentForSlaNotifications.mock.mockImplementation(async () => { throw new Error('Synthetic SLA failure'); });
+  await assert.rejects(approval.processApproval(f.args), /Synthetic SLA failure/);
+  assert.equal(f.doc.status, 'Project Review');
+  assert.equal(f.records.comments.length, 1);
+  assert.equal(realtime.publishWorkflowChanged.mock.callCount(), 0);
+});
+
 for (const role of Object.keys(messages)) {
   test(`Approval A automatic comment, identity and retry protection: ${role}`, async (t) => {
     const f = fixture(t, { role });

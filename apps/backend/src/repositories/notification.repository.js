@@ -103,7 +103,19 @@ const createNotificationOrderClause = ({ direction, sortBy }) => {
   return `ORDER BY ${sortColumn} ${order}, created_at DESC, id DESC`;
 };
 
-const createNotification = async (notification) => {
+const createNotification = async (notification, { connection } = {}) => {
+  if (connection) {
+    try {
+      return await insertNotification(connection, notification, { strict: true });
+    } catch (error) {
+      if (error.code !== 'ER_DUP_ENTRY') throw error;
+      const [existing] = await connection.execute(
+        'SELECT id FROM notifications WHERE identity_key = ? LIMIT 1', [notification.identityKey]
+      );
+      if (!existing.length) throw error;
+      return 0;
+    }
+  }
   const write = (connection) => insertNotification(connection, notification);
   if (notification.relatedResourceType === 'Document' && notification.relatedResourceId && notification.projectId) {
     return admission.mutate({ projectId: notification.projectId, documentId: notification.relatedResourceId }, write);
@@ -226,8 +238,8 @@ const listSlaNotificationsByBusinessKey = async ({
   projectId,
   recipientUserId,
   relatedResourceId,
-}) => {
-  const [rows] = await pool.execute(
+}, { connection = pool } = {}) => {
+  const [rows] = await connection.execute(
     `
       SELECT *
       FROM notifications
