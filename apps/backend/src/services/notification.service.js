@@ -1,3 +1,4 @@
+const { createHash } = require('node:crypto');
 const notificationRepository = require('../repositories/notification.repository');
 const projectMembershipRepository = require('../repositories/projectMembership.repository');
 const logger = require('../config/logger');
@@ -157,14 +158,15 @@ const hasExistingSlaNotificationForCycle = async ({
   document,
   eventType,
   recipient,
-}) => {
+  notifications,
+}, { connection } = {}) => {
   const targetCycleId = normalizeSlaCycleId(cycleId || document.slaStartedAt || document.updatedAt || document.lastUpdated);
-  const existingNotifications = await notificationRepository.listSlaNotificationsByBusinessKey({
+  const existingNotifications = notifications || await notificationRepository.listSlaNotificationsByBusinessKey({
     eventType,
     projectId: document.projectId,
     recipientUserId: recipient.userId,
     relatedResourceId: document.id,
-  });
+  }, { connection });
 
   return existingNotifications.some((notification) =>
     isSameSlaCycle(
@@ -347,11 +349,11 @@ const createDocumentNotificationsForOfficialRoles = async ({
   };
 };
 
-const resolveOfficialSlaRecipients = async (document) => {
+const resolveOfficialSlaRecipients = async (document, { connection } = {}) => {
   const memberships = await projectMembershipRepository.listActiveMembershipsByProjectAndOfficialRoles({
     officialRoles: SLA_NOTIFICATION_ROLES,
     projectId: document.projectId,
-  });
+  }, { connection });
   const uniqueByUserId = new Map();
 
   memberships.forEach((membership) => {
@@ -370,7 +372,7 @@ const createSlaStateNotifications = async ({
   identityBasis = null,
   metadata = {},
   skipCycleDuplicateCheck = false,
-}) => {
+}, { connection, postCommitNotifications } = {}) => {
   if (
     !document ||
     document.status === 'Approved' ||
@@ -382,30 +384,46 @@ const createSlaStateNotifications = async ({
     };
   }
 
-  const recipients = await resolveOfficialSlaRecipients(document);
+  if (connection && !Array.isArray(postCommitNotifications)) {
+    throw new Error('Transactional SLA notifications require a post-commit event buffer');
+  }
+  const recipients = await resolveOfficialSlaRecipients(document, { connection });
   const dictionary = messageDictionary[eventType];
   const normalizedCycleId = normalizeSlaCycleId(cycleId || document.slaStartedAt || document.updatedAt || document.lastUpdated);
 
-  const results = await Promise.all(recipients.map(async (recipient) => {
+  const persistRecipient = async (recipient) => {
+    const basis = identityBasis || normalizedCycleId;
+    const legacyIdentityKey = [eventType, document.projectId, document.id, recipient.userId, basis].join(':');
+    const identityKey = `sla:v1:${createHash('sha256').update(legacyIdentityKey, 'utf8').digest('hex')}`;
+    const existingNotifications = await notificationRepository.listSlaNotificationsByBusinessKey({
+      eventType,
+      projectId: document.projectId,
+      recipientUserId: recipient.userId,
+      relatedResourceId: document.id,
+    }, { connection });
+
+    // Match the same complete legacy identity, including rows whose old key was
+    // truncated by a non-strict server but whose metadata retained the full basis.
+    if (existingNotifications.some((notification) =>
+      notification.identityKey === legacyIdentityKey ||
+      (!String(notification.identityKey).startsWith('sla:v1:') &&
+        notification.metadata?.notificationIdentityBasis === basis)
+    )) return { created: false, skipped: 'duplicate' };
+
     if (!skipCycleDuplicateCheck && await hasExistingSlaNotificationForCycle({
       cycleId,
       document,
       eventType,
       recipient,
-    })) {
+      notifications: existingNotifications,
+    }, { connection })) {
       return { created: false, skipped: 'duplicate' };
     }
 
     const notificationId = createEntityId('NTF');
     const affectedRows = await notificationRepository.createNotification({
       id: notificationId,
-      identityKey: [
-        eventType,
-        document.projectId,
-        document.id,
-        recipient.userId,
-        identityBasis || normalizedCycleId,
-      ].join(':'),
+      identityKey,
       projectId: document.projectId,
       recipientUserId: recipient.userId,
       recipientProjectMembershipId: recipient.id,
@@ -427,22 +445,31 @@ const createSlaStateNotifications = async ({
         slaStatus: document.slaStatus,
         workflowStatus: document.status,
       },
-    });
+    }, { connection });
     const created = affectedRows === 1;
 
     if (created) {
-      publishNotificationCreatedSafely({
+      const event = {
         document,
         eventType,
         notificationId,
         recipientMembership: recipient,
-      });
+      };
+      if (connection) postCommitNotifications.push(event);
+      else publishNotificationCreatedSafely(event);
     }
 
     return { created };
-  }));
+  };
+  const results = [];
+  if (connection) {
+    // A failed statement must settle before rollback on the shared transaction.
+    for (const recipient of recipients) results.push(await persistRecipient(recipient));
+  } else {
+    results.push(...await Promise.all(recipients.map(persistRecipient)));
+  }
   const createdCount = results.filter((result) => result?.created).length;
-  logRecipientResolution({
+  if (!connection) logRecipientResolution({
     createdCount,
     document,
     eventType,
@@ -604,6 +631,7 @@ const deleteNotifications = async ({ activeProject, notificationIds = [], query 
 };
 
 module.exports = {
+  publishNotificationCreatedSafely,
   NOTIFICATION_EVENT_TYPE,
   createDocumentNotification,
   createDocumentNotificationsForOfficialRoles,
