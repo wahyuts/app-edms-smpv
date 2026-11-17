@@ -36,6 +36,19 @@ const fixture = (options = {}) => {
         },
         async rollback() { trace.push('ROLLBACK'); staged = null; },
         release() { trace.push('RELEASE'); unlock(); },
+        async execute(sql, values) {
+          assert.ok(staged, 'Snapshot INSERT must share the open workflow transaction');
+          assert.match(sql, /INSERT INTO workflow_comments/);
+          assert.match(sql, /created_at, created_by_username_snapshot, approval_target_stage_snapshot/);
+          assert.match(sql, /UTC_TIMESTAMP\(3\)/);
+          assert.equal(values.length, 11);
+          staged.comments.push({ id: values[0], projectId: values[1], documentId: values[2], revisionId: values[3],
+            workflowAction: values[4], workflowComment: values[5], createdByUserId: values[6],
+            createdByNameSnapshot: values[7], createdByOfficialRoleSnapshot: values[8],
+            createdByUsernameSnapshot: values[9], approvalTargetStageSnapshot: values[10] });
+          trace.push('SNAPSHOT SQL');
+          return [{ affectedRows: 1 }];
+        },
       };
     },
     async execute(sql, values) {
@@ -82,7 +95,10 @@ const fixture = (options = {}) => {
   const loader = createLoader(mocks);
   const repo = loader.load('repositories/document.repository.js');
   const membership = loader.load('repositories/projectMembership.repository.js');
-  membership.findActiveMembershipByProjectAndUser = async () => options.denied ? null : { officialRole: role, userId: 1 };
+  membership.findActiveMembershipByProjectAndUser = async () => options.denied ? null : {
+    officialRole: role, userId: 1,
+    username: Object.hasOwn(options, 'username') ? options.username : 'synthetic-reviewer',
+  };
   membership.findActiveMembershipByProjectAndOfficialRole = async () => ({ userId: 2 });
   repo.findDocumentRegisterById = async () => {
     if (applied && options.postFailure === 'reload') throw new Error('Reload failed');
@@ -97,8 +113,10 @@ const fixture = (options = {}) => {
   };
   repo.updateRevisionLabel = async () => {};
   repo.insertDocumentHistory = async (connection, value) => { staged.history.push({ ...value }); trace.push('HISTORY'); };
+  const insertComment = repo.insertWorkflowComment;
   repo.insertWorkflowComment = async (connection, value) => {
     if (options.writeFailure) throw new Error('Comment insert failed');
+    if (options.snapshotSql) return insertComment(connection, value);
     staged.comments.push({ ...value }); trace.push('COMMENT');
   };
   repo.insertStoredFile = async () => { trace.push('STORED ATTACHMENT'); };
@@ -111,6 +129,39 @@ const fixture = (options = {}) => {
   return { loader, service, args, before, trace, sent, logs, get state() { return committed; },
     controller: () => loader.load('controllers/document.controller.js') };
 };
+
+for (const role of ['Team Process', 'Team Project']) {
+  test(`Approval A ${role} persists immutable snapshots through actual repository SQL before COMMIT`, async () => {
+    const f = fixture({ role, snapshotSql: true });
+    await f.service.processApproval(f.args); await settle();
+    const [event] = f.state.comments;
+    assert.equal(event.createdByUsernameSnapshot, 'synthetic-reviewer');
+    assert.equal(event.createdByOfficialRoleSnapshot, role);
+    assert.equal(event.approvalTargetStageSnapshot, role === 'Team Process' ? 'IFA-Submitted' : 'AS-Built');
+    assert.equal(event.revisionId, 'REV-1');
+    assert.equal(event.createdByNameSnapshot, f.args.actorUserFullName);
+    assert.equal(f.state.document.activeRevisionId, f.before.document.activeRevisionId);
+    assert.equal(f.state.document.activeFileId, f.before.document.activeFileId);
+    assert.ok(f.trace.indexOf('SNAPSHOT SQL') < f.trace.indexOf('COMMIT'));
+    assert.ok(!f.trace.includes('STORED ATTACHMENT'));
+    assert.equal(f.state.comments.length, 1); assert.equal(f.state.history.length, 1);
+  });
+}
+for (const username of [undefined, null, '', '   ', 'x'.repeat(256)]) {
+  test(`missing/invalid Approval A username rolls back without an event: ${String(username).length}`, async () => {
+    const f = fixture({ username, snapshotSql: true });
+    await assert.rejects(f.service.processApproval(f.args), { statusCode: 409 });
+    assert.deepEqual(f.state, f.before); assert.ok(f.trace.includes('ROLLBACK'));
+    assert.ok(!f.trace.includes('COMMIT')); assert.equal(f.sent.length, 0);
+  });
+}
+test('snapshot SQL failure/commit failure rolls back the Approval A event with workflow', async () => {
+  for (const failure of [{ writeFailure: true }, { commitFailure: true }]) {
+    const f = fixture({ ...failure, snapshotSql: true });
+    await assert.rejects(f.service.processApproval(f.args));
+    assert.deepEqual(f.state, f.before); assert.equal(f.sent.length, 0);
+  }
+});
 
 for (const role of ['Team Process', 'Team Project']) for (const type of ['approve', 'approveWithComment', 'reject']) {
   test(`Actual approval path commits then emails: ${role} ${type}`, async () => {

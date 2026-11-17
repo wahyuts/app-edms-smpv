@@ -10,9 +10,10 @@ const allowed = new Set([
   'services/email.service.js', 'services/providers/email.provider.js', 'services/providers/dummy.provider.js',
   'services/providers/resend.provider.js', 'services/devEmailOutbox.service.js',
   'services/approval.service.js', 'services/workflowEngine.service.js',
+  'services/fileAccess.service.js', 'repositories/fileAccess.repository.js', 'utils/contentDisposition.js',
   'repositories/document.repository.js', 'repositories/projectMembership.repository.js',
   'utils/administration.js', 'utils/userEmail.js', 'utils/storageKeyBuilder.js',
-  'utils/storageMetadataCapacity.js', 'utils/fileName.js', 'validators/approval.validator.js',
+  'utils/storageMetadataCapacity.js', 'utils/fileName.js', 'utils/revisionHistoryStage.js', 'validators/approval.validator.js',
   'constants/document.constants.js', 'constants/administration.constants.js', 'constants/storage.constants.js',
   'controllers/document.controller.js', 'validators/document.validator.js', 'utils/response.js',
 ]);

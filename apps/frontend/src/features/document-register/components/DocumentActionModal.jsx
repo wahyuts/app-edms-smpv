@@ -5,6 +5,7 @@ import {
   Eye,
   FileText,
   FileUp,
+  History,
   Loader2,
   Paperclip,
   Trash2,
@@ -20,6 +21,7 @@ import {
 } from "../services/workflow-attachment.service";
 import PreviewCanvas from "./PreviewCanvas";
 import SpreadsheetPreview from "./SpreadsheetPreview";
+import { formatCommentDateTime } from "../utils/documentDateTime";
 
 const modalButtonBaseClassName =
   "inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-semibold transition-colors";
@@ -57,27 +59,6 @@ const formatDateTime = (value) => {
     month: "short",
     year: "numeric",
   }).format(new Date(value));
-};
-
-const formatCommentDateTime = (value) => {
-  if (!value) {
-    return "-";
-  }
-
-  const parsedDate = new Date(value);
-  if (Number.isNaN(parsedDate.getTime())) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false,
-    minute: "2-digit",
-    month: "short",
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-  }).format(parsedDate);
 };
 
 const formatCommentActor = (comment) => {
@@ -405,8 +386,13 @@ const DocumentActionModal = ({
   onClose,
   size = "default",
   title,
+  titleClassName = "",
+  manageBodyScroll = true,
+  isInert = false,
+  layer = 9000,
 }) => {
   useEffect(() => {
+    if (!manageBodyScroll) return;
     const previousOverflow = document.body.style.overflow;
 
     document.body.style.overflow = "hidden";
@@ -414,10 +400,15 @@ const DocumentActionModal = ({
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, []);
+  }, [manageBodyScroll]);
 
   const modalContent = (
-    <div className="fixed inset-0 z-[9000] flex items-center justify-center bg-[#020617]/80 p-4 sm:p-6">
+    <div
+      className="fixed inset-0 z-[9000] flex items-center justify-center bg-[#020617]/80 p-4 sm:p-6"
+      inert={isInert || undefined}
+      aria-hidden={isInert || undefined}
+      style={layer === 9000 ? undefined : { zIndex: layer }}
+    >
       <section
         className={[
           "flex w-full flex-col overflow-hidden rounded-lg border border-[#123A5A] bg-[#061B2F] text-[#F8FAFC] shadow-2xl",
@@ -426,7 +417,7 @@ const DocumentActionModal = ({
         ].join(" ")}
       >
         <header className="shrink-0 flex items-center justify-between border-b border-[#123A5A] px-5 py-4">
-          <h2 className="text-lg font-bold">{title}</h2>
+          <h2 className={["text-lg font-bold", titleClassName].filter(Boolean).join(" ")}>{title}</h2>
           <button
             aria-label="Close modal"
             className={[
@@ -477,6 +468,9 @@ export const ViewDocumentModal = ({
   documentItem,
   onClose,
   onDownload,
+  onRevisionHistory,
+  revisionHistoryTriggerRef,
+  isRevisionHistoryOpen = false,
 }) => {
   const metadata = documentItem.fileMetadata;
   const fileExtension = documentFile?.error
@@ -495,6 +489,19 @@ export const ViewDocumentModal = ({
     <DocumentActionModal
       footer={
         <>
+          {onRevisionHistory ? (
+            <button
+              className={`${secondaryButtonClassName} gap-2`}
+              onClick={onRevisionHistory}
+              ref={revisionHistoryTriggerRef}
+              title="Document Revision History"
+              aria-label="Document Revision History"
+              type="button"
+            >
+              <History aria-hidden="true" className="h-4 w-4 shrink-0" />
+              <span className="hidden text-[#FDE68A] sm:inline">Document Revision History</span>
+            </button>
+          ) : null}
           {["docx", "xls", "xlsx"].includes(fileExtension) ? (
             <button
               className={secondaryButtonClassName}
@@ -512,6 +519,7 @@ export const ViewDocumentModal = ({
       onClose={onClose}
       size="viewer"
       title="View Document"
+      isInert={isRevisionHistoryOpen}
     >
       <div className="grid h-full min-h-0 grid-rows-[minmax(0,240px)_minmax(0,1fr)] gap-5 lg:grid-cols-[360px_minmax(0,1fr)] lg:grid-rows-none">
         <aside className="h-full min-h-0 space-y-4 overflow-y-auto overflow-x-hidden rounded-lg border border-[#123A5A] bg-[#031528] p-4">
@@ -935,13 +943,27 @@ export const WorkflowAttachmentViewerModal = ({
   );
 };
 
-export const HistoryModal = ({ documentItem, onClose, timeline = [] }) => {
+export const HistoryModal = ({ documentItem, onClose, onRevisionHistory, timeline = [] }) => {
   return (
     <DocumentActionModal
       footer={
-        <button className={primaryButtonClassName} onClick={onClose} type="button">
-          Close
-        </button>
+        <>
+          {onRevisionHistory ? (
+            <button
+              className={`${secondaryButtonClassName} gap-2`}
+              onClick={onRevisionHistory}
+              title="Document Revision History"
+              aria-label="Document Revision History"
+              type="button"
+            >
+              <History aria-hidden="true" className="h-4 w-4 shrink-0" />
+              <span className="hidden text-[#FDE68A] sm:inline">Document Revision History</span>
+            </button>
+          ) : null}
+          <button className={primaryButtonClassName} onClick={onClose} type="button">
+            Close
+          </button>
+        </>
       }
       onClose={onClose}
       title="Revision History"

@@ -9,10 +9,26 @@ const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { createHash } = require('node:crypto');
 
 const baselineCommit = '549623517000410b87a9e73a99ca48899dd3cbc6';
 const root = path.resolve(__dirname, '../../../..');
 const baselineSource = file => execFileSync('git', ['show', `${baselineCommit}:${file}`], { cwd: root, encoding: 'utf8' });
+const prePhaseCCommit = '9c65fabee78c799d0ac96ddc2d5bfdcede311669';
+const documentServiceFile = 'apps/backend/src/services/document.service.js';
+const normalizedHash = source => createHash('sha256').update(source.replace(/\r\n/g, '\n')).digest('hex');
+const prePhaseCSource = file => execFileSync('git', ['show', `${prePhaseCCommit}:${file}`], { cwd: root, encoding: 'utf8' });
+const readProtectedSource = file => fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
+
+const acceptExactRevisionHistoryDelta = current => {
+  // Pin the entire approved file, not an ignored function or a pattern-based exemption.
+  assert.equal(normalizedHash(current), 'b50a501908ff333bba302d996c3ff7d56b6e0cf2115ecdd6b07e9cf95cc4e2e9',
+    'Unapproved document.service.js change');
+  const before = prePhaseCSource(documentServiceFile).replace(/\r\n/g, '\n');
+  assert.equal(normalizedHash(before), '9e1ad247510243bae0b830f3d672860f6f6ab70cd6722661832f41d40e2459d9',
+    'Pre-Phase-C document.service.js baseline changed');
+  return before;
+};
 const loadBaseline = (source, dependencies = {}) => {
   const module = { exports: {} };
   vm.runInNewContext(`(function(require,module,exports){${source}\n})`)(name => {
@@ -229,14 +245,25 @@ test('existing operation conflict and missing-operation GET preserve baseline re
   }
 });
 
-test('workflow/storage/SLA/RBAC baseline stays identical except approved REV. and SLA transaction connection plumbing', () => {
+const assertProtectedBaseline = (readSource = readProtectedSource) => {
   for (const file of ['apps/backend/src/services/workflowEngine.service.js','apps/backend/src/services/approval.service.js',
     'apps/backend/src/services/revision.service.js','apps/backend/src/repositories/storageNamespace.repository.js',
     'apps/backend/src/services/storage.service.js',
     'apps/backend/src/services/document.service.js','apps/backend/src/services/fileAccess.service.js',
     'apps/backend/src/services/sla.service.js','apps/backend/src/repositories/sla.repository.js',
     'apps/backend/src/services/authorization.service.js','apps/backend/src/middlewares/authorizePermissions.js']) {
-    let current = fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
+    let current = readSource(file).replace(/\r\n/g, '\n');
+    // Reviewed E.2 deltas only: snapshot validation/INSERT metadata and the
+    // additive targetRevision hook context. No wildcard function exemptions.
+    const approvedEventHashes = {
+      'apps/backend/src/services/approval.service.js': '28efb602abd5994e9ed40e69bc569ff39a03f5138d89f86742527aef23d9125f',
+      'apps/backend/src/services/workflowEngine.service.js': 'cdcf93b7e5c8869a4f62dafab34b0d10f1bbb0330aca639d4d1a04c4b2da2ebb',
+    };
+    if (approvedEventHashes[file]) {
+      assert.equal(normalizedHash(current), approvedEventHashes[file], `Unapproved E.2 change: ${file}`);
+      current = baselineSource(file).replace(/\r\n/g, '\n');
+    }
+    if (file === documentServiceFile) current = acceptExactRevisionHistoryDelta(current);
     if (['apps/backend/src/services/document.service.js', 'apps/backend/src/services/revision.service.js'].includes(file)) {
       current = current.replace("    ...(payload.rev !== undefined ? { rev: payload.rev } : {}),\n", '');
       if (file.endsWith('/document.service.js')) current = current.replace('          rev: payload.rev ?? null,\n', '');
@@ -260,4 +287,53 @@ test('workflow/storage/SLA/RBAC baseline stays identical except approved REV. an
     }
     assert.equal(current, baselineSource(file).replace(/\r\n/g, '\n'), file);
   }
+  // The original eleven-file guard is retained; freeze the actual Delete entry points too.
+  for (const file of [
+    'apps/backend/src/services/permanentDeleteApi.service.js',
+    'apps/backend/src/services/documentDelete.service.js',
+    'apps/backend/src/services/legacyDeleteRestriction.service.js',
+    'apps/backend/src/services/deleteEligibility.service.js',
+    'apps/backend/src/repositories/documentDelete.repository.js',
+    'apps/backend/src/repositories/permanentDeleteApi.repository.js',
+    'apps/backend/src/controllers/permanentDelete.controller.js',
+    'apps/backend/src/routes/permanentDelete.routes.js',
+  ]) {
+    assert.equal(readSource(file).replace(/\r\n/g, '\n'), prePhaseCSource(file).replace(/\r\n/g, '\n'), file);
+  }
+};
+
+test('workflow/storage/SLA/RBAC baseline stays identical except approved REV., SLA plumbing and exact E.2 event metadata', () => {
+  assertProtectedBaseline();
+});
+
+test('exact approved Revision History file is accepted, including existing CRLF normalization', () => {
+  const approved = readProtectedSource(documentServiceFile);
+  assert.equal(acceptExactRevisionHistoryDelta(approved), prePhaseCSource(documentServiceFile).replace(/\r\n/g, '\n'));
+  assert.equal(acceptExactRevisionHistoryDelta(approved.replace(/\n/g, '\r\n')),
+    prePhaseCSource(documentServiceFile).replace(/\r\n/g, '\n'));
+});
+
+for (const file of [
+  'apps/backend/src/services/permanentDeleteApi.service.js',
+  'apps/backend/src/services/documentDelete.service.js',
+  'apps/backend/src/services/workflowEngine.service.js',
+  'apps/backend/src/services/sla.service.js',
+  'apps/backend/src/services/authorization.service.js',
+  'apps/backend/src/services/storage.service.js',
+]) test(`guard rejects unauthorized code in ${file}`, () => {
+  const changed = readProtectedSource(file) + '\nthrow new Error("unapproved fixture mutation");\n';
+  assert.throws(() => assertProtectedBaseline(candidate => candidate === file ? changed : readProtectedSource(candidate)),
+    { code: 'ERR_ASSERTION' });
+});
+
+for (const [label, original, replacement] of [
+  ['inside Revision History', "  const stage = query.stage ?? 'All';",
+    "  const stage = query.stage ?? 'All';\n  globalThis.unapproved = true;"],
+  ['outside Revision History', 'const getDocumentDetail = async', 'const unapprovedGetDocumentDetail = async'],
+]) test(`guard rejects an additional change ${label}`, () => {
+  const current = readProtectedSource(documentServiceFile);
+  assert.equal(current.split(original).length, 2);
+  const changed = current.replace(original, replacement);
+  assert.throws(() => assertProtectedBaseline(file => file === documentServiceFile ? changed : readProtectedSource(file)),
+    { code: 'ERR_ASSERTION' });
 });

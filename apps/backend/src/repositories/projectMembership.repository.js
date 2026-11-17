@@ -153,8 +153,8 @@ const findMembershipByProjectAndUser = async ({ projectId, userId }) => {
   return mapMembershipRow(rows[0]);
 };
 
-const findActiveMembershipByProjectAndUser = async ({ projectId, userId }) => {
-  const [rows] = await pool.execute(
+const findActiveMembershipByProjectAndUser = async ({ projectId, userId }, { connection = pool } = {}) => {
+  const [rows] = await connection.execute(
     `
       ${baseSelect}
       WHERE project_memberships.project_id = ?

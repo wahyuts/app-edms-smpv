@@ -91,6 +91,7 @@ const listDocumentRevisions = async (req, res, next) => {
       message: 'Revision History Berhasil Dimuat',
       data: await documentService.listDocumentRevisions({
         documentId: req.params.documentId,
+        query: req.query,
         userId: req.user.id,
       }),
     });
