@@ -1274,6 +1274,7 @@ export const DocumentActionGroup = ({
         <DocumentRevisionHistoryModal
           key={`${revisionHistoryContext.userId}:${revisionHistoryContext.projectId}:${revisionHistoryContext.documentId}`}
           documentId={revisionHistoryContext.documentId}
+          documentItem={detailDocument}
           projectId={revisionHistoryContext.projectId}
           userId={revisionHistoryContext.userId}
           canView={canViewRevisionHistory}

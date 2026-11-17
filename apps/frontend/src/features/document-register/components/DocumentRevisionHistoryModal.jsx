@@ -37,9 +37,28 @@ const UploadedBy = ({ revision }) => {
   </span>;
 };
 
-const RevisionMetadata = ({ revision }) => (
-  <dl className="grid gap-3 sm:grid-cols-3">
-    <div className="sm:col-span-3">
+const RevisionMetadata = ({ revision, documentItem, stacked = false }) => (
+  <dl className={stacked ? "grid min-w-0 gap-2.5" : "grid gap-3 sm:grid-cols-3"}>
+    {stacked ? <>
+      <div>
+        <dt className={labelClass}>Document Number</dt>
+        <dd className={valueClass}>{documentItem?.documentNumber || "-"}</dd>
+      </div>
+      <div>
+        <dt className={labelClass}>Description</dt>
+        <dd className={valueClass}>
+          {documentItem?.description?.trim() ? (
+            <details className="group">
+              <summary className="cursor-pointer list-none rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0F7BFF] [&::-webkit-details-marker]:hidden"
+                title={documentItem.description} aria-label="Show or collapse full description">
+                <span className="line-clamp-2 whitespace-pre-wrap group-open:line-clamp-none">{documentItem.description}</span>
+              </summary>
+            </details>
+          ) : "-"}
+        </dd>
+      </div>
+    </> : null}
+    <div className={stacked ? undefined : "sm:col-span-3"}>
       <dt className={`${labelClass} inline-flex items-center gap-1.5`}><FileText aria-hidden="true" className="h-3 w-3 shrink-0" />Original File Name</dt>
       <dd className={valueClass}>{revision.originalFileName || "-"}</dd>
     </div>
@@ -64,7 +83,7 @@ const RevisionMetadata = ({ revision }) => (
         <UploadedBy revision={revision} />
       </dd>
     </div>
-    <div className="sm:col-span-3">
+    <div className={stacked ? undefined : "sm:col-span-3"}>
       <dt className={`${labelClass} inline-flex items-center gap-1.5`}><FileCheck aria-hidden="true" className="h-3 w-3 shrink-0" />File Indicator</dt>
       <dd className={valueClass}>{revision.isCurrentFile ? <span className="inline-flex whitespace-nowrap rounded-md border px-2 py-1 text-xs font-semibold border-[#22C55E]/40 bg-[#22C55E]/15 text-[#86EFAC]">Current File Active</span> : "Previous File"}</dd>
     </div>
@@ -72,7 +91,7 @@ const RevisionMetadata = ({ revision }) => (
 );
 
 export const DocumentRevisionHistoryModal = ({
-  documentId, projectId, userId, canView, canDownload, onClose, onReturnFocus, manageBodyScroll = false,
+  documentId, documentItem, projectId, userId, canView, canDownload, onClose, onReturnFocus, manageBodyScroll = false,
 }) => {
   const [stage, setStage] = useState("All");
   const [selected, setSelected] = useState(null);
@@ -90,6 +109,7 @@ export const DocumentRevisionHistoryModal = ({
   const renderedRevisions = query.isPending || query.isFetching || query.isError ? [] : query.revisions;
   const accessBlocked = query.isError && [401, 403, 404, 409].includes(query.error?.status);
   const selectedRevision = accessBlocked ? null : query.revisions.find(revision => revision.entryId === selected?.entryId) ?? selected;
+  const metadataDocument = documentItem?.id === documentId && documentItem?.projectId === projectId ? documentItem : null;
 
   useEffect(() => { close.current = onClose; returnFocus.current = onReturnFocus; }, [onClose, onReturnFocus]);
   useEffect(() => {
@@ -208,8 +228,8 @@ export const DocumentRevisionHistoryModal = ({
     >
       <div ref={body} className={selectedRevision ? "grid h-full min-h-0 grid-rows-[minmax(0,240px)_minmax(0,1fr)] gap-5 lg:grid-cols-[360px_minmax(0,1fr)] lg:grid-rows-none" : "space-y-4"}>
         {selectedRevision ? <>
-          <aside className="min-h-0 space-y-4 overflow-y-auto rounded-lg border border-[#123A5A] bg-[#031528] p-4">
-            <RevisionMetadata revision={selectedRevision} />
+          <aside className="min-h-0 min-w-0 space-y-3 overflow-y-auto rounded-lg border border-[#123A5A] bg-[#031528] p-4">
+            <RevisionMetadata revision={selectedRevision} documentItem={metadataDocument} stacked />
             {canDownload ? <button className={secondary} disabled={downloadId !== null} onClick={() => downloadRevision(selectedRevision)} type="button">
               {downloadId === selectedRevision.entryId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download
             </button> : null}
@@ -227,6 +247,10 @@ export const DocumentRevisionHistoryModal = ({
             {fallback ? <p className="p-4 text-sm text-[#94A3B8]">Preview tidak tersedia. Gunakan Download untuk membuka file.</p> : null}
           </PreviewCanvas>
         </> : <>
+          <dl>
+            <dt className={labelClass}>Document Number</dt>
+            <dd className={valueClass}>{metadataDocument?.documentNumber || "-"}</dd>
+          </dl>
           <label className="block text-xs font-semibold text-[#94A3B8]">Stage at Upload
             <SelectDropdown className="mt-2 h-10 w-full rounded-md border border-[#123A5A] bg-[#08233B] px-3 text-sm text-[#F8FAFC]" value={stage}
               onChange={event => { setStage(event.target.value); setDownloadError(""); }}>
