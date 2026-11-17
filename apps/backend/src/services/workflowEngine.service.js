@@ -360,7 +360,7 @@ const applyWorkflowTransition = async ({
         });
       }
       if (transactionHook) {
-        await transactionHook(connection, { actorMembership });
+        await transactionHook(connection, { actorMembership, targetRevision: nextRevision });
       }
     });
   } catch (error) {

@@ -2243,6 +2243,89 @@ Candidate route dari audit atau dokumen historis yang berbeda dari dokumen ini d
 | `POST /api/v1/storage/temporary-uploads` | multipart `file` | `temporaryFileId` and temporary upload metadata | authenticated user, allowed file type, size limit | `storage.view` or document/workflow permissions | Temporary Upload | Temporary file write and metadata create |
 | `GET /api/v1/storage` | pagination/filter/project | storage metadata collection | project access | `storage.view` | DEFERRED / NOT IMPLEMENTED in current runtime | Future Storage NAS scope |
 
+### Revision History Historical Metadata Response
+
+Default mode (omitted `historyMode`) retains the upload-only contract below.
+Opt-in `historyMode=events` returns upload and successful Approval A history
+through this same endpoint/envelope. Any supplied mode other than `events`
+returns HTTP 422 with field `historyMode`. The frontend D.2 remains on default
+mode; consuming events is deferred to E.3.
+
+`GET /api/v1/documents/{id}/revisions` tetap menggunakan success envelope existing
+dan `data` berupa array tanpa pagination baru. Query additive `stage` menerima
+`All` (default), `IFR-Submitted`, `IFA-Submitted`, atau `As-Built`. Nilai lain
+ditolak dengan HTTP 422. Filter tidak menggunakan mutable `revision_label`;
+snapshot NULL hanya disertakan pada `All`.
+
+Urutan seluruh hasil adalah `stored_files.uploaded_at DESC`, kemudian
+`document_revisions.revision_sequence DESC`, dan `document_revisions.id DESC`.
+
+Field additive untuk Document Revision History:
+
+| Field | Source / Semantics |
+|---|---|
+| `originalFileName` | Original filename dari linked stored file; NULL jika metadata file tidak tersedia. |
+| `uploadStage` | `upload_stage_snapshot`; string `Unknown` jika NULL. |
+| `uploadedByUsername` | `uploaded_by_username_snapshot`; string `Unknown` jika NULL, bukan current username. |
+| `uploadedByRole` | `uploaded_by_role_snapshot`; string `Unknown` jika NULL, bukan current membership role. |
+| `uploadTimestamp` | `stored_files.uploaded_at`, explicit UTC ISO 8601 dengan suffix `Z`; NULL jika tidak tersedia/invalid. |
+| `isCurrentFile` | True hanya jika revision ID dan file ID cocok dengan kedua active pointers dokumen. False berarti Previous File. |
+
+Field existing, termasuk nullable `*Snapshot`, `revision`, `revisionLabel`,
+`revisionSequence`, `isActive`, `createdAt`, `uploadedAt`, `uploader`, `uploadedBy`,
+`file`, `viewUrl`, dan `downloadUrl`, tetap dipertahankan. Khusus top-level
+`uploadedAt` existing masih berasal dari revision `created_at` untuk kompatibilitas
+consumer lama; fitur Document Revision History harus menggunakan `uploadTimestamp`
+untuk waktu upload, bukan field legacy tersebut. Waktu upload disimpan melalui
+`UTC_TIMESTAMP(3)` pada stored file; tidak ada penambahan/pengurangan tujuh jam.
+Konversi zona waktu tampilan dilakukan oleh consumer, bukan oleh endpoint ini.
+
+Unknown tidak direkonstruksi dari current status, revision label, current user,
+current membership, sequence, atau kedekatan timestamp. Metadata legacy dapat
+memiliki stage yang diketahui tetapi username/role masih Unknown.
+
+Authentication, permission, membership pada project dokumen, dan admission read
+guard existing tetap berlaku. Endpoint View/Download historical revision tidak
+berubah. Ekstensi ini tidak menambahkan storage key, namespace, credential,
+physical path, atau metadata infrastruktur baru pada kontrak existing.
+
+#### Approval A Event Projection (Opt-In)
+
+Events mode adds `entryId`, `revisionId`, `eventType`, `documentStage`,
+`eventTimestamp`, `actorUsername` and `actorRole` to each entry. Entry IDs are
+`UPLOAD:{revisionId}` or `APPROVAL_A:{workflowCommentId}`. `eventType` is `UPLOAD`
+or `APPROVAL_A`. Legacy `id` remains the actual revision ID, not an event ID;
+multiple events can share it. Clients must use `entryId` for UI identity and
+`revisionId` for existing revision-based View/Download URLs.
+
+Upload events use immutable upload snapshots and the original `uploadTimestamp`.
+Approval A events reuse system comments linked to the exact project/document/
+revision, using `created_by_username_snapshot`, existing role snapshot,
+`approval_target_stage_snapshot`, and comment `created_at` as explicit UTC ISO.
+Missing snapshots remain `Unknown`; do not resolve historical actors from current
+users/membership. Stored target `AS-Built` maps to public stage `As-Built`.
+Approval B/C comments are excluded. No revision, stored file or physical copy is
+created. Earlier stage entries read the same linked file at its current key;
+they do not promise independent byte-level copies.
+
+Existing upload fields (`uploadStage`, `uploadTimestamp`, uploader snapshots and
+other revision fields) retain upload semantics even on projected approval entries.
+Use the event fields for approval display; the `Approval A` prefix is presentation,
+not part of the stored username. Workflow History and Comment Viewer are unchanged.
+
+Order is `eventTimestamp DESC` (NULL last), Approval A before upload for identical
+times, then `revisionSequence DESC`, then binary JavaScript `entryId DESC`.
+Exactly the first entry matching both active revision/file pointers is Current;
+inactive revisions cannot become Current. Determine this before stage filtering.
+The existing `All`, `IFR-Submitted`, `IFA-Submitted`, `As-Built` filters now apply
+to `documentStage` in events mode only. No match returns the existing empty array.
+Unknown appears only on All. Invalid stage retains HTTP 422. Existing auth,
+membership and admission checks, file routes and error propagation remain intact.
+
+Deployment prerequisite: apply reviewed migration
+`20261117_0001_approval_a_history_snapshots.sql` before enabling the new backend.
+Migration is prepared, not executed as part of E.2; no legacy backfill is included.
+
 Historical / superseded blueprint routes:
 
 | Endpoint | Runtime Status |

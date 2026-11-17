@@ -34,6 +34,7 @@ import { getDocumentActionVisibility } from "../utils/documentActionVisibility";
 import { synchronizeDocumentRuntimeQueries } from "../utils/documentRuntimeQuerySync";
 import { createRealtimeRefetchCoalescer } from "../utils/realtimeRefetchCoalescer";
 import { PermanentDeleteAction } from "./PermanentDeleteAction";
+import { DocumentRevisionHistoryModal } from "./DocumentRevisionHistoryModal";
 import {
   isActorSelfEvent,
   isRelevantWorkflowDetailEvent,
@@ -70,6 +71,7 @@ const modalType = {
   COMMENT: "comment",
   EDIT: "edit",
   HISTORY: "history",
+  DOCUMENT_REVISION_HISTORY: "documentRevisionHistory",
   VIEW: "view",
 };
 
@@ -171,6 +173,8 @@ export const DocumentActionGroup = ({
   const { showToast } = useToast();
   const { hasProjectPermission } = usePermission();
   const [activeModal, setActiveModal] = useState(null);
+  const [revisionHistoryContext, setRevisionHistoryContext] = useState(null);
+  const revisionHistoryTriggerRef = useRef(null);
   const [localActiveAction, setLocalActiveAction] = useState(null);
   const [attachmentErrors, setAttachmentErrors] = useState({});
   const [activeAttachmentAction, setActiveAttachmentAction] = useState(null);
@@ -210,6 +214,19 @@ export const DocumentActionGroup = ({
   const activeProjectId = useProjectContextStore((state) => state.activeProject?.id);
   const projectRoleName = activeMembership?.officialRole;
   const currentUserId = AuthService.getCurrentUser()?.id ?? null;
+  const canViewRevisionHistory = hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.VIEW);
+  const revisionHistoryIdentityRef = useRef({ documentId: documentItem.id, projectId: activeProjectId, userId: currentUserId });
+  const revisionHistoryOpen = Boolean(
+    [modalType.VIEW, modalType.DOCUMENT_REVISION_HISTORY].includes(activeModal) && canViewRevisionHistory && revisionHistoryContext &&
+    revisionHistoryContext.documentId === documentItem.id &&
+    revisionHistoryContext.projectId === activeProjectId &&
+    String(revisionHistoryContext.userId) === String(currentUserId),
+  );
+  useEffect(() => {
+    revisionHistoryIdentityRef.current = { documentId: documentItem.id, projectId: activeProjectId, userId: currentUserId };
+    const reset = window.setTimeout(() => setRevisionHistoryContext(null), 0);
+    return () => window.clearTimeout(reset);
+  }, [activeProjectId, documentItem.id, currentUserId, canViewRevisionHistory]);
   const isArchivedDocument = documentItem?.lifecycle === DOCUMENT_LIFECYCLE.ARCHIVED;
 
   const defaultVisibility = getDocumentActionVisibility({
@@ -350,6 +367,7 @@ export const DocumentActionGroup = ({
   }, [activeProjectId, documentItem.id, setActiveActionState]);
 
   const closeModal = useCallback(() => {
+    setRevisionHistoryContext(null);
     if (documentFile?.objectUrl) {
       window.URL.revokeObjectURL(documentFile.objectUrl);
     }
@@ -555,6 +573,7 @@ export const DocumentActionGroup = ({
   useRealtimeRecovery(handleCommentRecovery);
 
   const openViewDocument = async () => {
+    setRevisionHistoryContext(null);
     try {
       const documentDetail = await DocumentApiService.getDocumentById(documentItem.id);
       const activeDocumentFile = await DocumentApiService.getDocumentPreview(documentDetail);
@@ -786,11 +805,24 @@ export const DocumentActionGroup = ({
     });
   };
 
+  const isCurrentRevisionHistoryContext = (context) => {
+    const identity = revisionHistoryIdentityRef.current;
+    return Boolean(context?.documentId && context.projectId && context.userId != null &&
+      context.documentId === identity.documentId && context.projectId === identity.projectId &&
+      String(context.userId) === String(identity.userId) &&
+      context.projectId === useProjectContextStore.getState().activeProject?.id &&
+      String(context.userId) === String(AuthService.getCurrentUser()?.id) &&
+      hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.VIEW));
+  };
+
   const openHistory = async () => {
+    const historyDocument = { ...documentItem };
+    const historyContext = { documentId: historyDocument.id, projectId: historyDocument.projectId, userId: currentUserId };
     try {
+      if (!isCurrentRevisionHistoryContext(historyContext)) throw new Error("Konteks dokumen tidak valid. Silakan buka kembali riwayat.");
       const [documentHistory, revisionHistory] = await Promise.all([
-        DocumentApiService.getDocumentHistory(documentItem.id),
-        DocumentApiService.getDocumentRevisions(documentItem.id),
+        DocumentApiService.getDocumentHistory(historyContext.documentId),
+        DocumentApiService.getDocumentRevisions(historyContext.documentId),
       ]);
       const revisionTimeline = revisionHistory.map((revisionItem) => ({
         id: `revision-${revisionItem.id}`,
@@ -804,6 +836,9 @@ export const DocumentActionGroup = ({
           : "Previous Revision",
       }));
 
+      if (!isCurrentRevisionHistoryContext(historyContext)) throw new Error("Konteks dokumen telah berubah. Silakan buka kembali riwayat.");
+      setDetailDocument(historyDocument);
+      setRevisionHistoryContext(historyContext);
       setTimeline([...documentHistory, ...revisionTimeline]);
       setActiveModalState(modalType.HISTORY);
     } catch (error) {
@@ -813,6 +848,15 @@ export const DocumentActionGroup = ({
         variant: "error",
       });
     }
+  };
+
+  const openRevisionHistoryFromTimeline = (context) => {
+    if (activeModalRef.current !== modalType.HISTORY || !isCurrentRevisionHistoryContext(context) ||
+      detailDocument.id !== context.documentId || detailDocument.projectId !== context.projectId) {
+      showToast({ message: "Konteks dokumen tidak valid. Silakan buka kembali riwayat.", variant: "error" });
+      return;
+    }
+    setActiveModalState(modalType.DOCUMENT_REVISION_HISTORY);
   };
 
   const openWorkflowModal = async (nextModalType) => {
@@ -1218,6 +1262,29 @@ export const DocumentActionGroup = ({
           documentItem={detailDocument}
           onClose={closeModal}
           onDownload={downloadDocument}
+          onRevisionHistory={canViewRevisionHistory && detailDocument?.id === documentItem.id &&
+            detailDocument?.projectId === activeProjectId ? () => setRevisionHistoryContext({
+              documentId: documentItem.id, projectId: activeProjectId, userId: currentUserId,
+            }) : undefined}
+          revisionHistoryTriggerRef={revisionHistoryTriggerRef}
+          isRevisionHistoryOpen={revisionHistoryOpen}
+        />
+      ) : null}
+      {revisionHistoryOpen ? (
+        <DocumentRevisionHistoryModal
+          key={`${revisionHistoryContext.userId}:${revisionHistoryContext.projectId}:${revisionHistoryContext.documentId}`}
+          documentId={revisionHistoryContext.documentId}
+          projectId={revisionHistoryContext.projectId}
+          userId={revisionHistoryContext.userId}
+          canView={canViewRevisionHistory}
+          canDownload={hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.DOWNLOAD)}
+          manageBodyScroll={activeModal === modalType.DOCUMENT_REVISION_HISTORY}
+          onClose={activeModal === modalType.DOCUMENT_REVISION_HISTORY ? closeModal : () => setRevisionHistoryContext(null)}
+          onReturnFocus={activeModal === modalType.VIEW ? () => {
+            if (useProjectContextStore.getState().activeProject?.id === revisionHistoryContext.projectId &&
+              String(AuthService.getCurrentUser()?.id) === String(revisionHistoryContext.userId) &&
+              revisionHistoryTriggerRef.current?.isConnected) revisionHistoryTriggerRef.current.focus();
+          } : undefined}
         />
       ) : null}
       {activeModal === modalType.COMMENT ? (
@@ -1266,8 +1333,9 @@ export const DocumentActionGroup = ({
       ) : null}
       {activeModal === modalType.HISTORY ? (
         <HistoryModal
-          documentItem={documentItem}
+          documentItem={detailDocument}
           onClose={closeModal}
+          onRevisionHistory={canViewRevisionHistory ? () => openRevisionHistoryFromTimeline(revisionHistoryContext) : undefined}
           timeline={timeline}
         />
       ) : null}

@@ -104,6 +104,26 @@ const normalizeRevisionRecord = (revision = {}) => ({
   uploader: revision.uploader ?? revision.uploadedBy ?? null,
 });
 
+const normalizeRevisionEvent = (event, documentId) => {
+  if (!event || typeof event !== "object" ||
+    !["UPLOAD", "APPROVAL_A"].includes(event.eventType) ||
+    typeof event.entryId !== "string" || !event.entryId.trim() ||
+    typeof event.revisionId !== "string" || !event.revisionId.trim() ||
+    event.documentId !== documentId || typeof event.isCurrentFile !== "boolean") {
+    throw new Error("Data riwayat dokumen tidak valid. Silakan coba lagi.");
+  }
+  const stage = event.documentStage === "AS-Built" ? "As-Built" : event.documentStage;
+  return {
+    ...normalizeRevisionRecord(event),
+    originalFileName: typeof event.originalFileName === "string" ? event.originalFileName : null,
+    documentStage: ["IFR-Submitted", "IFA-Submitted", "As-Built"].includes(stage) ? stage : "Unknown",
+    eventTimestamp: typeof event.eventTimestamp === "string" ? event.eventTimestamp : null,
+    actorUsername: typeof event.actorUsername === "string" && event.actorUsername.trim() ? event.actorUsername : "Unknown",
+    actorRole: ["Admin", "Document Owner", "Team Process", "Team Project", "Viewer"].includes(event.actorRole)
+      ? event.actorRole : "Unknown",
+  };
+};
+
 const normalizeTimestamp = (value) => {
   if (!value) return null;
 
@@ -500,15 +520,81 @@ const markWorkflowCommentsRead = async (documentId) => {
   }
 };
 
-const getDocumentRevisions = async (documentId) => {
+const getDocumentRevisions = async (documentId, options) => {
   try {
-    return unwrapList(
-      await apiClient.get(`/v1/documents/${documentId}/revisions`),
-      normalizeRevisionRecord,
-    );
+    const response = await apiClient.get(`/v1/documents/${documentId}/revisions`, options ? {
+        ...(options.stage !== undefined || options.historyMode !== undefined ? { params: {
+          ...(options.stage !== undefined ? { stage: options.stage } : {}),
+          ...(options.historyMode !== undefined ? { historyMode: options.historyMode } : {}),
+        } } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
+      } : undefined);
+    if (options?.historyMode !== "events") return unwrapList(response, normalizeRevisionRecord);
+    if (!Array.isArray(response.data?.data)) {
+      throw new Error("Data riwayat dokumen tidak valid. Silakan coba lagi.");
+    }
+    const events = response.data.data.map(event => normalizeRevisionEvent(event, documentId));
+    if (new Set(events.map(event => event.entryId)).size !== events.length) {
+      throw new Error("Identitas riwayat dokumen tidak valid. Silakan coba lagi.");
+    }
+    return events;
   } catch (error) {
+    if (options?.signal?.aborted) throw error;
     throwDocumentApiError(error, "Revision History gagal dimuat.");
   }
+};
+
+const requestRevisionFile = async ({ documentId, revision, signal, action }) => {
+  const isEvent = revision?.eventType !== undefined || revision?.entryId !== undefined;
+  const revisionId = isEvent ? revision?.revisionId : revision?.id;
+  if (!documentId || typeof revisionId !== "string" || !revisionId.trim() || revision.documentId !== documentId ||
+    (isEvent && (!["UPLOAD", "APPROVAL_A"].includes(revision.eventType) ||
+      typeof revision.entryId !== "string" || !revision.entryId.trim()))) {
+    throw new Error("Identitas revisi tidak sesuai dengan dokumen.");
+  }
+  try {
+    const response = await apiClient.get(
+      `/v1/documents/${encodeURIComponent(documentId)}/revisions/${encodeURIComponent(revisionId)}/${action}`,
+      { responseType: "blob", signal },
+    );
+    if (!(response.data instanceof Blob) || response.data.size === 0 ||
+      /^(application\/json|text\/html)/i.test(response.data.type)) {
+      throw new Error("File revisi kosong atau tidak valid.");
+    }
+    return response;
+  } catch (error) {
+    if (signal?.aborted || error?.code === "ERR_CANCELED") throw error;
+    let data = error?.response?.data;
+    if (data instanceof Blob) {
+      try { data = JSON.parse(await data.text()); } catch { data = null; }
+    }
+    throwDocumentApiError({ message: error.message, response: error.response ? {
+      ...error.response, data,
+    } : undefined }, "File revisi tidak dapat dimuat.");
+  }
+};
+
+const getRevisionPreview = async ({ documentId, revision, signal }) => {
+  const response = await requestRevisionFile({ documentId, revision, signal, action: "view" });
+  if (response.data.type === "application/pdf" &&
+    !(await response.data.slice(0, 1024).text()).includes("%PDF-")) {
+    throw new Error("Preview PDF tidak valid. Silakan gunakan Download.");
+  }
+  return FileService.createPreviewFromBlob({
+    blob: response.data,
+    documentItem: { fileMetadata: { ...revision.file, originalFileName: revision.originalFileName } },
+    headers: response.headers,
+  });
+};
+
+const downloadRevisionFile = async ({ documentId, revision, signal }) => {
+  const response = await requestRevisionFile({ documentId, revision, signal, action: "download" });
+  if (signal?.aborted) return;
+  return FileService.downloadBlobResponse({
+    blob: response.data,
+    documentItem: { fileMetadata: { ...revision.file, originalFileName: revision.originalFileName } },
+    headers: response.headers,
+  });
 };
 
 const getDocumentPreview = async (documentItem) => {
@@ -582,11 +668,13 @@ export const DocumentApiService = {
   archiveDocument,
   createDocument,
   downloadDocumentFile,
+  downloadRevisionFile,
   downloadWorkflowAttachment,
   getDocumentHistory,
   getDocumentById,
   getDocumentPreview,
   getDocumentRevisions,
+  getRevisionPreview,
   getDocuments,
   getWorkflowAttachmentPreview,
   getWorkflowComments,

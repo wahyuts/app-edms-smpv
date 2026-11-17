@@ -19,6 +19,7 @@ const slaNotificationProducer = require('./slaNotificationProducer.service');
 const auditService = require('./audit.service');
 const revisionService = require('./revision.service');
 const admission = require('./documentAdmission.service');
+const { normalizeHistoryStage, resolveRevisionHistoryStages } = require('../utils/revisionHistoryStage');
 const {
   buildPagination,
   createEntityId,
@@ -644,18 +645,71 @@ const markWorkflowCommentsRead = async ({ documentId, userId }) => {
   };
 };
 
-const listDocumentRevisions = async ({ documentId, userId }) => {
+const listDocumentRevisions = async ({ documentId, query = {}, userId }) => {
   const document = await getDocumentDetail({ documentId, userId });
+  if (query.historyMode !== undefined && query.historyMode !== 'events') {
+    throw createHttpError('Mode riwayat dokumen tidak valid', 422, [
+      { field: 'historyMode', message: 'Mode riwayat dokumen tidak valid' },
+    ]);
+  }
+  const eventsMode = query.historyMode === 'events';
+  const stage = query.stage ?? 'All';
+  if (!['All', 'IFR-Submitted', 'IFA-Submitted', 'As-Built'].includes(stage)) {
+    throw createHttpError('Filter tahap dokumen tidak valid', 422, [
+      { field: 'stage', message: 'Filter tahap dokumen tidak valid' },
+    ]);
+  }
   const revisions = await documentRepository.listDocumentRevisions({
     documentId: document.id,
     projectId: document.projectId,
+    stage: eventsMode || stage === 'All' ? null : stage,
   });
 
-  return revisions.map((revision) => ({
+  const uploads = revisions.map((revision) => ({
     ...revision,
+    originalFileName: revision.file?.originalFileName ?? null,
+    uploadStage: revision.uploadStageSnapshot ?? 'Unknown',
+    uploadedByUsername: revision.uploadedByUsernameSnapshot ?? 'Unknown',
+    uploadedByRole: revision.uploadedByRoleSnapshot ?? 'Unknown',
+    isCurrentFile: revision.id === document.activeRevisionId &&
+      revision.file?.fileId === document.activeFileId,
     downloadUrl: `/api/v1/documents/${document.id}/revisions/${revision.id}/download`,
     viewUrl: `/api/v1/documents/${document.id}/revisions/${revision.id}/view`,
   }));
+  if (!eventsMode) return uploads;
+
+  const approvals = await documentRepository.listApprovalRevisionEvents({
+    documentId: document.id, projectId: document.projectId, includeStageEvidence: true,
+  });
+  const byRevision = new Map(uploads.map(revision => [revision.id, revision]));
+  const events = uploads.map(revision => ({
+    ...revision,
+    entryId: `UPLOAD:${revision.id}`,
+    eventType: 'UPLOAD',
+    revisionId: revision.id,
+    documentStage: revision.uploadStage,
+    eventTimestamp: revision.uploadTimestamp,
+    actorUsername: revision.uploadedByUsername,
+    actorRole: revision.uploadedByRole,
+  }));
+  for (const approval of approvals) {
+    const revision = byRevision.get(approval.revisionId);
+    if (!revision) continue; // Never fabricate a file for an orphaned event.
+    events.push({ ...revision, ...approval, eventType: 'APPROVAL_A' });
+  }
+  const history = events.some(event => !normalizeHistoryStage(event.documentStage))
+    ? await documentRepository.listDocumentHistory({ documentId: document.id, projectId: document.projectId })
+    : [];
+  const resolvedEvents = resolveRevisionHistoryStages({ events, revisions, history });
+  const descendingText = (a, b) => a === b ? 0 : a > b ? -1 : 1;
+  resolvedEvents.sort((a, b) => descendingText(a.eventTimestamp ?? '', b.eventTimestamp ?? '') ||
+    Number(b.eventType === 'APPROVAL_A') - Number(a.eventType === 'APPROVAL_A') ||
+    b.revisionSequence - a.revisionSequence || descendingText(a.entryId, b.entryId));
+  // Resolve current against the complete history, not the selected stage.
+  const current = resolvedEvents.find(event => event.revisionId === document.activeRevisionId &&
+    event.file?.fileId === document.activeFileId);
+  return resolvedEvents.map(event => ({ ...event, isCurrentFile: event === current }))
+    .filter(event => stage === 'All' || event.documentStage === stage);
 };
 
 module.exports = {

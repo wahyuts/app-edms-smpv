@@ -4,6 +4,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const { pool } = require('../../src/config/database');
 const repo = require('../../src/repositories/document.repository');
+const insertRevisionWithSnapshot = repo.insertRevision;
 const memberships = require('../../src/repositories/projectMembership.repository');
 const projects = require('../../src/repositories/project.repository');
 const documents = require('../../src/services/document.service');
@@ -47,7 +48,8 @@ const fixture = (t, options = {}) => {
   }
   const role = options.role === undefined ? 'Admin' : options.role;
   t.mock.method(memberships, 'findActiveMembershipByProjectAndUser', async ({ projectId }) =>
-    role && projectId === 'PRJ-1' ? { id: 'MEM-1', officialRole: role, userId: '1', projectId } : null);
+    role && projectId === 'PRJ-1' ? { id: 'MEM-1', officialRole: role, userId: '1', projectId,
+      username: Object.hasOwn(options, 'username') ? options.username : 'synthetic-uploader' } : null);
   t.mock.method(projects, 'findProjectById', async () => ({ id: 'PRJ-1', status: options.projectStatus || 'Active' }));
   t.mock.method(repo, 'findDocumentRegisterById', async () => structuredClone(doc));
   require('../helpers/documentCoordinationMock')(t, repo, () => doc);
@@ -62,7 +64,15 @@ const fixture = (t, options = {}) => {
   t.mock.method(repo, 'runInTransaction', async (callback) => {
     const before = structuredClone({ doc, records });
     try {
-      await callback({ transaction: true });
+      await callback({ transaction: true, async execute(sql, values) {
+        assert.match(sql, /INSERT INTO document_revisions/);
+        if (options.snapshotFailure) throw new Error('snapshot insert failed');
+        assert.equal(values.length, 14);
+        this.revisionSnapshot = {
+          uploadStageSnapshot: values[11], uploadedByUsernameSnapshot: values[12], uploadedByRoleSnapshot: values[13],
+        };
+        return [{ affectedRows: 1 }];
+      } });
       if (options.commitFailure) throw new Error('commit failed');
     } catch (error) {
       doc = before.doc;
@@ -92,6 +102,10 @@ const fixture = (t, options = {}) => {
     t.mock.method(repo, method, async (connection, value) => {
       assert.equal(connection.transaction, true);
       if (options.historyFailure && key === 'history') throw new Error('history failed');
+      if (key === 'revisions') {
+        await insertRevisionWithSnapshot(connection, value);
+        value = { ...value, ...connection.revisionSnapshot };
+      }
       records[key].push(value);
     });
   }
@@ -157,6 +171,52 @@ for (const file of [false, true]) {
   });
 }
 
+for (const action of ['create', 'upload']) for (const options of [{ username: null }, { username: ' ' }, { snapshotFailure: true }]) {
+  test(`Snapshot failure rolls back ${action}: ${JSON.stringify(options)}`, async t => {
+    const f = fixture(t, { ...options, file: true });
+    t.mock.method(repo, 'findDocumentByProjectAndNumber', async () => null);
+    t.mock.method(memberships, 'findActiveMembershipByProjectAndOfficialRole', async () => ({ userId: 7 }));
+    t.mock.method(repo, 'insertDocument', async () => {});
+    const pending = action === 'create'
+      ? documents.createDocument({ ...f.args, payload: { documentNumber: 'SYNTHETIC-NEW', drawing: 'PFD', area: 'TEST',
+        description: 'Synthetic upload', daysUntilValidation: 5, temporaryFileId: 'TMP-1' } })
+      : documents.updateDocument(f.args);
+    await assert.rejects(pending, options.snapshotFailure ? /snapshot insert failed/ : { code: 'REVISION_UPLOAD_SNAPSHOT_UNAVAILABLE' });
+    assert.deepEqual(f.doc, f.original);
+    assert.deepEqual(f.records, { revisions: [], files: [], history: [] });
+    assert.deepEqual([...f.physicalFiles], ['historical-file']);
+    assert.equal(storage.finalize.mock.callCount(), 0);
+    assert.equal(realtime.publishRevisionUploaded.mock.callCount(), 0);
+    assert.equal(audit.recordActivitySafely.mock.callCount(), 0);
+  });
+}
+
+test('Archive and Restore preserve recorded upload snapshots and active pointers', async t => {
+  const f = fixture(t, { file: true, status: STATUS.APPROVED });
+  await documents.updateDocument(f.args);
+  const revisionBefore = structuredClone(f.records.revisions);
+  const pointers = [f.doc.activeFileId, f.doc.activeRevisionId];
+  t.mock.method(repo, 'updateDocumentLifecycleStatus', async (connection, values) => { f.doc.lifecycle = values.lifecycleStatus; });
+  t.mock.method(realtime, 'publishDocumentArchived', () => {});
+  t.mock.method(realtime, 'publishDocumentRestored', () => {});
+  await documents.archiveDocument(f.args);
+  assert.equal(f.doc.lifecycle, 'Archived');
+  await documents.restoreDocument(f.args);
+  assert.equal(f.doc.lifecycle, 'Active');
+  assert.deepEqual(f.records.revisions, revisionBefore);
+  assert.deepEqual([f.doc.activeFileId, f.doc.activeRevisionId], pointers);
+});
+
+test('Upload snapshots use authoritative project membership, not forged payload or actor role', async t => {
+  const f = fixture(t, { status: STATUS.PROJECT_COMMENT, file: true, role: 'Document Owner' });
+  f.args.actorOfficialRole = 'Admin';
+  Object.assign(f.args.payload, { uploadedByUsernameSnapshot: 'forged', uploadedByRoleSnapshot: 'Admin', uploadStageSnapshot: 'As-Built' });
+  await revisions.uploadRevision(f.args);
+  assert.equal(f.records.revisions[0].uploadedByRoleSnapshot, 'Document Owner');
+  assert.equal(f.records.revisions[0].uploadedByUsernameSnapshot, 'synthetic-uploader');
+  assert.equal(f.records.revisions[0].uploadStageSnapshot, 'IFA-Submitted');
+});
+
 for (const rev of ['A', '01', undefined, '', '   ', null]) {
   test(`Create service persists normalized REV. ${JSON.stringify(rev)} and returns it`, async (t) => {
     const f = fixture(t);
@@ -174,6 +234,9 @@ for (const rev of ['A', '01', undefined, '', '   ', null]) {
     assert.equal(result.rev, typeof rev === 'string' ? rev.trim() || null : null);
     assert.equal(repo.insertDocument.mock.calls[0].arguments[1].rev, result.rev);
     assert.equal(f.records.revisions.length, 1);
+    assert.equal(f.records.revisions[0].uploadStageSnapshot, 'IFR-Submitted');
+    assert.equal(f.records.revisions[0].uploadedByUsernameSnapshot, 'synthetic-uploader');
+    assert.equal(f.records.revisions[0].uploadedByRoleSnapshot, 'Admin');
   });
 }
 
@@ -245,6 +308,9 @@ for (const status of Object.values(STATUS)) {
       assert.equal(realtime.publishDocumentUpdated.mock.callCount() + realtime.publishWorkflowChanged.mock.callCount() + realtime.publishRevisionUploaded.mock.callCount(), 1);
       assert.ok(f.physicalFiles.has('historical-file'));
       if (file) {
+        assert.equal(f.records.revisions[0].uploadStageSnapshot, result.revision === 'AS-Built' ? 'As-Built' : result.revision);
+        assert.equal(f.records.revisions[0].uploadedByUsernameSnapshot, 'synthetic-uploader');
+        assert.equal(f.records.revisions[0].uploadedByRoleSnapshot, 'Admin');
         assert.notEqual(result.activeFileId, f.original.activeFileId);
         assert.equal(f.records.revisions[0].revisionSequence, 2);
         assert.equal(f.records.revisions[0].sourceStatus, status);
@@ -378,7 +444,9 @@ for (const status of Object.keys(transitions)) {
       user: { id: '1', fullName: 'Admin Test' }, officialRole: role, activeProject: { id: activeProjectId },
       permissions: [{ code: role === 'Admin' || role === 'Document Owner' ? 'document-register.edit' : 'document-register.view' }],
     }));
-    memberships.findActiveMembershipByProjectAndUser.mock.mockImplementation(async () => ({ officialRole: role }));
+    memberships.findActiveMembershipByProjectAndUser.mock.mockImplementation(async () => ({
+      officialRole: role, projectId: 'PRJ-1', userId: '1', username: 'synthetic-uploader',
+    }));
     const app = express();
     app.use(express.json(), cookieParser());
     app.use('/documents', require('../../src/routes/document.routes'));
