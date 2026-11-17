@@ -231,6 +231,72 @@ const modalHarness = async (queryPatch = {}, apiPatch = {}, propPatch = {}) => {
   return h;
 };
 
+test('list shows document number once above the stage filter, outside revision cards', async () => {
+  const documentItem = { id: 'D1', projectId: 'P1', documentNumber: 'PID-CONTEXT-01', description: 'Current document description' };
+  const h = await modalHarness({ revisions: [revision(), approvalEvent()] }, {}, { documentItem });
+  const tree = h.render(), content = text(tree);
+  assert.equal(content.split(documentItem.documentNumber).length - 1, 1);
+  assert.ok(content.indexOf('PID-CONTEXT-01') < content.indexOf('Stage at Upload'));
+  const cards = nodes(tree).filter(n => n.type === 'article');
+  assert.equal(cards.length, 2);
+  assert.ok(cards.every(card => !text(card).includes(documentItem.documentNumber)));
+  assert.equal(h.queryCalls.length, 1);
+  h.dispose();
+});
+
+test('preview stacks current document identity before revision metadata and retains PDF and controls', async () => {
+  const description = 'Long description with complete metadata. '.repeat(30);
+  const h = await modalHarness({}, {
+    getRevisionPreview: async () => ({ file: new Blob(['pdf']), viewerType: 'pdf', metadata: {} }),
+  }, { documentItem: { id: 'D1', projectId: 'P1', documentNumber: 'PID-CONTEXT-02', description } });
+  nodes(h.render()).find(n => n.props?.title === 'View').props.onClick();
+  await new Promise(resolve => setImmediate(resolve));
+  const tree = h.render(), aside = nodes(tree).find(n => n.type === 'aside');
+  assert.deepEqual(nodes(aside).filter(n => n.type === 'dt').map(n => text(n).trim()), [
+    'Document Number', 'Description', 'Original File Name', 'Stage at Upload', 'Upload Date & Time', 'Uploaded By', 'File Indicator',
+  ]);
+  assert.match(text(aside), /PID-CONTEXT-02/);
+  const summary = nodes(aside).find(n => n.type === 'summary');
+  assert.equal(summary.props.title, description);
+  assert.equal(text(summary), description);
+  assert.ok(nodes(summary).some(n => n.props?.className?.includes('group-open:line-clamp-none')));
+  assert.ok(nodes(aside).some(n => n.type === 'details'));
+  assert.equal(nodes(aside).find(n => n.type === 'dl').props.className.includes('sm:grid-cols-3'), false);
+  assert.ok(nodes(aside).some(n => n.type === 'button' && /Download/.test(text(n))));
+  assert.equal(nodes(tree).find(n => n.type === 'iframe').props.src, 'blob:child');
+  nodes(tree.props.footer).find(n => n.type === 'button' && text(n).includes('Back')).props.onClick();
+  assert.equal(nodes(h.render()).some(n => n.type === 'aside'), false);
+  assert.match(text(h.render()), /PID-CONTEXT-02/);
+  nodes(h.render().props.footer).find(n => n.props?.['data-revision-close']).props.onClick();
+  assert.equal(h.closed, 1);
+  h.dispose();
+});
+
+test('document metadata changes with context and mismatched identity is never displayed', async () => {
+  const h = await modalHarness({}, {}, { documentItem: { id: 'D1', projectId: 'P1', documentNumber: 'FIRST-DOCUMENT', description: 'First description' } });
+  assert.match(text(h.render()), /FIRST-DOCUMENT/);
+  h.props.documentId = 'D2';
+  assert.doesNotMatch(text(h.render()), /FIRST-DOCUMENT/);
+  h.props.documentItem = { id: 'D2', projectId: 'P1', documentNumber: 'SECOND-DOCUMENT', description: 'Second description' };
+  assert.match(text(h.render()), /SECOND-DOCUMENT/);
+  h.props.projectId = 'P2';
+  assert.doesNotMatch(text(h.render()), /FIRST-DOCUMENT|SECOND-DOCUMENT/);
+  h.dispose();
+});
+
+test('preview missing description uses display-only hyphen without inferring metadata from filename', async () => {
+  const documentItem = { id: 'D1', projectId: 'P1', documentNumber: 'PID-CONTEXT-03', description: '   ' };
+  const h = await modalHarness({}, { getRevisionPreview: async () => ({ file: new Blob(['pdf']), viewerType: 'pdf', metadata: {} }) }, { documentItem });
+  nodes(h.render()).find(n => n.props?.title === 'View').props.onClick();
+  await new Promise(resolve => setImmediate(resolve));
+  const aside = nodes(h.render()).find(n => n.type === 'aside');
+  const fields = nodes(aside).filter(n => n.type === 'dd');
+  assert.equal(text(fields[0]), 'PID-CONTEXT-03');
+  assert.equal(text(fields[1]), '-');
+  assert.equal(documentItem.description, '   ');
+  h.dispose();
+});
+
 for (const count of [0, 1, 2]) test(`upload with ${count} Approval A events retains distinct keys and backend Current File`, async () => {
   const events = [revision(), ...Array.from({ length: count }, (_, i) => approvalEvent({ entryId: `APPROVAL_A:C${i}`, isCurrentFile: i === count - 1 }))];
   const h = await modalHarness({ revisions: events });
@@ -596,6 +662,7 @@ test('Revision History swaps atomically to standalone Document Revision History 
   history.props.onRevisionHistory(); h.render();
   assert.equal(h.find('HistoryModal'), undefined); assert.equal(h.find('ViewDocumentModal'), undefined);
   const destination = h.find('DocumentRevisionHistoryModal'); assert.ok(destination);
+  assert.equal(destination.props.documentItem, history.props.documentItem);
   assert.equal(destination.props.documentId, 'D1'); assert.equal(destination.props.projectId, 'P1');
   assert.equal(destination.props.userId, 7); assert.equal(destination.props.manageBodyScroll, true);
   assert.equal(destination.props.onReturnFocus, undefined);
@@ -720,12 +787,13 @@ for (const previewMode of [false, true]) test(`shared metadata icons/colors in $
     await new Promise(r => setImmediate(r)); tree = h.render();
   }
   assert.equal(tree.props.titleClassName, 'text-[#FDE68A]');
-  for (const label of nodes(tree).filter(n => n.type === 'dt')) {
+  const revisionLabels = nodes(tree).filter(n => n.type === 'dt' && Object.hasOwn(mapping, text(n).trim()));
+  for (const label of revisionLabels) {
     const name = text(label).trim(), icon = nodes(label).find(n => n.type === mapping[name]);
     assert.ok(icon, `Missing icon for ${name}`); assert.equal(String(icon.props['aria-hidden']), 'true');
     assert.equal(icon.props.className, 'h-3 w-3 shrink-0');
   }
-  assert.equal(nodes(tree).filter(n => n.type === 'dt').length, 5);
+  assert.equal(revisionLabels.length, 5);
   const current = nodes(tree).find(n => n.type === 'span' && text(n) === 'Current File Active');
   const register = await readFile(new URL('components/DocumentRegisterTable.jsx', base), 'utf8');
   const approvedColors = register.match(/\[DOCUMENT_STATUS.APPROVED\]:\s*"([^"]+)"/)[1];
