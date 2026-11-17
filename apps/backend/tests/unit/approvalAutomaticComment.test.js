@@ -33,7 +33,7 @@ const fixture = (t, { role = 'Team Process', status, failInsert = false, noMembe
   require('../helpers/documentCoordinationMock')(t, repo, () => doc);
   t.mock.method(memberships, 'findActiveMembershipByProjectAndUser', async ({ projectId, userId }) => {
     assert.equal(userId, 1); assert.equal(projectId, 'PRJ-1');
-    return noMembership ? null : { officialRole: role, userName: 'Authenticated Full Name', userId: 1, projectId };
+    return noMembership ? null : { officialRole: role, username: 'synthetic-reviewer', userName: 'Authenticated Full Name', userId: 1, projectId };
   });
   t.mock.method(memberships, 'findActiveMembershipByProjectAndOfficialRole', async () => ({ userId: 2 }));
   t.mock.method(fileRepo, 'findActiveDocumentFile', async () => null);
@@ -128,6 +128,8 @@ for (const role of Object.keys(messages)) {
     assert.equal(comment.workflowAction, 'Approval A'); assert.equal(comment.workflowComment, messages[role]);
     assert.equal(comment.createdByNameSnapshot, 'Authenticated Full Name');
     assert.equal(comment.createdByOfficialRoleSnapshot, role);
+    assert.equal(comment.createdByUsernameSnapshot, 'synthetic-reviewer');
+    assert.equal(comment.approvalTargetStageSnapshot, role === 'Team Process' ? 'IFA-Submitted' : 'AS-Built');
     assert.equal(comment.createdByUserId, 1); assert.equal(comment.projectId, 'PRJ-1');
     assert.equal(comment.revisionId, 'REV-1');
     const notification = notifications.createDocumentNotificationsForOfficialRoles.mock.calls[0].arguments[0];

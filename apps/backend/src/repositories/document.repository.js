@@ -324,6 +324,10 @@ const mapDocumentRevisionRow = (row) => row && ({
   createdByUserId: row.created_by_user_id,
   uploader: row.created_by_name,
   uploadedBy: row.created_by_name,
+  uploadStageSnapshot: row.upload_stage_snapshot ?? null,
+  uploadedByUsernameSnapshot: row.uploaded_by_username_snapshot ?? null,
+  uploadedByRoleSnapshot: row.uploaded_by_role_snapshot ?? null,
+  uploadTimestamp: toExplicitUtcIsoString(row.revision_upload_timestamp_utc),
   file: row.file_id ? {
     fileId: row.file_id,
     originalFileName: row.original_file_name,
@@ -1048,13 +1052,30 @@ const prepareStoredFileMove = (connection, { fileId, fromStorageKey, storageKey 
   .prepareFileMove(connection, fileId, fromStorageKey, storageKey, require('../services/storage.service'));
 
 const insertRevision = async (connection, revision) => {
+  const membership = await require('./projectMembership.repository').findActiveMembershipByProjectAndUser({
+    projectId: revision.projectId,
+    userId: revision.createdByUserId,
+  }, { connection });
+  const stage = new Map([
+    ['IFR-Submitted', 'IFR-Submitted'], ['IFA-Submitted', 'IFA-Submitted'], ['AS-Built', 'As-Built'],
+  ]).get(revision.revisionLabel);
+  const username = membership?.username;
+  const roles = require('../constants/administration.constants').OFFICIAL_ROLES;
+  if (!stage || typeof username !== 'string' || !username.trim() || [...username].length > 255 ||
+    membership.projectId !== revision.projectId || String(membership.userId) !== String(revision.createdByUserId) ||
+    !roles.includes(membership.officialRole)) {
+    throw Object.assign(new Error('Metadata historis pengunggah revisi tidak tersedia atau tidak valid.'), {
+      statusCode: 409, code: 'REVISION_UPLOAD_SNAPSHOT_UNAVAILABLE',
+    });
+  }
   await connection.execute(
     `
       INSERT INTO document_revisions (
         id, project_id, document_id, revision_label, revision_sequence, file_id,
-        storage_path_legacy, is_active, source_status, result_status, created_by_user_id
+        storage_path_legacy, is_active, source_status, result_status, created_by_user_id,
+        upload_stage_snapshot, uploaded_by_username_snapshot, uploaded_by_role_snapshot
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       revision.id,
@@ -1068,6 +1089,9 @@ const insertRevision = async (connection, revision) => {
       revision.sourceStatus,
       revision.resultStatus,
       revision.createdByUserId,
+      stage,
+      username,
+      membership.officialRole,
     ]
   );
 };
@@ -1245,14 +1269,15 @@ const insertDocumentHistory = async (connection, history) => {
 };
 
 const insertWorkflowComment = async (connection, comment) => {
+  const approvalEvent = comment.workflowAction === 'Approval A';
   await connection.execute(
     `
       INSERT INTO workflow_comments (
         id, project_id, document_id, revision_id, workflow_action, workflow_comment,
         created_by_user_id, created_by_name_snapshot, created_by_official_role_snapshot,
-        created_at
+        created_at${approvalEvent ? ', created_by_username_snapshot, approval_target_stage_snapshot' : ''}
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3)${approvalEvent ? ', ?, ?' : ''})
     `,
     [
       comment.id,
@@ -1264,6 +1289,7 @@ const insertWorkflowComment = async (connection, comment) => {
       comment.createdByUserId,
       comment.createdByNameSnapshot,
       comment.createdByOfficialRoleSnapshot,
+      ...(approvalEvent ? [comment.createdByUsernameSnapshot, comment.approvalTargetStageSnapshot] : []),
     ]
   );
 };
@@ -1446,7 +1472,7 @@ const listWorkflowComments = async ({ documentId, projectId }) => {
   return rows.map(mapWorkflowCommentRow);
 };
 
-const listDocumentRevisions = async ({ documentId, projectId }) => {
+const listDocumentRevisions = async ({ documentId, projectId, stage = null }) => {
   const [rows] = await pool.execute(
     `
       SELECT
@@ -1464,21 +1490,48 @@ const listDocumentRevisions = async ({ documentId, projectId }) => {
         stored_files.checksum,
         stored_files.uploaded_by_user_id,
         stored_files.uploaded_at AS file_uploaded_at,
+        DATE_FORMAT(stored_files.uploaded_at, '%Y-%m-%d %H:%i:%s.%f') AS revision_upload_timestamp_utc,
         stored_files.is_active AS file_is_active
       FROM document_revisions revisions
       LEFT JOIN users created_by ON created_by.id = revisions.created_by_user_id
       LEFT JOIN stored_files ON stored_files.file_id = revisions.file_id
       WHERE revisions.project_id = ?
         AND revisions.document_id = ?
-      ORDER BY revisions.revision_sequence DESC, revisions.created_at DESC, revisions.id DESC
+        ${stage === null ? '' : 'AND revisions.upload_stage_snapshot = ?'}
+      ORDER BY stored_files.uploaded_at DESC, revisions.revision_sequence DESC, revisions.id DESC
     `,
-    [projectId, documentId]
+    stage === null ? [projectId, documentId] : [projectId, documentId, stage]
   );
 
   return rows.map(mapDocumentRevisionRow);
 };
 
+const listApprovalRevisionEvents = async ({ documentId, projectId, includeStageEvidence = false }) => {
+  const [rows] = await pool.execute(
+    `SELECT comments.id, comments.revision_id, comments.created_by_user_id, comments.created_by_username_snapshot,
+            comments.created_by_official_role_snapshot, comments.approval_target_stage_snapshot,
+            DATE_FORMAT(comments.created_at, '%Y-%m-%d %H:%i:%s.%f') AS event_timestamp_utc
+     FROM workflow_comments comments
+     INNER JOIN document_revisions revisions ON revisions.id = comments.revision_id
+       AND revisions.document_id = comments.document_id AND revisions.project_id = comments.project_id
+     WHERE comments.project_id = ? AND comments.document_id = ? AND comments.workflow_action = 'Approval A'
+     ORDER BY comments.created_at DESC, comments.id DESC`,
+    [projectId, documentId]
+  );
+  return rows.map(row => ({
+    entryId: `APPROVAL_A:${row.id}`,
+    revisionId: row.revision_id,
+    ...(includeStageEvidence ? { stageActorUserId: row.created_by_user_id } : {}),
+    eventTimestamp: toExplicitUtcIsoString(row.event_timestamp_utc),
+    actorUsername: row.created_by_username_snapshot ?? 'Unknown',
+    actorRole: row.created_by_official_role_snapshot ?? 'Unknown',
+    documentStage: row.approval_target_stage_snapshot === 'AS-Built' ? 'As-Built' :
+      row.approval_target_stage_snapshot ?? 'Unknown',
+  }));
+};
+
 module.exports = {
+  listApprovalRevisionEvents,
   findSlaEvaluationSnapshot,
   getSlaScanBoundary,
   listSlaScanCandidates,
