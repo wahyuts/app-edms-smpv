@@ -156,7 +156,7 @@ const processApproval = async ({
         documentNumber: document.documentNumber,
         approvalComment: config.action === DOCUMENT_WORKFLOW_ACTION.APPROVAL_A ? null : comment,
       }),
-      transactionHook: automaticCommentId ? async (connection, { actorMembership }) => {
+      transactionHook: automaticCommentId ? async (connection, { actorMembership, targetRevision }) => {
         const fullName = String(actorUserFullName || '').trim();
         if (!fullName) {
           throw createHttpError('Nama lengkap pengguna wajib tersedia untuk approval.', 422);
@@ -167,6 +167,12 @@ const processApproval = async ({
         };
         const message = messages[actorMembership.officialRole];
         if (!message) throw createHttpError('Official Role tidak sesuai untuk Approval A.', 403);
+        const username = actorMembership.username;
+        const expectedStage = actorMembership.officialRole === 'Team Process' ? 'IFA-Submitted' : 'AS-Built';
+        if (typeof username !== 'string' || !username.trim() || [...username].length > 255 ||
+          targetRevision !== expectedStage) {
+          throw createHttpError('Metadata historis Approval A tidak tersedia atau tidak valid.', 409);
+        }
         await documentRepository.insertWorkflowComment(connection, {
           id: automaticCommentId,
           projectId: document.projectId,
@@ -177,6 +183,8 @@ const processApproval = async ({
           createdByUserId: actorUserId,
           createdByNameSnapshot: fullName,
           createdByOfficialRoleSnapshot: actorMembership.officialRole,
+          createdByUsernameSnapshot: username,
+          approvalTargetStageSnapshot: targetRevision,
         });
       } : temporaryFileId ? async (connection) => {
         const consumedRows = await uploadService.consumeTemporaryUploadMetadata(connection, temporaryFileId);

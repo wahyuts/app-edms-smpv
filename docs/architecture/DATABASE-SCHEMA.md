@@ -598,11 +598,27 @@ Attributes:
 | `created_by_user_id` | Optional | User identity of the comment author. |
 | `created_by_name_snapshot` | Yes | Comment author display name retained as historical snapshot. |
 | `created_by_official_role_snapshot` | Yes | Comment author project role retained as historical snapshot. |
+| `created_by_username_snapshot` | Nullable; required by new Approval A writer | Immutable authenticated project actor username for Approval A history; NULL for legacy rows. Does not replace fullname or upload username snapshots. |
+| `approval_target_stage_snapshot` | Nullable; required by new Approval A writer | Approval A target stage: `IFA-Submitted` or canonical `AS-Built`; legacy rows remain NULL. |
 | `created_at` | Yes | Frontend `createdDate/createdAt`. |
 
 Approved schema exception - Approval A Automatic Workflow Comment: only `chk_workflow_comments_workflow_action` is expanded from Approval B/C to Approval A/B/C in all three canonical schemas. No columns, indexes, foreign keys, defaults, or other constraints change. Approval A text, author snapshots and database timestamp reuse this table; the insert and workflow update share one transaction.
 
 Legacy / Historical Baseline: this CHECK previously accepted only Approval B/C. Canonical changes and the prepared MySQL/MariaDB migration package do not migrate existing databases. Status: **PREPARED ONLY - NOT EXECUTED**; runtime migration and verification require separate Phase C approval.
+
+Approved E.2 additive extension: `20261117_0001_approval_a_history_snapshots.sql`
+adds the two nullable snapshot columns above and
+`chk_workflow_comments_approval_target_stage`. A non-NULL target is restricted
+to Approval A with target `IFA-Submitted` or `AS-Built`. Existing official-role
+CHECK, primary key, revision/project/document/user FKs and timestamp remain intact.
+The successful Approval A comment INSERT populates snapshots within the workflow
+transaction; missing username/invalid target rejects and rolls back. B/C INSERT
+behavior is unchanged. No new table, revision/file row, storage copy or backfill.
+The opt-in Revision History projection uses comment ID as event identity and
+revision ID for file access. Default upload history remains unchanged.
+Permanent Delete already inventories/cleans workflow_comments, including the new
+columns in SELECT * evidence; no dependency allowlist or deletion rule changes.
+Status: PREPARED ONLY - E.2 does not execute this migration locally or on Railway.
 
 ### `workflow_attachments`
 

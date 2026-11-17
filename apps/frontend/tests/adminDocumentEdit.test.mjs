@@ -5,6 +5,7 @@ import { SourceTextModule, SyntheticModule } from 'node:vm';
 import { transformWithOxc } from 'vite';
 import * as constants from '../src/features/document-register/constants/document.constants.js';
 import * as uploadConstants from '../src/features/document-register/constants/upload.constants.js';
+import { formatCommentDateTime } from '../src/features/document-register/utils/documentDateTime.js';
 
 const base = '../src/features/document-register/';
 const synthetic = (exports) => new SyntheticModule(Object.keys(exports), function () {
@@ -43,12 +44,13 @@ const createModalHarness = async (overrides = {}) => {
     },
     'react/jsx-runtime': { jsx: element, jsxs: element, Fragment: 'fragment' },
     'react-dom': { createPortal: element },
-    'lucide-react': Object.fromEntries(['Download', 'Eye', 'FileText', 'FileUp', 'Loader2', 'Paperclip', 'Trash2', 'X'].map((name) => [name, name])),
+    'lucide-react': Object.fromEntries(['Download', 'Eye', 'FileText', 'FileUp', 'History', 'Loader2', 'Paperclip', 'Trash2', 'X'].map((name) => [name, name])),
     '../constants/document.constants': constants,
     '../constants/upload.constants': uploadConstants,
     '../services/file.service': { FileService, FILE_VALIDATION_CONFIG },
     '../services/workflow-attachment.service': { WORKFLOW_ATTACHMENT_VALIDATION_CONFIG: {}, WorkflowAttachmentService: {} },
     './PreviewCanvas': { default: 'PreviewCanvas' }, './SpreadsheetPreview': { default: 'SpreadsheetPreview' },
+    '../utils/documentDateTime': { formatCommentDateTime },
   }, true);
   const submissions = [];
   const warnings = [];
@@ -244,7 +246,7 @@ test('View Document renders active file upload date in Jakarta directly after Up
   assert.match(nodes(tree).find((node) => node.type === 'aside').props.className, /overflow-y-auto/);
   assert.equal(nodes(tree).find((node) => node.type === 'iframe').props.src, preview.objectUrl);
   assert.equal(tree.props.size, 'viewer');
-  assert.equal(tree.props.footer.props.children[1].props.children, 'Close');
+  assert.equal(nodes(tree.props.footer).filter(node => node.type === 'button').at(-1).props.children, 'Close');
 
   const metadataOnly = mapDocumentRecord({ ...record, description: 'Metadata edited', updatedAt: '2026-10-26T10:00:00Z' });
   assert.equal(getUploadedDateField(harness.renderView(metadataOnly)).props.children[1].props.children, '23 Oct 2026, 14:35');

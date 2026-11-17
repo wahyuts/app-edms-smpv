@@ -27,7 +27,9 @@ const fixture = ({ role = 'Team Process', revision, failure = null } = {}) => {
     evidence: JSON.stringify({ source: 'UPLOAD_ADAPTER_SNAPSHOT', version: 1, sha256: p.sha256, size: p.size, localIdentity: p }) });
   let committed = { document, files: [file, attachment], bindings: [bind(file, proof), bind(attachment, { ...proof, identity: 'native-attachment' })],
     revisions: [{ id: 'REV-1', file_id: file.file_id, document_id: document.id, project_id: document.projectId,
-      revision_label: document.revision, storage_path_legacy: key, revision_sequence: 1 }], history: [] };
+      revision_label: document.revision, storage_path_legacy: key, revision_sequence: 1,
+      upload_stage_snapshot: 'IFR-Submitted', uploaded_by_username_snapshot: 'original-uploader',
+      uploaded_by_role_snapshot: 'Document Owner' }], history: [] };
   const objects = new Map([[key, { exists: true, ...proof }], [attachmentKey, { exists: true, ...proof, identity: 'native-attachment' }]]);
   const before = structuredClone(committed), objectsBefore = structuredClone(objects), trace = [];
   let staged;
@@ -141,6 +143,20 @@ test('existing limitation: workflow revision move without legacy binding fails c
   assert.ok(!f.trace.includes('move')); assert.equal(f.objects.size, f.objectsBefore.size);
 });
 
+test('Approval A event hook failure after physical move rolls back metadata and compensates existing storage move', async () => {
+  const f = fixture();
+  await assert.rejects(f.engine.applyWorkflowTransition({ ...f.args(), transactionHook: async (connection, context) => {
+    assert.equal(connection, f.connection);
+    assert.equal(context.targetRevision, 'IFA-Submitted');
+    assert.equal(context.actorMembership.officialRole, 'Team Process');
+    assert.ok(f.trace.includes('move')); assert.ok(f.trace.includes('complete'));
+    throw new Error('Approval snapshot INSERT failed');
+  } }), /Approval snapshot INSERT failed/);
+  assert.deepEqual(f.state, f.before); assert.deepEqual(f.objects, f.objectsBefore);
+  assert.ok(f.trace.includes('rollback')); assert.ok(f.trace.includes('compensate'));
+  assert.ok(!f.trace.includes('commit'));
+});
+
 for (const scenario of [
   { role: 'Team Process', revision: 'IFR-Submitted', action: 'Approval A', target: 'IFA-Submitted' },
   { role: 'Team Project', revision: 'IFA-Submitted', action: 'Approval A', target: 'AS-Built' },
@@ -160,6 +176,9 @@ for (const scenario of [
   assert.equal(f.state.revisions.length, 1); assert.equal(f.state.revisions[0].id, 'REV-1');
   assert.equal(f.state.revisions[0].storage_path_legacy, file.storage_key);
   assert.equal(f.state.revisions[0].revision_label, scenario.target); assert.equal(f.state.revisions[0].revision_sequence, 1);
+  for (const field of ['upload_stage_snapshot', 'uploaded_by_username_snapshot', 'uploaded_by_role_snapshot']) {
+    assert.equal(f.state.revisions[0][field], f.before.revisions[0][field]);
+  }
   assert.equal(f.state.history.length, 1); assert.equal(f.state.document.activeFileId, f.before.document.activeFileId);
   assert.deepEqual(f.state.files[1], f.before.files[1]); assert.deepEqual(f.state.bindings[1], f.before.bindings[1]);
   assert.equal(f.objects.size, f.objectsBefore.size); assert.ok(!f.objects.has(f.before.files[0].storage_key));
