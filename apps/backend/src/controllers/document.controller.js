@@ -341,6 +341,14 @@ const downloadWorkflowAttachment = async (req, res, next) => {
 };
 
 module.exports = {
+  async emergencyWorkflowAttachment(req, res, next) {
+    try {
+      const service = require('../services/emergencyAttachment.service');
+      return successResponse(res, { statusCode: 201, message: 'Attachment berhasil ditambahkan.',
+        data: await service.submit({ actorUserId: req.user.id, documentId: req.params.documentId,
+          activeProject: req.activeProject, payload: req.body }) });
+    } catch (error) { next(error); }
+  },
   approveDocument: processApproval('approve'),
   approveDocumentWithComment: processApproval('approveWithComment', { requireComment: true }),
   archiveDocument,

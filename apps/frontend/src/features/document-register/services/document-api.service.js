@@ -430,9 +430,12 @@ const uploadRevision = async (documentId, {
   }
 };
 
-const approveDocument = async (documentId, { expectedState } = {}) => {
+const approveDocument = async (documentId, { expectedState, comment = "", attachmentFile = null } = {}) => {
   try {
+    const temporaryUpload = attachmentFile ? await uploadTemporaryFile(attachmentFile) : null;
     return unwrapDocument(await apiClient.post(`/v1/documents/${documentId}/approve`, {
+      ...(comment.trim() ? { comment } : {}),
+      ...(temporaryUpload ? { temporaryFileId: temporaryUpload.temporaryFileId } : {}),
       expectedActiveRevisionId: expectedState?.activeRevisionId,
       expectedCurrentAssigneeUserId: expectedState?.currentAssigneeUserId,
       expectedWorkflowStatus: expectedState?.workflowStatus,
@@ -664,6 +667,14 @@ const downloadWorkflowAttachment = async ({ attachment, documentId }) => {
 };
 
 export const DocumentApiService = {
+  async submitEmergencyAttachment(documentId, payload) {
+    try {
+      return (await apiClient.post(`/v1/documents/${documentId}/emergency-workflow-attachments`, payload)).data.data;
+    } catch (error) {
+      throwDocumentApiError(error, "Hasil attachment belum dapat dipastikan. Coba lagi dengan permintaan yang sama.");
+    }
+  },
+  uploadEmergencyTemporaryFile: uploadTemporaryFile,
   approveDocument,
   archiveDocument,
   createDocument,
