@@ -1270,14 +1270,15 @@ const insertDocumentHistory = async (connection, history) => {
 
 const insertWorkflowComment = async (connection, comment) => {
   const approvalEvent = comment.workflowAction === 'Approval A';
+  const emergency = comment.workflowAction === 'Emergency Workflow Attachment';
   await connection.execute(
     `
       INSERT INTO workflow_comments (
         id, project_id, document_id, revision_id, workflow_action, workflow_comment,
         created_by_user_id, created_by_name_snapshot, created_by_official_role_snapshot,
-        created_at${approvalEvent ? ', created_by_username_snapshot, approval_target_stage_snapshot' : ''}
+        created_at${approvalEvent ? ', created_by_username_snapshot, approval_target_stage_snapshot' : ''}${emergency ? ', request_fingerprint' : ''}
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3)${approvalEvent ? ', ?, ?' : ''})
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3)${approvalEvent ? ', ?, ?' : ''}${emergency ? ', ?' : ''})
     `,
     [
       comment.id,
@@ -1290,6 +1291,7 @@ const insertWorkflowComment = async (connection, comment) => {
       comment.createdByNameSnapshot,
       comment.createdByOfficialRoleSnapshot,
       ...(approvalEvent ? [comment.createdByUsernameSnapshot, comment.approvalTargetStageSnapshot] : []),
+      ...(emergency ? [comment.requestFingerprint] : []),
     ]
   );
 };

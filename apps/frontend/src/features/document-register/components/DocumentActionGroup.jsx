@@ -34,6 +34,7 @@ import { getDocumentActionVisibility } from "../utils/documentActionVisibility";
 import { synchronizeDocumentRuntimeQueries } from "../utils/documentRuntimeQuerySync";
 import { createRealtimeRefetchCoalescer } from "../utils/realtimeRefetchCoalescer";
 import { PermanentDeleteAction } from "./PermanentDeleteAction";
+import EmergencyAttachmentAction from "./EmergencyAttachmentAction";
 import { DocumentRevisionHistoryModal } from "./DocumentRevisionHistoryModal";
 import {
   isActorSelfEvent,
@@ -182,10 +183,6 @@ export const DocumentActionGroup = ({
   const [comments, setComments] = useState([]);
   const [detailDocument, setDetailDocument] = useState(documentItem);
   const [documentFile, setDocumentFile] = useState(null);
-  const [localReadState, setLocalReadState] = useState({
-    documentId: null,
-    unreadCommentCount: 0,
-  });
   const [timeline, setTimeline] = useState([]);
   const [workflowAttachmentFile, setWorkflowAttachmentFile] = useState(null);
   const [workflowAttachmentPreview, setWorkflowAttachmentPreview] = useState(null);
@@ -268,11 +265,7 @@ export const DocumentActionGroup = ({
       }
     : defaultVisibility;
   const workflowVisibility = visibility;
-  const hasUnreadComments = Boolean(documentItem?.hasUnreadComments) &&
-    !(
-      localReadState.documentId === documentItem?.id &&
-      localReadState.unreadCommentCount === Number(documentItem?.unreadCommentCount ?? 0)
-    );
+  const hasUnreadComments = Boolean(documentItem?.hasUnreadComments);
   const canEditDocument = hasProjectPermission(DOCUMENT_REGISTER_PERMISSION.EDIT);
   const canArchiveDocument =
     !isDashboard &&
@@ -510,10 +503,6 @@ export const DocumentActionGroup = ({
     setComments(nextComments);
 
     await DocumentApiService.markWorkflowCommentsRead(documentItem.id);
-    setLocalReadState({
-      documentId: documentItem.id,
-      unreadCommentCount: Number(documentItem?.unreadCommentCount ?? 0),
-    });
     await queryClient.invalidateQueries({ queryKey: ["documents"] });
 
     if (
@@ -525,7 +514,7 @@ export const DocumentActionGroup = ({
         variant: "warning",
       });
     }
-  }, [currentUserId, documentItem.id, documentItem.unreadCommentCount, showToast]);
+  }, [currentUserId, documentItem.id, showToast]);
 
   useEffect(() => {
     commentRefetchCoalescerRef.current = createRealtimeRefetchCoalescer({
@@ -622,10 +611,6 @@ export const DocumentActionGroup = ({
       setActiveModalState(modalType.COMMENT);
       clearActionIfCurrent(actionLoadingType.COMMENT);
       await DocumentApiService.markWorkflowCommentsRead(documentItem.id);
-      setLocalReadState({
-        documentId: documentItem.id,
-        unreadCommentCount: Number(documentItem?.unreadCommentCount ?? 0),
-      });
       await queryClient.invalidateQueries({ queryKey: ["documents"] });
     } catch (error) {
       showToast({
@@ -1060,6 +1045,8 @@ export const DocumentActionGroup = ({
     try {
       if (workflowAction === ACTION_CODE.APPROVAL_A) {
         await DocumentApiService.approveDocument(documentItem.id, {
+          comment,
+          attachmentFile,
           expectedState: workflowExpectedState,
         });
       } else if (workflowAction === ACTION_CODE.APPROVAL_B) {
@@ -1189,6 +1176,10 @@ export const DocumentActionGroup = ({
             <PermanentDeleteAction documentItem={documentItem} disabled={isActionLocked}
               onRunAction={(handler) => runAction("permanentDelete", handler)} onComplete={onWorkflowComplete} />
           ) : null}
+          {!isReadOnlyActionMode ? <EmergencyAttachmentAction
+            key={`${documentItem.id}:${activeProjectId}:${projectRoleName}:${currentUserId}`}
+            documentItem={documentItem} disabled={isActionLocked} Button={ActionIconButton}
+            onComplete={() => synchronizeDocumentRuntimeQueries({ refreshCurrentSurface: onWorkflowComplete })} /> : null}
         </div>
 
         {isReadOnlyActionMode ? null : workflowVisibility.showHistory ? (
@@ -1342,13 +1333,19 @@ export const DocumentActionGroup = ({
       ) : null}
       {activeModal === modalType.APPROVAL_A ? (
         <ApprovalConfirmationModal
+          comment={workflowComment}
+          attachmentPreview={workflowAttachmentPreview}
+          attachmentErrorMessage={workflowAttachmentErrorMessage}
+          onCommentChange={setWorkflowComment}
+          onAttachmentChange={handleWorkflowAttachmentChange}
+          onAttachmentRemove={removeWorkflowAttachment}
           actionSummary="Approval A will continue the document to the next workflow status."
           confirmLabel="Confirmed"
           documentItem={detailDocument}
           isSubmitting={activeWorkflowSubmitAction === ACTION_CODE.APPROVAL_A}
           message="Are you sure you want to approve this document?"
           onCancel={closeModal}
-          onConfirm={() => executeWorkflowAction(ACTION_CODE.APPROVAL_A)}
+          onConfirm={() => executeWorkflowAction(ACTION_CODE.APPROVAL_A, workflowComment, workflowAttachmentFile)}
         />
       ) : null}
       {activeModal === modalType.APPROVAL_B ? (

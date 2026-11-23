@@ -7,6 +7,7 @@ const { DOCUMENT_PERMISSION } = require('../constants/document.constants');
 const router = express.Router();
 
 router.use(authenticate);
+router.post('/:documentId/emergency-workflow-attachments', documentController.emergencyWorkflowAttachment);
 
 router.get('/', authorizeAnyPermission(DOCUMENT_PERMISSION.VIEW), documentController.listDocuments);
 router.post('/', authorizeAnyPermission(DOCUMENT_PERMISSION.CREATE), documentController.createDocument);
