@@ -7,6 +7,7 @@ const {
   DOCUMENT_WORKFLOW_STATUS,
 } = require('../constants/document.constants');
 const documentRepository = require('../repositories/document.repository');
+const admission = require('./documentAdmission.service');
 const fileAccessRepository = require('../repositories/fileAccess.repository');
 const projectMembershipRepository = require('../repositories/projectMembership.repository');
 const storageService = require('./storage.service');
@@ -331,6 +332,7 @@ const applyWorkflowTransition = async ({
           createdByUserId: actorUserId,
           createdByNameSnapshot: actorUserFullName || null,
           createdByOfficialRoleSnapshot: actorOfficialRole || actorMembership.officialRole,
+          ...(workflowComment.resolve ? workflowComment.resolve({ actorMembership, targetRevision: nextRevision }) : {}),
         });
       }
       if (workflowAttachment) {
@@ -364,7 +366,7 @@ const applyWorkflowTransition = async ({
       }
     });
   } catch (error) {
-    if (storageMoved && revisionStorageMove) {
+    if (storageMoved && revisionStorageMove && !['UNKNOWN', 'COMMITTED'].includes(admission.current?.()?.dbOutcome)) {
       await storageService.move(revisionStorageMove.storageKey, revisionStorageMove.fromStorageKey).catch(() => {});
     }
     throw error;

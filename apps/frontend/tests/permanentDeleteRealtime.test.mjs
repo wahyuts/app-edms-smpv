@@ -205,6 +205,40 @@ for (const surface of ['sla', 'escalation']) test(`${surface} local-state datase
   }
 });
 
+for (const role of ['Team Process', 'Team Project']) test(`Emergency comment.created refreshes unread on PFD/PID without acknowledging reads: ${role}`, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = await harness(); t.after(h.dispose);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity, gcTime: Infinity } } });
+  t.after(() => client.clear());
+  let unreadCount = 0, reads = 0;
+  const keys = ['PFD', 'P&ID'].map(drawing => ['documents', 'register', 'P1', { drawing }]);
+  const subscriptions = keys.map(queryKey => {
+    client.setQueryData(queryKey, { hasUnreadComments: false, unreadCommentCount: 0 });
+    return new QueryObserver(client, { queryKey, queryFn: async () => {
+      reads++; return { hasUnreadComments: unreadCount > 0, unreadCommentCount: unreadCount };
+    } }).subscribe(() => {});
+  });
+  t.after(() => subscriptions.forEach(stop => stop()));
+  const runtime = await load('features/document-register/hooks/useRealtimeDocumentRuntimeSync.js', {
+    react: h.hooks, '@/shared/api/query-client': { queryClient: client }, '@/shared/realtime': h.realtime,
+    '@/shared/stores/project-context.store': { useProjectContextStore: h.store },
+    '../utils/realtimeRefetchCoalescer': { createRealtimeRefetchCoalescer },
+    './useRealtimePermanentDeleteSync': { useRealtimePermanentDeleteSync: h.deleteHook },
+  });
+  h.render(runtime.useRealtimeDocumentRuntimeSync);
+  const comment = event({ type: 'comment.created', eventId: `COMMENT-${role}`, actorUserId: 7, commentId: 'EWA-1', scope: 'project' });
+  h.emit({ ...comment, projectId: 'OTHER' }); t.mock.timers.tick(500); await settle(); assert.equal(reads, 0);
+  unreadCount = 1; h.emit(comment); h.emit(comment); t.mock.timers.tick(500); await settle();
+  assert.equal(reads, 2);
+  for (const key of keys) assert.equal(client.getQueryData(key).hasUnreadComments, true);
+  unreadCount = 0; await client.invalidateQueries({ queryKey: ['documents'], refetchType: 'active' });
+  for (const key of keys) assert.equal(client.getQueryData(key).hasUnreadComments, false);
+  unreadCount = 1; h.emit({ ...comment, eventId: 'NEW-COMMENT', commentId: 'EWA-2' }); t.mock.timers.tick(500); await settle();
+  for (const key of keys) assert.equal(client.getQueryData(key).unreadCommentCount, 1);
+  h.emit({ ...comment, eventId: 'AFTER-UNMOUNT' }); const before = reads; h.dispose();
+  t.mock.timers.tick(500); await settle(); assert.equal(reads, before);
+});
+
 for (const approval of ['A', 'B', 'C']) test(`Approval ${approval} workflow event refetches active PFD and PID register queries once`, async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const h = await harness(); t.after(h.dispose);

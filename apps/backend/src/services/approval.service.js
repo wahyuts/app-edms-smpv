@@ -18,6 +18,7 @@ const {
   buildAttachmentStorageKey,
 } = require('../utils/storageKeyBuilder');
 const { validateStoredFileCapacity } = require('../utils/storageMetadataCapacity');
+const { validateWorkflowAttachment } = require('../utils/workflowAttachmentPolicy');
 
 const approvalConfig = Object.freeze({
   approve: Object.freeze({
@@ -71,12 +72,12 @@ const processApproval = async ({
     throw createHttpError('Document Tidak Ditemukan', 404);
   }
 
-  const reason = comment || config.defaultReason;
+  const reason = String(comment || '').trim() || config.defaultReason;
   const shouldCreateWorkflowComment = [
     DOCUMENT_WORKFLOW_ACTION.APPROVAL_B,
     DOCUMENT_WORKFLOW_ACTION.APPROVAL_C,
   ].includes(config.action);
-  const workflowComment = shouldCreateWorkflowComment
+  let workflowComment = shouldCreateWorkflowComment
     ? {
         id: createEntityId('WFC'),
         comment: reason,
@@ -85,21 +86,40 @@ const processApproval = async ({
   // Keep automatic comments separate from the existing notification/audit identity basis.
   const automaticCommentId = config.action === DOCUMENT_WORKFLOW_ACTION.APPROVAL_A
     ? createEntityId('WFC') : null;
+  if (automaticCommentId) {
+    workflowComment = {
+      id: automaticCommentId,
+      resolve: ({ actorMembership, targetRevision }) => {
+        const fullName = String(actorUserFullName || '').trim();
+        const messages = {
+          'Team Process': 'This document has been approved by Team Process and can continue to the next workflow by Team Project',
+          'Team Project': 'This document has been fully approved by Team Project.',
+        };
+        const username = actorMembership.username;
+        const message = messages[actorMembership.officialRole];
+        const expectedStage = actorMembership.officialRole === 'Team Process' ? 'IFA-Submitted' : 'AS-Built';
+        if (!fullName) throw createHttpError('Nama lengkap pengguna wajib tersedia untuk approval.', 422);
+        if (!message) throw createHttpError('Official Role tidak sesuai untuk Approval A.', 403);
+        if (typeof username !== 'string' || !username.trim() ||
+          [...username].length > 255 || targetRevision !== expectedStage) {
+          throw createHttpError('Metadata historis Approval A tidak tersedia atau tidak valid.', 409);
+        }
+        return { workflowComment: reason || message, createdByNameSnapshot: fullName,
+          createdByOfficialRoleSnapshot: actorMembership.officialRole,
+          createdByUsernameSnapshot: username, approvalTargetStageSnapshot: targetRevision };
+      },
+    };
+  }
   let workflowAttachment = null;
   let finalized = false;
   let temporaryMetadata = null;
 
   if (temporaryFileId) {
-    if (!workflowComment) {
-      throw createHttpError('Workflow Attachment hanya tersedia untuk Approval B/C', 422, [
-        { field: 'temporaryFileId', message: 'Workflow Attachment hanya tersedia untuk Approval B/C' },
-      ]);
-    }
-
     temporaryMetadata = await uploadService.assertTemporaryUploadConsumable({
       actorUserId,
       temporaryFileId,
     });
+    if (automaticCommentId) validateWorkflowAttachment(temporaryMetadata);
     const attachmentId = createEntityId('WFA');
     const fileId = createEntityId('FILE');
     const physicalFileName = buildAttachmentPhysicalFileName({
@@ -156,37 +176,7 @@ const processApproval = async ({
         documentNumber: document.documentNumber,
         approvalComment: config.action === DOCUMENT_WORKFLOW_ACTION.APPROVAL_A ? null : comment,
       }),
-      transactionHook: automaticCommentId ? async (connection, { actorMembership, targetRevision }) => {
-        const fullName = String(actorUserFullName || '').trim();
-        if (!fullName) {
-          throw createHttpError('Nama lengkap pengguna wajib tersedia untuk approval.', 422);
-        }
-        const messages = {
-          'Team Process': 'This document has been approved by Team Process and can continue to the next workflow by Team Project',
-          'Team Project': 'This document has been fully approved by Team Project.',
-        };
-        const message = messages[actorMembership.officialRole];
-        if (!message) throw createHttpError('Official Role tidak sesuai untuk Approval A.', 403);
-        const username = actorMembership.username;
-        const expectedStage = actorMembership.officialRole === 'Team Process' ? 'IFA-Submitted' : 'AS-Built';
-        if (typeof username !== 'string' || !username.trim() || [...username].length > 255 ||
-          targetRevision !== expectedStage) {
-          throw createHttpError('Metadata historis Approval A tidak tersedia atau tidak valid.', 409);
-        }
-        await documentRepository.insertWorkflowComment(connection, {
-          id: automaticCommentId,
-          projectId: document.projectId,
-          documentId: document.id,
-          revisionId: document.activeRevisionId,
-          workflowAction: config.action,
-          workflowComment: message,
-          createdByUserId: actorUserId,
-          createdByNameSnapshot: fullName,
-          createdByOfficialRoleSnapshot: actorMembership.officialRole,
-          createdByUsernameSnapshot: username,
-          approvalTargetStageSnapshot: targetRevision,
-        });
-      } : temporaryFileId ? async (connection) => {
+      transactionHook: temporaryFileId ? async (connection) => {
         const consumedRows = await uploadService.consumeTemporaryUploadMetadata(connection, temporaryFileId);
         if (consumedRows !== 1) {
           throw createHttpError('Temporary upload tidak ditemukan atau sudah digunakan', 409, [
@@ -201,7 +191,7 @@ const processApproval = async ({
       workflowComment,
     });
   } catch (error) {
-    if (finalized && workflowAttachment?.storageKey) {
+    if (finalized && workflowAttachment?.storageKey && !['UNKNOWN', 'COMMITTED'].includes(admission.current?.()?.dbOutcome)) {
       await storageService.delete(workflowAttachment.storageKey).catch(() => {});
     }
     if (!finalized && temporaryMetadata && error?.code === 'WORKFLOW_CONFLICT') {
@@ -212,7 +202,7 @@ const processApproval = async ({
   const notificationEventType = updatedDocument.status === 'Approved'
     ? notificationService.NOTIFICATION_EVENT_TYPE.DOCUMENT_APPROVED
     : config.eventType;
-  const notificationIdentityBasis = workflowComment?.id || updatedDocument.activeRevisionId || updatedDocument.updatedAt;
+  const notificationIdentityBasis = (shouldCreateWorkflowComment ? workflowComment?.id : null) || updatedDocument.activeRevisionId || updatedDocument.updatedAt;
   const shouldNotifyAdminAndOwner = [
     notificationService.NOTIFICATION_EVENT_TYPE.APPROVAL_B_COMPLETED,
     notificationService.NOTIFICATION_EVENT_TYPE.APPROVAL_C_COMPLETED,
@@ -251,7 +241,7 @@ const processApproval = async ({
       config.action,
       document.projectId,
       document.id,
-      workflowComment?.id || updatedDocument.updatedAt,
+      (shouldCreateWorkflowComment ? workflowComment?.id : null) || updatedDocument.updatedAt,
     ].join(':'),
     metadata: {
       nextStatus: updatedDocument.status,
@@ -306,7 +296,7 @@ const processApproval = async ({
     document: updatedDocument,
   });
 
-  return workflowComment
+  return shouldCreateWorkflowComment
     ? {
         ...updatedDocument,
         workflowComment: {

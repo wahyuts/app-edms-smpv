@@ -16,6 +16,8 @@ const allowed = new Set([
   'utils/storageMetadataCapacity.js', 'utils/fileName.js', 'utils/revisionHistoryStage.js', 'validators/approval.validator.js',
   'constants/document.constants.js', 'constants/administration.constants.js', 'constants/storage.constants.js',
   'controllers/document.controller.js', 'validators/document.validator.js', 'utils/response.js',
+  'utils/workflowAttachmentPolicy.js', 'services/emergencyAttachment.service.js',
+  'repositories/emergencyAttachment.repository.js', 'services/workflowAttachment.service.js',
 ]);
 
 // Fail closed: no native runtime require, env file, database driver, or network API.
@@ -23,7 +25,7 @@ const createLoader = (mocks = new Map(), external = new Map()) => {
   mocks = new Map(mocks);
   if (!mocks.has('services/documentAdmission.service.js')) {
     mocks.set('services/documentAdmission.service.js', {
-      documentWriter: (handler) => handler,
+      documentWriter: (handler) => handler, current: () => null,
       guardTransaction: async () => {}, noteDbOutcome() {}, assertReadable: async () => {},
       withContinuation: (callback) => callback(),
     });

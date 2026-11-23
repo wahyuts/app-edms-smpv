@@ -75,6 +75,9 @@ const uploadWorkflowAttachment = async ({ actorUserId, documentId, payload }) =>
   }
 
   const attachmentId = createEntityId('WFA');
+  if (['Approval A', 'Emergency Workflow Attachment'].includes(workflowComment.workflowAction)) {
+    throw createHttpError('Attachment harus dikirim melalui operasi komentar terkait.', 403);
+  }
   const fileId = createEntityId('FILE');
   const physicalFileName = buildAttachmentPhysicalFileName({
     attachmentId,
