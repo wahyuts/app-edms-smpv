@@ -15,7 +15,7 @@ const load = async (file, imports, globals = {}) => {
   const source = await readFile(new URL(file, base), 'utf8');
   const code = file.endsWith('.jsx') ? (await transformWithOxc(source, 'fixture.jsx', { jsx: { runtime: 'automatic' } })).code : source;
   const context = (await import('node:vm')).createContext({ Blob, AbortController, Date, ...globals });
-  const module = new SourceTextModule(code, { context });
+  const module = new SourceTextModule(code, { context, initializeImportMeta(meta) { meta.env = globals.viteEnv ?? {}; } });
   await module.link(name => {
     assert.ok(imports[name], `Unexpected import: ${name}`);
     return new SyntheticModule(Object.keys(imports[name]), function () {
@@ -571,6 +571,192 @@ const parentHarness = async () => {
   }, { document });
   return { module, effects, document };
 };
+
+test('Approval A fields remain independent and Emergency viewer uses exact title with existing full-name author', async () => {
+  const h = await parentHarness();
+  const a = h.module.ApprovalConfirmationModal({ documentItem: {}, message: 'Existing confirmation', actionSummary: 'Existing summary',
+    comment: 'Custom A', onCommentChange() {}, onAttachmentChange() {} });
+  assert.match(text(a), /Comment \(Optional\)/);
+  assert.match(text(a), /Workflow Attachment.*Optional/);
+  const e = h.module.ApprovalCommentModal({ documentItem: {}, isAttachmentRequired: true, comment: '', onCommentChange() {}, onSubmit() {} });
+  assert.match(text(e), /Workflow Attachment.*Required/);
+  for (const role of ['Team Process', 'Team Project']) {
+    const comments = h.module.CommentViewerModal({ documentItem: {}, comments: [{ id: 'C1', workflowAction: 'Emergency Workflow Attachment',
+      workflowComment: 'New report', createdBy: 'Authenticated Full Name', createdByOfficialRole: role }] });
+    assert.match(text(comments), new RegExp(`Update Report For Approval A By ${role}`));
+    assert.match(text(comments), /Authenticated Full Name/);
+  }
+});
+
+test('Emergency visibility defaults OFF, is role/project scoped and follows each independent flag', async () => {
+  const { canAddEmergencyAttachment: can } = await load('utils/emergencyAttachmentEligibility.js', {});
+  const base = { documentItem: { projectId: 'P1', lifecycle: 'Active', revision: 'IFA-Submitted', status: 'Approved' },
+    project: { id: 'P1', status: 'Active' }, flags: {} };
+  for (const role of ['Team Process', 'Team Project', 'Admin', 'Document Owner', 'Viewer']) assert.equal(can({ ...base, role }), false);
+  for (const role of ['Team Process', 'Team Project']) {
+    const flags = { [`EMERGENCY_UPLOAD_${role === 'Team Process' ? 'TEAM_PROCESS' : 'TEAM_PROJECT'}_ENABLED`]: true };
+    assert.equal(can({ ...base, role, flags }), true);
+    assert.equal(can({ ...base, role, flags, project: { id: 'P2', status: 'Active' } }), false);
+    assert.equal(can({ ...base, role, flags, project: { id: 'P1', status: 'Closed' } }), false);
+    assert.equal(can({ ...base, role, flags, documentItem: { ...base.documentItem, lifecycle: 'Archived' } }), false);
+    assert.equal(can({ ...base, role: 'Viewer', flags }), false);
+  }
+});
+
+const emergencyHarness = async (options = {}) => {
+  const h = { uploads: 0, submissions: [], completed: 0, cleanups: [], toasts: [], detailIds: [],
+    store: { activeProject: { id: 'P1', status: 'Active', ...options.project }, activeMembership: { officialRole: options.role || 'Team Process' } } };
+  const documentItem = { id: 'D1', projectId: 'P1', documentNumber: 'SYNTHETIC-1', lifecycle: 'Active', revision: 'IFA-Submitted', status: 'Project Review', activeRevisionId: 'R1', ...options.document };
+  let cursor = 0; const slots = [];
+  const hooks = {
+    useState(value) { const i = cursor++; slots[i] ??= { value }; return [slots[i].value, next => { slots[i].value = next; }]; },
+    useRef(value) { const i = cursor++; slots[i] ??= { current: value }; return slots[i]; },
+    useEffect(fn) { const i = cursor++; if (!slots[i]) { slots[i] = true; h.cleanups.push(fn()); } },
+  };
+  const store = selector => selector(h.store); store.getState = () => h.store;
+  const { canAddEmergencyAttachment } = await load('utils/emergencyAttachmentEligibility.js', {});
+  const module = await load('components/EmergencyAttachmentAction.jsx', {
+    react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' }, 'lucide-react': { Paperclip: 'Paperclip' },
+    '@/app/config/env': { env: options.flags ?? { EMERGENCY_UPLOAD_TEAM_PROCESS_ENABLED: true } },
+    '@/shared/stores/project-context.store': { useProjectContextStore: store }, '@/shared/components/toast': { useToast: () => ({ showToast: value => h.toasts.push(value) }) },
+    '../utils/emergencyAttachmentEligibility': { canAddEmergencyAttachment }, './DocumentActionModal': { ApprovalCommentModal: 'EmergencyModal' },
+    '../services/document-api.service': { DocumentApiService: {
+      getDocumentById: async id => { h.detailIds.push(id); return documentItem; },
+      uploadEmergencyTemporaryFile: async () => { h.uploads++; if (options.uploadGate) await options.uploadGate; return { temporaryFileId: 'TMP-1' }; },
+      submitEmergencyAttachment: async (id, payload) => { h.submissions.push({ id, payload: { ...payload } });
+        if (options.failFirst && h.submissions.length === 1) throw new Error('Unknown result'); },
+    } },
+  }, { crypto: { randomUUID: () => '12345678-1234-4234-8234-123456789abc' } });
+  h.render = () => { cursor = 0; return module.default({ documentItem, Button: options.Button ?? 'ActionButton', onComplete: () => { h.completed++; return options.onComplete?.(); } }); };
+  h.modal = () => nodes(h.render()).find(n => n.type === 'EmergencyModal');
+  h.open = async () => { await nodes(h.render()).find(n => n.type === 'ActionButton' || (n.type === 'button' && n.props.title === 'Emergency Workflow Attachment')).props.onClick(); };
+  h.dispose = () => h.cleanups.forEach(fn => fn?.());
+  return h;
+};
+
+test('Emergency modal rejects missing attachment before upload/API and Close is local', async () => {
+  const h = await emergencyHarness(); await h.open();
+  assert.equal(h.modal().props.isAttachmentRequired, true);
+  await h.modal().props.onSubmit();
+  assert.equal(h.uploads, 0); assert.equal(h.submissions.length, 0);
+  assert.match(h.modal().props.errorMessage, /wajib/);
+  assert.deepEqual({ ...h.toasts.at(-1) }, { message: 'Workflow Attachment wajib diunggah sebelum Submit.', variant: 'error' });
+  h.modal().props.onCancel(); assert.equal(h.modal(), undefined); h.dispose();
+});
+
+for (const role of ['Team Process', 'Team Project']) for (const comment of ['', 'Custom report']) {
+  test(`Emergency required attachment toast then valid submission: ${role}, ${comment || 'empty comment'}`, async () => {
+    const h = await emergencyHarness({ role, flags: { EMERGENCY_UPLOAD_TEAM_PROCESS_ENABLED: true, EMERGENCY_UPLOAD_TEAM_PROJECT_ENABLED: true },
+      document: { status: role === 'Team Project' ? 'Approved' : 'Project Review', revision: role === 'Team Project' ? 'AS-Built' : 'IFA-Submitted' } });
+    await h.open(); h.modal().props.onCommentChange(comment);
+    await h.modal().props.onSubmit();
+    assert.equal(h.toasts.at(-1).message, 'Workflow Attachment wajib diunggah sebelum Submit.');
+    assert.equal(h.toasts.at(-1).variant, 'error'); assert.equal(h.uploads, 0); assert.equal(h.submissions.length, 0);
+    h.modal().props.onAttachmentChange({ file: {}, preview: { originalFileName: 'synthetic.pdf' }, errorMessage: '' });
+    assert.equal(h.modal().props.errorMessage, '');
+    await h.modal().props.onSubmit();
+    assert.equal(h.uploads, 1); assert.equal(h.submissions.length, 1); assert.equal(h.completed, 1);
+    assert.equal(h.submissions[0].payload.comment, comment); h.dispose();
+  });
+}
+test('Emergency missing attachment leaves Submit clickable for validation, but busy Submit is disabled', async () => {
+  const h = await parentHarness();
+  for (const busy of [false, true]) {
+    const tree = h.module.ApprovalCommentModal({ documentItem: {}, isAttachmentRequired: true, isSubmitting: busy,
+      comment: '', onCommentChange() {}, onSubmit() {}, submitLabel: 'Submit' });
+    const submit = nodes(tree.props.footer).find(n => n.type === 'button' && n.props.onClick);
+    const buttons = nodes(tree.props.footer).filter(n => n.type === 'button');
+    assert.ok(submit); assert.equal(buttons.at(-1).props.disabled, busy);
+  }
+});
+test('Emergency duplicate click during upload starts only one request', async () => {
+  let release;
+  const h = await emergencyHarness({ uploadGate: new Promise(resolve => { release = resolve; }) });
+  await h.open(); h.modal().props.onAttachmentChange({ file: {}, preview: {} });
+  const handler = h.modal().props.onSubmit;
+  const first = handler(); await handler();
+  assert.equal(h.uploads, 1); assert.equal(h.submissions.length, 0);
+  release(); await first;
+  assert.equal(h.submissions.length, 1); h.dispose();
+});
+for (const role of ['Team Process', 'Team Project']) test(`Emergency success invalidates existing runtime queries without marking comments read: ${role}`, async () => {
+  const invalidations = [];
+  const { synchronizeDocumentRuntimeQueries } = await load('utils/documentRuntimeQuerySync.js', {
+    '@/shared/api/query-client': { queryClient: { invalidateQueries: async options => { invalidations.push(options); } } },
+  });
+  const h = await emergencyHarness({ role, flags: { EMERGENCY_UPLOAD_TEAM_PROCESS_ENABLED: true, EMERGENCY_UPLOAD_TEAM_PROJECT_ENABLED: true },
+    document: { status: role === 'Team Project' ? 'Approved' : 'Project Review' },
+    onComplete: synchronizeDocumentRuntimeQueries });
+  await h.open(); h.modal().props.onAttachmentChange({ file: {}, preview: {} });
+  await h.modal().props.onSubmit();
+  assert.ok(invalidations.some(options => options.queryKey[0] === 'documents' && options.refetchType === 'active'));
+  assert.ok(invalidations.some(options => options.queryKey[0] === 'dashboard'));
+  assert.equal(h.completed, 1); h.dispose();
+});
+test('Emergency modal retry preserves request, comment and temporary identity after unknown result', async () => {
+  const h = await emergencyHarness({ failFirst: true }); await h.open();
+  h.modal().props.onCommentChange('Custom report');
+  h.modal().props.onAttachmentChange({ file: {}, preview: { originalFileName: 'synthetic.pdf' } });
+  await h.modal().props.onSubmit();
+  assert.match(h.modal().props.errorMessage, /Unknown result/);
+  h.modal().props.onCommentChange('Cannot alter pending identity');
+  await h.modal().props.onSubmit();
+  assert.equal(h.uploads, 1); assert.equal(h.submissions.length, 2);
+  assert.deepEqual(h.submissions[0], h.submissions[1]);
+  assert.equal(h.submissions[1].payload.comment, 'Custom report');
+  assert.equal(h.completed, 1); assert.equal(h.modal(), undefined); h.dispose();
+});
+test('Emergency stale modal cannot submit after project switch', async () => {
+  const h = await emergencyHarness(); await h.open(); const old = h.modal();
+  old.props.onAttachmentChange({ file: {}, preview: {} });
+  h.store.activeProject = { id: 'P2', status: 'Active' };
+  await old.props.onSubmit();
+  assert.equal(h.uploads, 0); assert.equal(h.submissions.length, 0); assert.equal(h.render(), null); h.dispose();
+});
+
+test('actual Vite env module keeps both flags OFF by default and enables them independently', async () => {
+  for (const processFlag of [undefined, 'false', 'true']) for (const projectFlag of [undefined, 'false', 'true']) {
+    const { env } = await load('../../app/config/env.js', {}, { viteEnv: {
+      VITE_EMERGENCY_UPLOAD_TEAM_PROCESS_ENABLED: processFlag,
+      VITE_EMERGENCY_UPLOAD_TEAM_PROJECT_ENABLED: projectFlag,
+    } });
+    assert.equal(env.EMERGENCY_UPLOAD_TEAM_PROCESS_ENABLED, processFlag === 'true');
+    assert.equal(env.EMERGENCY_UPLOAD_TEAM_PROJECT_ENABLED, projectFlag === 'true');
+  }
+});
+
+for (const scenario of [
+  { name: 'Team Project Approved AS-Built ON', role: 'Team Project', document: { status: 'Approved', revision: 'AS-Built' }, show: true },
+  { name: 'Team Project Project Review IFA ON', role: 'Team Project', show: false },
+  { name: 'Team Project Approved OFF', role: 'Team Project', document: { status: 'Approved' }, flags: {}, show: false },
+  { name: 'Team Project Approved archived', role: 'Team Project', document: { status: 'Approved', lifecycle: 'Archived' }, show: false },
+  { name: 'Team Project Approved closed project', role: 'Team Project', document: { status: 'Approved' }, project: { status: 'Closed' }, show: false },
+  { name: 'Team Process IFA ON', role: 'Team Process', show: true },
+  { name: 'Team Process IFR ON', role: 'Team Process', document: { revision: 'IFR-Submitted' }, show: false },
+  { name: 'Team Process AS-Built ON', role: 'Team Process', document: { revision: 'AS-Built' }, show: false },
+  { name: 'Admin Approved ON', role: 'Admin', document: { status: 'Approved' }, show: false },
+  { name: 'Document Owner Approved ON', role: 'Document Owner', document: { status: 'Approved' }, show: false },
+  { name: 'Viewer Approved ON', role: 'Viewer', document: { status: 'Approved' }, show: false },
+]) test(`Emergency action renderer: ${scenario.name}`, async () => {
+  const h = await emergencyHarness({ flags: { EMERGENCY_UPLOAD_TEAM_PROCESS_ENABLED: true, EMERGENCY_UPLOAD_TEAM_PROJECT_ENABLED: true }, ...scenario });
+  const button = nodes(h.render()).find(n => n.type === 'ActionButton');
+  assert.equal(Boolean(button), scenario.show);
+  if (button) { assert.equal(button.props.label, 'Emergency Workflow Attachment'); assert.equal(button.props.icon, 'Paperclip'); }
+  h.dispose();
+});
+
+for (const comment of ['', 'Custom A']) for (const attachment of [false, true]) test(`Approval A API optional inputs ${comment}/${attachment}`, async () => {
+  const calls = [];
+  const module = await load('services/document-api.service.js', {
+    '@/shared/api': { apiClient: { post: async (url, payload) => { calls.push([url, payload]); return { data: { data: url.includes('temporary') ? { temporaryFileId: 'TMP-1' } : {} } }; } } },
+    './file.service': { FileService: {} },
+  }, { FormData: class { append() {} } });
+  await module.DocumentApiService.approveDocument('D1', { comment, attachmentFile: attachment ? {} : null, expectedState: { activeRevisionId: 'R1', workflowStatus: 'Process Review' } });
+  const [url, payload] = calls.at(-1);
+  assert.equal(url, '/v1/documents/D1/approve'); assert.equal(calls.length, attachment ? 2 : 1);
+  assert.equal(payload.comment, comment || undefined); assert.equal(payload.temporaryFileId, attachment ? 'TMP-1' : undefined);
+  assert.equal(payload.expectedActiveRevisionId, 'R1');
+});
 test('View Document optional trigger, existing content, preview and buttons stay intact', async () => {
   const h = await parentHarness();
   const props = { documentItem: { id: 'D1', documentNumber: 'Test', fileMetadata: { originalFileName: 'active.pdf', fileExtension: 'pdf' } },
@@ -608,7 +794,7 @@ test('Revision History navigation button matches existing View trigger and sits 
 const navigationHarness = async () => {
   let slots = [], cursor = 0, pending = [], timerId = 0;
   const h = { userId: 7, canView: true, context: { activeProject: { id: 'P1' }, activeMembership: { officialRole: 'Admin' } },
-    apiCalls: [], toasts: [], timers: new Map(), historyResponse: [{ id: 'H1', activity: 'Approval A' }] };
+    apiCalls: [], toasts: [], timers: new Map(), invalidations: [], runtimeSyncs: [], commentRows: [], historyResponse: [{ id: 'H1', activity: 'Approval A' }] };
   const changed = (a, b) => !a || a.length !== b.length || a.some((v, i) => !Object.is(v, b[i]));
   const hooks = {
     useState(value) { const i = cursor++; if (!slots[i]) slots[i] = { value }; return [slots[i].value, next => { slots[i].value = typeof next === 'function' ? next(slots[i].value) : next; }]; },
@@ -624,7 +810,10 @@ const navigationHarness = async () => {
     'lucide-react': Object.fromEntries(['Clock3', 'Download', 'Eye', 'Loader2', 'Pencil', 'MessageSquare', 'Archive', 'RotateCcw'].map(n => [n, n])),
     '@/features/auth/services/auth.service': { AuthService: { getCurrentUser: () => ({ id: h.userId }) } },
     '@/shared/components/toast': { useToast: () => ({ showToast: toast => h.toasts.push(toast) }) },
-    '@/shared/api/query-client': { queryClient: { invalidateQueries: async () => {} } },
+    '@/shared/api/query-client': { queryClient: { invalidateQueries: async options => {
+      h.invalidations.push(options);
+      if (h.applyReadResponse) h.props.documentItem = { ...h.props.documentItem, hasUnreadComments: false, unreadCommentCount: 0 };
+    } } },
     '@/shared/hooks/usePermission': { usePermission: () => ({ hasProjectPermission: code => code !== constants.DOCUMENT_REGISTER_PERMISSION.VIEW || h.canView }) },
     '@/shared/realtime': { useRealtimeEvent() {}, useRealtimeRecovery() {} },
     '@/shared/stores/project-context.store': { useProjectContextStore: store },
@@ -634,12 +823,17 @@ const navigationHarness = async () => {
       async getDocumentRevisions(id, options) { h.apiCalls.push({ action: 'revisions', id, options }); return []; },
       async getDocumentById(id) { h.apiCalls.push({ action: 'detail', id }); return { ...h.props.documentItem }; },
       async getDocumentPreview() { return { file: new Blob(['pdf']), viewerType: 'pdf' }; },
+      async getWorkflowComments(id) { h.apiCalls.push({ action: 'comments', id }); return h.commentRows; },
+      async markWorkflowCommentsRead(id) { h.apiCalls.push({ action: 'read', id }); },
     } },
     '../utils/commentRealtimeSync': { COMMENT_VIEWER_UPDATED_NOTICE: '', isCommentActorSelfEvent: () => false, isCommentViewerRealtimeEvent: () => false },
-    '../utils/documentActionVisibility': { getDocumentActionVisibility: () => ({ topActions: [constants.ACTION_CODE.VIEW], workflowActions: [], showHistory: true }) },
-    '../utils/documentRuntimeQuerySync': { synchronizeDocumentRuntimeQueries: async () => {} },
+    '../utils/documentActionVisibility': { getDocumentActionVisibility: () => ({ topActions: [constants.ACTION_CODE.VIEW, constants.ACTION_CODE.COMMENT], workflowActions: [], showHistory: true }) },
+    '../utils/documentRuntimeQuerySync': { synchronizeDocumentRuntimeQueries: async options => {
+      h.runtimeSyncs.push(options); await options?.refreshCurrentSurface?.();
+    } },
     '../utils/realtimeRefetchCoalescer': { createRealtimeRefetchCoalescer: () => ({ cancel() {}, schedule() {} }) },
     './PermanentDeleteAction': { PermanentDeleteAction: 'PermanentDeleteAction' },
+    './EmergencyAttachmentAction': { default: 'EmergencyAttachmentAction' },
     './DocumentRevisionHistoryModal': { DocumentRevisionHistoryModal: 'DocumentRevisionHistoryModal' },
     '../utils/workflowRealtimeSync': { isActorSelfEvent: () => false, isRelevantWorkflowDetailEvent: () => false,
       shouldCloseWorkflowActionModal: () => false, shouldRefreshWorkflowDocumentViewer: () => false, WORKFLOW_DETAIL_STALE_NOTICE: '' },
@@ -654,6 +848,97 @@ const navigationHarness = async () => {
   h.render(); for (const fn of h.timers.values()) fn(); h.timers.clear(); h.render();
   return h;
 };
+
+for (const scenario of [
+  { name: 'Team Project Approved', role: 'Team Project', status: 'Approved', revision: 'AS-Built', show: true },
+  { name: 'Team Process IFA', role: 'Team Process', status: 'Project Review', revision: 'IFA-Submitted', show: true },
+  { name: 'flag OFF', role: 'Team Project', status: 'Approved', flags: {}, show: false },
+  { name: 'Admin', role: 'Admin', status: 'Approved', show: false },
+  { name: 'Document Owner', role: 'Document Owner', status: 'Approved', show: false },
+  { name: 'Viewer', role: 'Viewer', status: 'Approved', show: false },
+  { name: 'inactive project', role: 'Team Project', status: 'Approved', projectStatus: 'Inactive', show: false },
+  { name: 'Archived', role: 'Team Project', status: 'Approved', lifecycle: 'Archived', show: false },
+  { name: 'Team Project not Approved', role: 'Team Project', status: 'Project Review', revision: 'IFA-Submitted', show: false },
+  { name: 'Team Process IFR', role: 'Team Process', status: 'Process Review', revision: 'IFR-Submitted', show: false },
+]) test(`Dashboard shared Emergency integration: ${scenario.name}`, async () => {
+  let registerRefreshes = 0, summaryRefreshes = 0;
+  const document = { id: 'DOC-INTERNAL-123', projectId: 'P1', documentNumber: 'PID-DISPLAY-NUMBER',
+    lifecycle: scenario.lifecycle ?? 'Active', status: scenario.status, revision: scenario.revision ?? 'AS-Built',
+    activeRevisionId: 'REV-INTERNAL-123', hasUnreadComments: true, unreadCommentCount: 1 };
+  const { default: DashboardTable } = await load('components/DashboardDocumentRegisterTable.jsx', {
+    'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
+    react: { useCallback: fn => fn }, './DocumentRegisterTable': { default: 'DocumentRegisterTable' },
+  });
+  const table = DashboardTable({ tableState: { rows: [document], refreshDocuments: async () => { registerRefreshes++; } },
+    onDataChanged: () => { summaryRefreshes++; } });
+  assert.equal(table.props.isDashboard, true); assert.equal(table.props.rows[0], document);
+  const h = await navigationHarness();
+  h.context.activeMembership = { officialRole: scenario.role };
+  h.context.activeProject = { id: 'P1', status: scenario.projectStatus ?? 'Active' };
+  h.props = { ...h.props, documentItem: table.props.rows[0], isDashboard: table.props.isDashboard,
+    onWorkflowComplete: table.props.refreshDocuments };
+  h.render();
+  const child = h.find('EmergencyAttachmentAction');
+  assert.ok(child, 'Dashboard must reach the same shared Emergency component');
+  assert.equal(child.props.documentItem, document);
+  const e = await emergencyHarness({ document: child.props.documentItem, role: scenario.role,
+    project: h.context.activeProject, flags: scenario.flags ?? { EMERGENCY_UPLOAD_TEAM_PROCESS_ENABLED: true, EMERGENCY_UPLOAD_TEAM_PROJECT_ENABLED: true },
+    Button: child.props.Button, onComplete: child.props.onComplete });
+  const button = nodes(e.render()).find(n => n.props?.title === 'Emergency Workflow Attachment');
+  assert.equal(Boolean(button), scenario.show);
+  const commentIcon = () => nodes(h.tree).find(n => n.props?.title === 'View Comments');
+  if (document.lifecycle === 'Archived') assert.equal(commentIcon(), undefined);
+  else assert.equal(nodes(commentIcon()).some(n => n.type === 'span' && text(n) === '!'), true);
+  if (scenario.show) {
+    assert.equal(button.props['aria-label'], 'Emergency Workflow Attachment');
+    assert.equal(button.props.className, commentIcon().props.className);
+    await e.open();
+    assert.equal(e.detailIds[0], document.id); assert.notEqual(e.detailIds[0], document.documentNumber);
+    assert.equal(e.modal().props.documentItem.documentNumber, document.documentNumber);
+    e.modal().props.onAttachmentChange({ file: {}, preview: { originalFileName: 'report.pdf' } });
+    await e.modal().props.onSubmit();
+    assert.equal(e.submissions[0].id, document.id);
+    assert.equal(h.runtimeSyncs.length, 1); assert.equal(registerRefreshes, 1); assert.equal(summaryRefreshes, 1);
+    assert.equal(h.apiCalls.some(call => call.action === 'read'), false);
+    h.render(); assert.equal(nodes(commentIcon()).some(n => n.type === 'span' && text(n) === '!'), true);
+    const existingButtons = nodes(h.tree).filter(n => n.type === 'button').map(n => [n.props.title, n.props.className]);
+    h.props.isDashboard = false; h.render();
+    assert.deepEqual(nodes(h.tree).filter(n => n.type === 'button').map(n => [n.props.title, n.props.className]), existingButtons);
+  }
+  e.dispose(); h.dispose();
+});
+
+test('Dashboard read-only mode does not gain Emergency writes', async () => {
+  const h = await navigationHarness(); h.props.isDashboard = true; h.props.actionMode = 'readOnly'; h.render();
+  assert.equal(h.find('EmergencyAttachmentAction'), undefined); h.dispose();
+});
+
+for (const role of ['Team Process', 'Team Project']) test(`Emergency unread icon follows server receipt state, including a new same-count comment: ${role}`, async () => {
+  const h = await navigationHarness();
+  h.props.documentItem = { ...h.props.documentItem, hasUnreadComments: true, unreadCommentCount: 1 };
+  h.commentRows = [{ id: 'EWA-1', workflowAction: 'Emergency Workflow Attachment', createdByOfficialRole: role }];
+  h.applyReadResponse = true;
+  const indicator = () => {
+    const button = nodes(h.tree).find(n => n.props?.title === 'View Comments');
+    return nodes(button).some(n => n.type === 'span' && text(n) === '!');
+  };
+  h.render(); assert.equal(indicator(), true);
+  await nodes(h.tree).find(n => n.props?.title === 'View Comments').props.onClick(); h.render();
+  assert.equal(h.find('CommentViewerModal').props.comments[0].id, 'EWA-1');
+  assert.equal(h.apiCalls.filter(c => c.action === 'read').length, 1);
+  assert.ok(h.invalidations.some(i => i.queryKey[0] === 'documents')); assert.equal(indicator(), false);
+  h.find('CommentViewerModal').props.onClose(); h.render();
+  assert.equal(h.apiCalls.filter(c => c.action === 'read').length, 1);
+  h.props.documentItem = { ...h.props.documentItem, hasUnreadComments: true, unreadCommentCount: 1 };
+  h.render(); assert.equal(indicator(), true);
+  await nodes(h.tree).find(n => n.props?.title === 'View Comments').props.onClick(); h.render();
+  assert.equal(indicator(), false); h.dispose();
+  const reopened = await navigationHarness();
+  reopened.props.documentItem = { ...reopened.props.documentItem, hasUnreadComments: false, unreadCommentCount: 0 };
+  reopened.render();
+  assert.equal(nodes(nodes(reopened.tree).find(n => n.props?.title === 'View Comments')).some(n => n.type === 'span' && text(n) === '!'), false);
+  assert.equal(reopened.apiCalls.some(c => c.action === 'read'), false); reopened.dispose();
+});
 
 test('Revision History swaps atomically to standalone Document Revision History for the captured document/project', async () => {
   const h = await navigationHarness(); await h.open();

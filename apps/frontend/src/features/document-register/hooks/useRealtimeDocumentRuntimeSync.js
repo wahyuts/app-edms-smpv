@@ -13,6 +13,7 @@ import { useRealtimePermanentDeleteSync } from "./useRealtimePermanentDeleteSync
 const REALTIME_DOCUMENT_REFETCH_DELAY_MS = 500;
 
 const documentRuntimeEventTypes = new Set([
+  REALTIME_EVENT_TYPE.COMMENT_CREATED,
   REALTIME_EVENT_TYPE.DOCUMENT_ARCHIVED,
   REALTIME_EVENT_TYPE.DOCUMENT_CREATED,
   REALTIME_EVENT_TYPE.DOCUMENT_RESTORED,

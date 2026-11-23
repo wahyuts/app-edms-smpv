@@ -292,6 +292,10 @@ const env = {
     frontendResetPasswordUrl: process.env.FRONTEND_RESET_PASSWORD_URL || 'http://localhost:5173/reset-password',
   },
   corsAllowedOrigins: process.env.CORS_ALLOWED_ORIGINS,
+  emergencyUpload: {
+    teamProcess: getBooleanEnv('EMERGENCY_UPLOAD_TEAM_PROCESS_ENABLED', false),
+    teamProject: getBooleanEnv('EMERGENCY_UPLOAD_TEAM_PROJECT_ENABLED', false),
+  },
   storage: {
     driver: getStorageDriver(),
     path: process.env.STORAGE_PATH || './storage',

@@ -18,6 +18,7 @@ const fixture = (options = {}) => {
   const trace = [];
   const sent = [];
   const logs = [];
+  const admissionContext = { dbOutcome: 'NOT_STARTED' };
   const rollbackError = new Error('Transaction failed');
   const pool = {
     async getConnection() {
@@ -35,7 +36,7 @@ const fixture = (options = {}) => {
           trace.push('COMMIT ACK');
         },
         async rollback() { trace.push('ROLLBACK'); staged = null; },
-        release() { trace.push('RELEASE'); unlock(); },
+        release() { trace.push('RELEASE'); unlock(); if (options.releaseFailure) throw new Error('Release failed'); },
         async execute(sql, values) {
           assert.ok(staged, 'Snapshot INSERT must share the open workflow transaction');
           assert.match(sql, /INSERT INTO workflow_comments/);
@@ -67,6 +68,9 @@ const fixture = (options = {}) => {
     },
   };
   const mocks = new Map([
+    ['services/documentAdmission.service.js', { documentWriter: fn => fn, current: () => admissionContext,
+      withContinuation: callback => callback(), guardTransaction: async () => {},
+      noteDbOutcome(outcome) { if (admissionContext.dbOutcome !== 'UNKNOWN') admissionContext.dbOutcome = outcome; } }],
     ['config/database.js', { pool }],
     ['config/logger.js', { log: (...args) => logs.push(args), error: (...args) => logs.push(args) }],
     ['repositories/fileAccess.repository.js', {
@@ -266,3 +270,37 @@ test('Approval B/C attachment processing remains in the existing transaction', a
     assert.ok(f.sent[0].text.includes('Comment: Manual attachment comment'));
   }
 });
+
+for (const role of ['Team Process', 'Team Project']) for (const comment of ['', '  ', 'Custom approved message']) for (const attached of [false, true]) {
+  test(`Enhanced Approval A ${role} comment=${JSON.stringify(comment)} attachment=${attached}`, async () => {
+    const f = fixture({ role, comment, snapshotSql: true });
+    await f.service.processApproval({ ...f.args, temporaryFileId: attached ? 'TMP-1' : null });
+    await settle();
+    assert.equal(f.state.comments.length, 1);
+    assert.equal(f.state.history.length, 1);
+    const row = f.state.comments[0];
+    assert.equal(row.workflowComment, comment.trim() || (role === 'Team Process'
+      ? 'This document has been approved by Team Process and can continue to the next workflow by Team Project'
+      : 'This document has been fully approved by Team Project.'));
+    assert.equal(row.createdByNameSnapshot, f.args.actorUserFullName);
+    assert.equal(row.createdByOfficialRoleSnapshot, role);
+    assert.equal(row.approvalTargetStageSnapshot, role === 'Team Process' ? 'IFA-Submitted' : 'AS-Built');
+    assert.equal(f.state.document.status, role === 'Team Process' ? 'Project Review' : 'Approved');
+    assert.equal(f.state.document.activeFileId, f.before.document.activeFileId);
+    if (attached) {
+      assert.ok(f.trace.indexOf('SNAPSHOT SQL') < f.trace.indexOf('ATTACHMENT'));
+      assert.ok(f.trace.indexOf('PROVENANCE') < f.trace.indexOf('COMMIT ACK'));
+    } else assert.equal(f.trace.includes('FINALIZE'), false);
+    await assert.rejects(f.service.processApproval({ ...f.args, temporaryFileId: attached ? 'TMP-1' : null }));
+    assert.equal(f.state.comments.length, 1);
+  });
+}
+
+for (const options of [{ commitUnknown: true }, { releaseFailure: true }, { postFailure: 'reload' }]) {
+  test(`Approval A committed/uncertain attachment is never deleted by compensation: ${JSON.stringify(options)}`, async () => {
+    const f = fixture({ ...options, snapshotSql: true });
+    await assert.rejects(f.service.processApproval({ ...f.args, temporaryFileId: 'TMP-1' }));
+    assert.equal(f.state.comments.length, 1);
+    assert.ok(f.trace.includes('FINALIZE')); assert.ok(f.trace.includes('PROVENANCE'));
+  });
+}

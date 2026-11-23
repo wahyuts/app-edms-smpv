@@ -207,6 +207,7 @@ const FileUploadField = ({
 };
 
 const WorkflowAttachmentField = ({
+  required = false,
   attachmentErrorMessage,
   attachmentPreview,
   onAttachmentChange,
@@ -297,7 +298,7 @@ const WorkflowAttachmentField = ({
 
   return (
     <div>
-      <p className={fieldLabelClassName}>Workflow Attachment (Optional)</p>
+      <p className={fieldLabelClassName}>Workflow Attachment ({required ? "Required" : "Optional"})</p>
       <label
         className={[
           fileInputClassName,
@@ -789,7 +790,9 @@ export const CommentViewerModal = ({
               >
                 <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                   <p className="text-sm font-semibold text-[#00C8FF]">
-                    {comment.workflowAction === "Approval A" &&
+                    {comment.workflowAction === "Emergency Workflow Attachment" && ["Team Process", "Team Project"].includes(comment.createdByOfficialRole)
+                      ? `Update Report For Approval A By ${comment.createdByOfficialRole}`
+                      : comment.workflowAction === "Approval A" &&
                     ["Team Process", "Team Project"].includes(comment.createdByOfficialRole)
                       ? `Approval A By ${comment.createdByOfficialRole}`
                       : comment.workflowAction}
@@ -1019,6 +1022,12 @@ export const HistoryModal = ({ documentItem, onClose, onRevisionHistory, timelin
 };
 
 export const ApprovalConfirmationModal = ({
+  comment = "",
+  attachmentPreview = null,
+  attachmentErrorMessage = "",
+  onCommentChange = () => {},
+  onAttachmentChange = () => {},
+  onAttachmentRemove = () => {},
   actionSummary,
   confirmLabel = "Confirmed",
   documentItem,
@@ -1042,7 +1051,7 @@ export const ApprovalConfirmationModal = ({
           </button>
           <button
             className={isDanger ? dangerButtonClassName : primaryButtonClassName}
-            disabled={isSubmitting}
+            disabled={isSubmitting || Boolean(attachmentErrorMessage)}
             onClick={onConfirm}
             type="button"
           >
@@ -1061,12 +1070,20 @@ export const ApprovalConfirmationModal = ({
           <p className={valueClassName}>{actionSummary}</p>
         </div>
         <p className="text-sm text-[#CBD5E1]">{message}</p>
+        <label className="block">
+          <span className={fieldLabelClassName}>Comment (Optional)</span>
+          <textarea className="mt-2 min-h-28 w-full rounded-md border border-[#123A5A] bg-[#08233B] px-3 py-2 text-sm text-[#F8FAFC] outline-none transition-colors placeholder:text-[#64748B] focus:border-[#0F7BFF]"
+            value={comment} onChange={event => onCommentChange(event.target.value)} placeholder="Write workflow comment..." disabled={isSubmitting} />
+        </label>
+        <WorkflowAttachmentField attachmentPreview={attachmentPreview} attachmentErrorMessage={attachmentErrorMessage}
+          onAttachmentChange={onAttachmentChange} onAttachmentRemove={onAttachmentRemove} />
       </div>
     </DocumentActionModal>
   );
 };
 
 export const ApprovalCommentModal = ({
+  isAttachmentRequired = false,
   actionSummary,
   attachmentErrorMessage = "",
   attachmentPreview = null,
@@ -1128,6 +1145,7 @@ export const ApprovalCommentModal = ({
           />
         </label>
         <WorkflowAttachmentField
+          required={isAttachmentRequired}
           attachmentErrorMessage={attachmentErrorMessage}
           attachmentPreview={attachmentPreview}
           onAttachmentChange={onAttachmentChange}
