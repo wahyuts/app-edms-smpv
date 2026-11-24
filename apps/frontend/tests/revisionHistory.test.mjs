@@ -551,7 +551,11 @@ test('existing register actions and workflow timeline mapping are unchanged', as
   assert.equal(history(source), history(old));
   assert.match(source, /DocumentApiService\.getDocumentRevisions\(historyContext\.documentId\)/);
   const table = await readFile(new URL('components/DocumentRegisterTable.jsx', base), 'utf8');
-  assert.equal(table.replaceAll('\r\n', '\n'), execFileSync('git', ['show', 'HEAD:apps/frontend/src/features/document-register/components/DocumentRegisterTable.jsx'], { encoding: 'utf8' }).replaceAll('\r\n', '\n'));
+  const withoutStatusPresentation = value => value
+    .replace(/^  getDocumentStatusLabel,\r?\n/m, '')
+    .replaceAll('{getDocumentStatusLabel(status)}', '{status}');
+  const previousTable = execFileSync('git', ['show', 'HEAD:apps/frontend/src/features/document-register/components/DocumentRegisterTable.jsx'], { encoding: 'utf8' });
+  assert.equal(withoutStatusPresentation(table).replaceAll('\r\n', '\n'), withoutStatusPresentation(previousTable).replaceAll('\r\n', '\n'));
   assert.match(source, /revisionHistoryContext\.projectId === activeProjectId/);
   assert.match(source, /hasProjectPermission\(DOCUMENT_REGISTER_PERMISSION\.VIEW\)/);
 });

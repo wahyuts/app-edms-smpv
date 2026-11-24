@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import DocumentActionGroup from "@/features/document-register/components/DocumentActionGroup";
-import { DOCUMENT_STATUS } from "@/features/document-register/constants/document.constants";
+import { DOCUMENT_STATUS, getDocumentStatusLabel } from "@/features/document-register/constants/document.constants";
 import {
   formatTimeForReview,
   getSlaTimerTextClassName,
@@ -149,7 +149,7 @@ export const EscalationAlertTable = ({
             <option value="">All Status</option>
             {statusOptions.map((status) => (
               <option key={status} value={status}>
-                {status}
+                {getDocumentStatusLabel(status)}
               </option>
             ))}
           </SelectDropdown>
@@ -239,7 +239,7 @@ export const EscalationAlertTable = ({
                           "border-[#123A5A] bg-[#08233B] text-[#CBD5E1]"
                         }
                       >
-                        {item.status}
+                        {getDocumentStatusLabel(item.status)}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 font-semibold text-[#FCA5A5]">
