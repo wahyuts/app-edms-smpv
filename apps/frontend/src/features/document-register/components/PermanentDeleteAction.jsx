@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Loader2, RefreshCw, Trash2 } from "lucide-react";
 import DocumentActionModal from "./DocumentActionModal";
+import { getDocumentStatusLabel } from "../constants/document.constants";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
 import { useToast } from "@/shared/components/toast";
 import { queryClient } from "@/shared/api/query-client";
@@ -64,7 +65,7 @@ export const DeleteDocumentModal = ({ documentItem, reason, onReasonChange, busy
     </>}>
       <div className="space-y-4" ref={body}>
         <div className="grid grid-cols-2 gap-3">
-          {[['DOCUMENT NUMBER', documentItem.documentNumber], ['CURRENT STATUS', documentItem.status]].map(([label, value]) => (
+          {[['DOCUMENT NUMBER', documentItem.documentNumber], ['CURRENT STATUS', getDocumentStatusLabel(documentItem.status)]].map(([label, value]) => (
             <div className="min-w-0 rounded-md bg-[#08233B] p-3" key={label}>
               <p className="text-xs font-semibold uppercase text-[#94A3B8]">{label}</p>
               <p className="mt-1 break-words text-sm font-semibold text-[#F8FAFC]">{value}</p>

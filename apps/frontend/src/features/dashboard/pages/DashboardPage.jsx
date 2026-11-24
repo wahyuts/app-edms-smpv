@@ -21,6 +21,7 @@ import {
 } from "@/features/document-register";
 import {
   DOCUMENT_STATUS,
+  getDocumentStatusLabel,
   SLA_STATUS,
 } from "@/features/document-register/constants/document.constants";
 import { useProjectContextStore } from "@/shared/stores/project-context.store";
@@ -60,17 +61,17 @@ const kpiCards = [
   },
   {
     cardTone: "border-[#C2410C]/80 from-[#331A10] via-[#161518] to-[#061B2F]",
-    description: "Awaiting process comments",
+    description: "IFR review results",
     icon: MessageCircle,
     iconTone: "bg-gradient-to-br from-[#F97316] to-[#C2410C] text-white",
     key: "processCommentReject",
-    label: "Process Comment / Reject",
+    label: `${getDocumentStatusLabel(DOCUMENT_STATUS.PROCESS_COMMENT)} / Reject`,
     statusFilter: [
       DOCUMENT_STATUS.PROCESS_COMMENT,
       DOCUMENT_STATUS.PROCESS_REJECT,
     ],
     summaryRows: [
-      { key: "processComment", label: "Comment" },
+      { key: "processComment", label: "IFR Approved Comment" },
       { key: "processReject", label: "Reject" },
     ],
   },
@@ -85,17 +86,17 @@ const kpiCards = [
   },
   {
     cardTone: "border-[#BE3455]/70 from-[#281526] via-[#151628] to-[#061B2F]",
-    description: "Awaiting project comments",
+    description: "IFA review results",
     icon: MessagesSquare,
     iconTone: "bg-gradient-to-br from-[#E0526B] to-[#BE3455] text-white",
     key: "projectCommentReject",
-    label: "Project Comment / Reject",
+    label: `${getDocumentStatusLabel(DOCUMENT_STATUS.PROJECT_COMMENT)} / Reject`,
     statusFilter: [
       DOCUMENT_STATUS.PROJECT_COMMENT,
       DOCUMENT_STATUS.PROJECT_REJECT,
     ],
     summaryRows: [
-      { key: "projectComment", label: "Comment" },
+      { key: "projectComment", label: "IFA Approved Comment" },
       { key: "projectReject", label: "Reject" },
     ],
   },
@@ -177,6 +178,7 @@ const DashboardLoadingValue = ({ className = "h-5 w-5" }) => (
 const DashboardKpiCard = ({ card, isActive, isError, isLoading, onSelect, summary, value }) => {
   const Icon = card.icon;
   const activeDescription = isActive ? "Active status filter" : "Apply status filter";
+  const isReviewResultCard = ["processCommentReject", "projectCommentReject"].includes(card.key);
 
   return (
     <button
@@ -214,10 +216,11 @@ const DashboardKpiCard = ({ card, isActive, isError, isLoading, onSelect, summar
         {isError ? "Data gagal dimuat" : card.description}
       </p>
       {card.summaryRows ? (
-        <div className="mt-3 flex items-center justify-center gap-6 text-center text-sm font-semibold text-[#CBD5E1]">
-          {card.summaryRows.map((summaryRow) => (
-            <p key={summaryRow.key} className="whitespace-nowrap">
-              <span>{summaryRow.label} : </span>
+        <div className={isReviewResultCard ? "mt-3 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-sm font-semibold text-[#CBD5E1]" : "mt-3 flex items-center justify-center gap-6 text-center text-sm font-semibold text-[#CBD5E1]"}>
+          {card.summaryRows.map((summaryRow, index) => (
+            <p key={summaryRow.key} className={isReviewResultCard ? "min-w-0" : "whitespace-nowrap"}>
+              {isReviewResultCard && index > 0 ? <span aria-hidden="true">| </span> : null}
+              <span>{summaryRow.label}{isReviewResultCard ? ": " : " : "}</span>
               <span
                 className={
                   summaryRow.label === "Reject" ? "text-[#EF4444]" : ""

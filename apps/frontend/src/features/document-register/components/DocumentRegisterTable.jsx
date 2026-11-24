@@ -16,6 +16,7 @@ import {
   DOCUMENT_LIFECYCLE_FILTER,
   DOCUMENT_REGISTER_PERMISSION,
   DOCUMENT_STATUS,
+  getDocumentStatusLabel,
 } from "../constants/document.constants";
 
 const statusStyles = {
@@ -99,7 +100,7 @@ const StatusBadge = ({ status }) => {
         statusStyles[status] ?? "border-[#123A5A] bg-[#08233B] text-[#CBD5E1]",
       ].join(" ")}
     >
-      {status}
+      {getDocumentStatusLabel(status)}
     </span>
   );
 };
@@ -232,7 +233,7 @@ export const DocumentRegisterTable = ({
               <option value="">All Status</option>
               {fixedStatusOptions.map((status) => (
                 <option key={status} value={status}>
-                  {status}
+                  {getDocumentStatusLabel(status)}
                 </option>
               ))}
             </SelectDropdown>
