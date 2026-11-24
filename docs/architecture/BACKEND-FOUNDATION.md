@@ -501,6 +501,27 @@ Project-scoped route tetap harus melakukan service-level validation terhadap act
 
 ------------------------------------------------------------------------
 
+# 13C. Revisi 2 - Approval B Revision Completion Contract
+
+- Shared revision persistence menangani Owner upload dan Admin Edit dengan file:
+  Process Comment -> Project Review / IFA-Submitted; Project Comment -> Approved / AS-Built.
+- Admin metadata-only pada Comment mempertahankan workflow, pointers, sequence dan SLA
+  timestamps; Days Until Validation tetap dievaluasi. Jalur Reject dan Approval A/C tidak berubah.
+- Read ulang state dan evidence revision aktif sebelum upload dalam transaksi/connection
+  yang sama, setelah coordinator lock. Project aktif, membership, lifecycle, conditional
+  write dan storage provenance existing tetap wajib. Missing/ambiguous evidence fail-closed.
+- Final status memakai helper stage/role existing, assignee NULL hanya untuk Approved,
+  dan existing Approved SLA reset/stop semantics. Tidak memanggil Approval A untuk finalisasi.
+- Simpan upload snapshots/source/result status/history secara atomik dengan file pointers;
+  tidak menulis ulang approval history, tidak membuat komentar/Approval A palsu.
+- Pending B lama berlaku pada next valid upload tanpa migration, cutoff, atau backfill.
+- Post-commit: Process B memakai Revision Uploaded/Team Project; Project B memakai
+  Document Approved/Admin-Owner. Audit Upload Revision mencatat uploader dan source/result
+  stage/status. Tidak menambah jenis notifikasi/email approval.
+- Monitoring menangani revision.uploaded menggunakan project-scoped coalescing existing;
+  interval Escalation, Emergency, unread, schema dan UI tetap. SQL COMMIT-unknown cleanup
+  adalah risiko deferred terpisah, tidak dianggap selesai oleh perubahan workflow ini.
+
 # 14. Engineering Principles
 
 -   Single Responsibility

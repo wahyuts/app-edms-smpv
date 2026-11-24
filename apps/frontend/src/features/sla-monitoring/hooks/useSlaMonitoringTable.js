@@ -150,7 +150,7 @@ export const useSlaMonitoringTable = ({ directSearchValue = "" } = {}) => {
   }, [activeProjectId]);
 
   const handleWorkflowChanged = useCallback((event) => {
-    if (event.type !== REALTIME_EVENT_TYPE.WORKFLOW_CHANGED || !activeProjectId) return;
+    if (![REALTIME_EVENT_TYPE.WORKFLOW_CHANGED, REALTIME_EVENT_TYPE.REVISION_UPLOADED].includes(event.type) || !activeProjectId) return;
     if (String(event.projectId ?? "") !== String(activeProjectId)) return;
     const refresh = workflowRefreshRef.current;
     if (!refresh) return;

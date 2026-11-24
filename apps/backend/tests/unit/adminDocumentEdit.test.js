@@ -5,6 +5,8 @@ const cookieParser = require('cookie-parser');
 const { pool } = require('../../src/config/database');
 const repo = require('../../src/repositories/document.repository');
 const insertRevisionWithSnapshot = repo.insertRevision;
+const lockApprovalBEvidenceWithSql = repo.lockApprovalBRevisionEvidence;
+const findDocumentWithSql = repo.findDocumentRegisterById;
 const memberships = require('../../src/repositories/projectMembership.repository');
 const projects = require('../../src/repositories/project.repository');
 const documents = require('../../src/services/document.service');
@@ -16,6 +18,7 @@ const sla = require('../../src/services/slaNotificationProducer.service');
 const audit = require('../../src/services/audit.service');
 const realtime = require('../../src/services/realtimeDocumentPublisher.service');
 const workflow = require('../../src/services/workflowEngine.service');
+const resolveAssigneeWithConnection = workflow.resolveCurrentAssigneeForStatus;
 const auth = require('../../src/services/auth.service');
 const { generateAccessToken } = require('../../src/utils/token');
 const { AUTH_COOKIE_NAMES } = require('../../src/constants/auth.constants');
@@ -23,9 +26,9 @@ const { validateDocumentCreate, validateTemporaryFilePayload } = require('../../
 const { DOCUMENT_WORKFLOW_STATUS: STATUS } = require('../../src/constants/document.constants');
 
 const transitions = {
-  'Process Comment': 'Process Review',
+  'Process Comment': 'Project Review',
   'Process Reject': 'Process Review',
-  'Project Comment': 'Project Review',
+  'Project Comment': 'Approved',
   'Project Reject': 'Project Review',
 };
 const labelFor = (status) => status === STATUS.APPROVED ? 'AS-Built' : status.startsWith('Project') ? 'IFA-Submitted' : 'IFR-Submitted';
@@ -59,9 +62,27 @@ const fixture = (t, options = {}) => {
     if (options.provenanceFailure) throw new Error('provenance failed');
   });
   t.mock.method(repo, 'findDocumentTypeByDrawing', async () => ({ id: 'TYPE-1' }));
-  t.mock.method(repo, 'getNextRevisionSequence', async () => 2);
+  t.mock.method(repo, 'getNextRevisionSequence', async () => 2 + records.revisions.length);
   t.mock.method(repo, 'lockDocumentForEdit', async () => ({ ...doc, ...options.lockedState }));
-  t.mock.method(repo, 'runInTransaction', async (callback) => {
+  t.mock.method(repo, 'lockApprovalBRevisionEvidence', async (connection, scope) => {
+    assert.equal(connection.transaction, true);
+    assert.deepEqual(scope, { projectId: doc.projectId, documentId: doc.id, revisionId: doc.activeRevisionId });
+    const evidence = {
+      revision: { id: doc.activeRevisionId, project_id: doc.projectId, document_id: doc.id,
+        file_id: doc.activeFileId, revision_label: doc.revision, is_active: 1,
+        file_project_id: doc.projectId, file_document_id: doc.id, file_is_active: 1 },
+      decisions: [{ id: 'B-1', revision_id: doc.activeRevisionId, workflow_action: 'Approval B', created_by_user_id: 9,
+        created_by_official_role_snapshot: doc.status === 'Process Comment' ? 'Team Process' : 'Team Project',
+        decision_time: '2026-10-01 01:00:00.000000' }],
+      history: [{ id: 'H-B', workflow_event: 'Approval B Completed', activity: 'Approval B', workflow_status: doc.status,
+        revision_label: doc.revision, created_by_user_id: 9, history_time: '2026-10-01 01:00:00.000000' }],
+    };
+    options.changeEvidence?.(evidence);
+    return evidence;
+  });
+  let transactionQueue = Promise.resolve();
+  t.mock.method(repo, 'runInTransaction', (callback) => {
+    const run = async () => {
     const before = structuredClone({ doc, records });
     try {
       await callback({ transaction: true, async execute(sql, values) {
@@ -79,6 +100,11 @@ const fixture = (t, options = {}) => {
       Object.assign(records, before.records);
       throw error;
     }
+    };
+    if (!options.serialize) return run();
+    const operation = transactionQueue.then(run);
+    transactionQueue = operation.catch(() => {});
+    return operation;
   });
   t.mock.method(repo, 'updateDocumentWorkflowState', async (connection, values) => {
     assert.equal(connection.transaction, true);
@@ -87,7 +113,7 @@ const fixture = (t, options = {}) => {
       status: values.workflowStatus, revision: values.revisionLabel,
       responsibleRole: values.responsibleRole, currentAssigneeUserId: values.currentAssigneeUserId,
     });
-    if (values.resetSla) { doc.slaStartedAt = 'new-cycle'; doc.slaStoppedAt = null; }
+    if (values.resetSla) { doc.slaStartedAt = 'new-cycle'; doc.slaStoppedAt = values.slaStoppedAtExpression === 'UTC_TIMESTAMP(3)' ? 'finished-cycle' : null; }
     return 1;
   });
   t.mock.method(repo, 'updateDocumentMetadata', async (connection, values) => {
@@ -146,6 +172,187 @@ const fixture = (t, options = {}) => {
   };
   return { args, records, original, physicalFiles, get doc() { return doc; } };
 };
+
+for (const role of ['Admin', 'Document Owner']) for (const status of ['Process Comment', 'Project Comment']) {
+  test(`Revision 2 pending B: ${role}, ${status}, snapshots, actual actor and post-commit effects`, async t => {
+    const f = fixture(t, { role, status, file: true });
+    const result = role === 'Admin' ? await documents.updateDocument(f.args) : await revisions.uploadRevision(f.args);
+    const final = status === 'Project Comment';
+    assert.equal(result.status, final ? 'Approved' : 'Project Review');
+    assert.equal(result.revision, final ? 'AS-Built' : 'IFA-Submitted');
+    assert.equal(result.responsibleRole, final ? 'None' : 'Team Project');
+    assert.equal(result.currentAssigneeUserId, final ? null : 8);
+    assert.equal(result.slaStartedAt, 'new-cycle');
+    assert.equal(result.slaStoppedAt, final ? 'finished-cycle' : null);
+    const row = f.records.revisions[0];
+    assert.equal(row.sourceStatus, status); assert.equal(row.resultStatus, result.status);
+    assert.equal(row.uploadStageSnapshot, final ? 'As-Built' : 'IFA-Submitted');
+    assert.equal(row.uploadedByRoleSnapshot, role); assert.equal(row.createdByUserId, '1');
+    assert.equal(row.revisionSequence, 2);
+    assert.equal(f.records.history[0].activity, 'Upload Revision');
+    assert.equal(f.records.history[0].workflowEvent, 'Upload Revision Completed');
+    assert.equal(repo.insertWorkflowComment.mock, undefined, 'No synthetic approval/comment writes');
+    const notification = notifications.createDocumentNotificationsForOfficialRoles.mock.calls[0].arguments[0];
+    assert.equal(notifications.createDocumentNotificationsForOfficialRoles.mock.callCount(), 1);
+    assert.equal(notification.eventType, final ? 'Document Approved' : 'Revision Uploaded');
+    assert.deepEqual(notification.officialRoles, final ? ['Admin', 'Document Owner'] : ['Team Project']);
+    assert.doesNotMatch(notification.dictionaryOverride.message, /Approval A|ready for review/i);
+    assert.match(notification.dictionaryOverride.message, final ? /approved after completing the Approval B revision/ : /Project Review/);
+    const activity = audit.recordActivitySafely.mock.calls[0].arguments[0];
+    assert.equal(activity.action, 'Upload Revision'); assert.equal(activity.actorOfficialRole, role);
+    assert.equal(activity.actorUserId, '1'); assert.equal(activity.metadata.previousStatus, status);
+    assert.equal(activity.metadata.nextStatus, result.status);
+    assert.equal(activity.metadata.sourceSubmissionStage, f.original.revision);
+    assert.equal(activity.metadata.resultSubmissionStage, result.revision);
+    assert.equal(realtime.publishRevisionUploaded.mock.callCount(), 1);
+    assert.equal(realtime.publishWorkflowChanged.mock.callCount(), 0);
+    assert.equal(repo.lockDocumentForEdit.mock.callCount(), 1);
+    assert.equal(repo.getNextRevisionSequence.mock.calls[0].arguments[1].connection.transaction, true);
+    const { canAddEmergencyAttachment } = await import('../../../frontend/src/features/document-register/utils/emergencyAttachmentEligibility.js');
+    const flags = { EMERGENCY_UPLOAD_TEAM_PROCESS_ENABLED: true, EMERGENCY_UPLOAD_TEAM_PROJECT_ENABLED: true };
+    assert.equal(canAddEmergencyAttachment({ documentItem: result, project: { id: 'PRJ-1', status: 'Active' },
+      role: final ? 'Team Project' : 'Team Process', flags }), true);
+    if (final) {
+      pool.execute.mock.mockImplementation(async () => [[{ id: result.id, project_id: result.projectId,
+        workflow_status: 'Approved', revision_label: 'AS-Built', lifecycle_status: 'Active',
+        sla_started_at: '2026-11-24T01:00:00Z', sla_stopped_at: '2026-11-24T01:00:00Z' }]]);
+      const projected = await findDocumentWithSql(result.id);
+      assert.equal(projected.slaStatus, 'Final As-Built'); assert.equal(projected.slaTimer.display, 'Done');
+      assert.equal(require('../../src/services/escalation.service').createEscalationItem(projected), null);
+    }
+  });
+}
+
+for (const status of ['Process Comment', 'Project Comment']) {
+  test(`Revision 2 Admin metadata-only keeps all B state and reevaluates review days: ${status}`, async t => {
+    const f = fixture(t, { status }); f.args.payload.daysUntilValidation = 20;
+    await documents.updateDocument(f.args);
+    for (const key of ['status', 'revision', 'responsibleRole', 'currentAssigneeUserId', 'activeRevisionId', 'activeFileId', 'slaStartedAt', 'slaStoppedAt']) {
+      assert.equal(f.doc[key], f.original[key], key);
+    }
+    assert.equal(f.records.revisions.length, 0); assert.equal(f.records.files.length, 0);
+    assert.equal(repo.lockApprovalBRevisionEvidence.mock.callCount(), 0);
+    assert.equal(repo.updateDocumentWorkflowState.mock.callCount(), 0);
+    assert.equal(notifications.createDocumentNotificationsForOfficialRoles.mock.callCount(), 0);
+    assert.equal(sla.evaluateDocumentForSlaNotifications.mock.calls[0].arguments[0].triggerSource, 'days_until_validation_update');
+    assert.equal(f.records.history[0].activity, 'Edit Document');
+    assert.equal(audit.recordActivitySafely.mock.calls[0].arguments[0].metadata.previousStatus, status);
+    assert.equal(audit.recordActivitySafely.mock.calls[0].arguments[0].metadata.nextStatus, status);
+  });
+}
+
+for (const [label, changeEvidence] of [
+  ['missing revision', e => { e.revision = null; }],
+  ['wrong file', e => { e.revision.file_id = 'OTHER'; }],
+  ['cross-project file', e => { e.revision.file_project_id = 'OTHER'; }],
+  ['inactive revision', e => { e.revision.is_active = 0; }],
+  ['inactive file', e => { e.revision.file_is_active = 0; }],
+  ['wrong stage', e => { e.revision.revision_label = 'AS-Built'; }],
+  ['missing decision', e => { e.decisions = []; }],
+  ['stale B after C', e => { e.decisions.unshift({ ...e.decisions[0], id: 'C', workflow_action: 'Approval C', decision_time: '2026-10-02 01:00:00.000000' }); }],
+  ['wrong actor role', e => { e.decisions[0].created_by_official_role_snapshot = 'Admin'; }],
+  ['Emergency is not approval', e => { e.decisions[0].workflow_action = 'Emergency Workflow Attachment'; }],
+  ['wrong revision decision', e => { e.decisions[0].revision_id = 'OLD-REVISION'; }],
+  ['ambiguous decision time', e => { e.decisions.push({ ...e.decisions[0], id: 'B2' }); }],
+  ['missing history', e => { e.history = []; }],
+  ['inconsistent history status', e => { e.history[0].workflow_status = 'Process Review'; }],
+  ['inconsistent history actor', e => { e.history[0].created_by_user_id = 100; }],
+  ['ambiguous history time', e => { e.history.push({ ...e.history[0], id: 'H2' }); }],
+]) for (const status of ['Process Comment', 'Project Comment']) {
+  test(`Revision 2 evidence rejects ${status}: ${label}`, async t => {
+    const f = fixture(t, { status, file: true, changeEvidence });
+    await assert.rejects(documents.updateDocument(f.args), { statusCode: 409, code: 'APPROVAL_B_REVISION_EVIDENCE_UNVERIFIED' });
+    assert.deepEqual(f.doc, f.original); assert.equal(f.records.revisions.length, 0);
+    assert.equal(storage.finalize.mock.callCount(), 0); assert.equal(repo.updateDocumentWorkflowState.mock.callCount(), 0);
+    assert.equal(notifications.createDocumentNotificationsForOfficialRoles.mock.callCount(), 0);
+    assert.equal(realtime.publishRevisionUploaded.mock.callCount(), 0);
+  });
+}
+
+test('Revision 2 consistent pending B with NULL username snapshots and later metadata edit remains usable', async t => {
+  const f = fixture(t, { status: 'Process Comment', file: true, changeEvidence: e => {
+    e.decisions[0].created_by_username_snapshot = null;
+    e.history[0].activity = 'Edit Document'; e.history[0].workflow_event = 'Document Updated';
+    e.history[0].created_by_user_id = 'ANOTHER-METADATA-EDITOR';
+  } });
+  await documents.updateDocument(f.args); assert.equal(f.doc.status, 'Project Review');
+});
+
+for (const role of ['Admin', 'Document Owner']) {
+  test(`Revision 2 active project isolation rejects ${role} with membership but wrong active project`, async t => {
+    const f = fixture(t, { role, status: 'Process Comment', file: true, activeProjectId: 'OTHER' });
+    await assert.rejects(revisions.uploadRevision(f.args), { statusCode: 403 });
+    assert.equal(repo.runInTransaction.mock.callCount(), 0);
+  });
+}
+
+test('Revision 2 repeated workflow cycles create sequential uploads without duplicate approval comments', async t => {
+  const f = fixture(t, { status: 'Process Comment', file: true });
+  await documents.updateDocument(f.args);
+  Object.assign(f.doc, { status: 'Project Comment', revision: 'IFA-Submitted', responsibleRole: 'Document Owner' });
+  Object.assign(f.args.payload, { expectedWorkflowStatus: 'Project Comment', expectedActiveRevisionId: f.doc.activeRevisionId,
+    expectedCurrentAssigneeUserId: String(f.doc.currentAssigneeUserId) });
+  await documents.updateDocument(f.args);
+  assert.equal(f.doc.status, 'Approved'); assert.deepEqual(f.records.revisions.map(row => row.revisionSequence), [2, 3]);
+  assert.deepEqual(f.records.revisions.map(row => row.uploadStageSnapshot), ['IFA-Submitted', 'As-Built']);
+  assert.deepEqual(f.records.revisions.map(row => row.sourceStatus), ['Process Comment', 'Project Comment']);
+  assert.equal(f.records.history.every(row => row.activity === 'Upload Revision'), true);
+  assert.equal(f.records.revisions[0].resultStatus, 'Project Review');
+});
+
+for (const status of ['Process Comment', 'Project Comment']) {
+  test(`Revision 2 serialized concurrent/repeated uploads reject the stale request: ${status}`, async t => {
+    const f = fixture(t, { status, file: true, serialize: true });
+    const outcomes = await Promise.allSettled([documents.updateDocument(f.args), documents.updateDocument(f.args)]);
+    assert.equal(outcomes.filter(row => row.status === 'fulfilled').length, 1);
+    assert.equal(outcomes.find(row => row.status === 'rejected').reason.statusCode, 409);
+    assert.equal(f.records.revisions.length, 1); assert.equal(f.records.files.length, 1);
+    assert.equal(notifications.createDocumentNotificationsForOfficialRoles.mock.callCount(), 1);
+    assert.equal(realtime.publishRevisionUploaded.mock.callCount(), 1);
+    assert.ok(f.physicalFiles.has(f.records.files[0].storageKey));
+    await assert.rejects(documents.updateDocument(f.args), { statusCode: 409 });
+  });
+}
+
+test('Revision 2 evidence SQL is locked, exact-scoped and excludes non-approval comments', async () => {
+  const calls = [];
+  await lockApprovalBEvidenceWithSql({ execute: async (sql, args) => { calls.push({ sql, args }); return [[]]; } },
+    { projectId: 'P', documentId: 'D', revisionId: 'R' });
+  assert.equal(calls.length, 3);
+  for (const { sql } of calls) { assert.match(sql, /FOR UPDATE/); assert.match(sql, /SELECT/); }
+  assert.deepEqual(calls.map(call => call.args), [['R', 'P', 'D'], ['P', 'D', 'R'], ['P', 'D']]);
+  assert.match(calls[1].sql, /workflow_action IN \('Approval A','Approval B','Approval C'\)/);
+  assert.doesNotMatch(calls[1].sql, /Emergency Workflow Attachment/);
+  assert.match(calls[2].sql, /ORDER BY created_at DESC,id DESC LIMIT 2 FOR UPDATE/);
+});
+
+test('Revision 2 uses transaction connection for assignee lookup and permits NULL only at final status', async t => {
+  const calls = [];
+  const connection = { execute: async (sql, args) => { calls.push({ sql, args }); return [[]]; } };
+  await memberships.findActiveMembershipByProjectAndOfficialRole({ projectId: 'SYNTHETIC-P', officialRole: 'Team Project' }, { connection });
+  assert.equal(calls.length, 1); assert.deepEqual(calls[0].args, ['SYNTHETIC-P', 'team project']);
+  assert.match(calls[0].sql, /LOWER\(TRIM\(projects.status\)\) = 'active'/);
+  const lookup = t.mock.method(memberships, 'findActiveMembershipByProjectAndOfficialRole', async (scope, options) => {
+    assert.equal(scope.projectId, 'SYNTHETIC-P'); assert.equal(scope.officialRole, 'Team Project');
+    assert.equal(options.connection, connection); return { userId: 8 };
+  });
+  assert.deepEqual(await resolveAssigneeWithConnection({ projectId: 'SYNTHETIC-P', status: 'Project Review' }, { connection }), { userId: 8 });
+  assert.equal(await resolveAssigneeWithConnection({ projectId: 'SYNTHETIC-P', status: 'Approved' }, { connection }), null);
+  assert.equal(lookup.mock.callCount(), 1);
+});
+
+test('Revision 2 ignores frontend target status', async t => {
+  const f = fixture(t, { status: 'Process Comment', role: 'Document Owner', file: true });
+  Object.assign(f.args.payload, { targetStatus: 'Approved', workflowStatus: 'Approved', revisionLabel: 'AS-Built' });
+  await revisions.uploadRevision(f.args);
+  assert.equal(f.doc.status, 'Project Review'); assert.equal(f.doc.revision, 'IFA-Submitted');
+});
+
+test('Revision 2 rejects inconsistent locked submission stage before revision writes', async t => {
+  const f = fixture(t, { status: 'Process Comment', file: true, lockedState: { revision: 'AS-Built' } });
+  await assert.rejects(documents.updateDocument(f.args), { statusCode: 409, code: 'APPROVAL_B_REVISION_EVIDENCE_UNVERIFIED' });
+  assert.equal(f.records.revisions.length, 0); assert.equal(repo.updateDocumentWorkflowState.mock.callCount(), 0);
+});
 
 for (const file of [false, true]) {
   test(`Edit Document with real isolated SLA identity persistence, upload=${file}`, async t => {
@@ -214,7 +421,7 @@ test('Upload snapshots use authoritative project membership, not forged payload 
   await revisions.uploadRevision(f.args);
   assert.equal(f.records.revisions[0].uploadedByRoleSnapshot, 'Document Owner');
   assert.equal(f.records.revisions[0].uploadedByUsernameSnapshot, 'synthetic-uploader');
-  assert.equal(f.records.revisions[0].uploadStageSnapshot, 'IFA-Submitted');
+  assert.equal(f.records.revisions[0].uploadStageSnapshot, 'As-Built');
 });
 
 for (const rev of ['A', '01', undefined, '', '   ', null]) {
@@ -270,9 +477,10 @@ for (const [status, nextStatus] of Object.entries(transitions)) {
     f.args.payload.rev = 'Rev.01';
     const result = await documents.updateDocument(f.args);
     assert.equal(result.rev, 'Rev.01');
-    assert.equal(result.status, nextStatus);
-    assert.equal(result.slaStartedAt, 'new-cycle');
-    assert.equal(result.currentAssigneeUserId, 8);
+    const preserved = status.endsWith('Comment');
+    assert.equal(result.status, preserved ? status : nextStatus);
+    assert.equal(result.slaStartedAt, preserved ? f.original.slaStartedAt : 'new-cycle');
+    assert.equal(result.currentAssigneeUserId, preserved ? f.original.currentAssigneeUserId : 8);
     assert.equal(f.records.files.length, 0);
     assert.equal(f.records.revisions.length, 0);
     assert.equal(result.activeFileId, f.original.activeFileId);
@@ -285,8 +493,10 @@ for (const status of Object.values(STATUS)) {
     test(`Admin Edit: ${status}, file=${file}`, async (t) => {
       const f = fixture(t, { status, file });
       const result = await documents.updateDocument(f.args);
-      const transition = Boolean(transitions[status]);
-      assert.equal(result.status, transitions[status] || status);
+      const target = !file && status.endsWith('Comment') ? status : transitions[status] || status;
+      const transition = target !== status;
+      const final = transition && target === STATUS.APPROVED;
+      assert.equal(result.status, target);
       assert.equal(result.description, 'Updated');
       assert.equal(f.records.revisions.length, Number(file));
       assert.equal(f.records.files.length, Number(file));
@@ -295,11 +505,11 @@ for (const status of Object.values(STATUS)) {
       assert.equal(f.records.history[0].workflowStatus, result.status);
       assert.equal(f.records.history[0].revisionLabel, result.revision);
       assert.equal(repo.updateDocumentWorkflowState.mock.callCount(), Number(transition));
-      assert.equal(workflow.resolveCurrentAssigneeForStatus.mock.callCount(), Number(transition));
+      assert.equal(workflow.resolveCurrentAssigneeForStatus.mock.callCount(), Number(transition && !final));
       assert.equal(notifications.createDocumentNotificationsForOfficialRoles.mock.callCount(), Number(transition));
       assert.equal(sla.evaluateDocumentForSlaNotifications.mock.callCount(), Number(transition));
       assert.equal(result.slaStartedAt, transition ? 'new-cycle' : f.original.slaStartedAt);
-      assert.equal(result.currentAssigneeUserId, transition ? 8 : f.original.currentAssigneeUserId);
+      assert.equal(result.currentAssigneeUserId, transition ? final ? null : 8 : f.original.currentAssigneeUserId);
       assert.equal(audit.recordActivitySafely.mock.callCount(), 1);
       const activity = audit.recordActivitySafely.mock.calls[0].arguments[0];
       assert.equal(activity.actorOfficialRole, 'Admin');
@@ -335,12 +545,13 @@ for (const status of Object.values(STATUS)) {
       if (transition) {
         const workflowUpdate = repo.updateDocumentWorkflowState.mock.calls[0].arguments[1];
         assert.equal(workflowUpdate.resetSla, true);
-        assert.equal(workflowUpdate.slaStoppedAtExpression, 'NULL');
+        assert.equal(workflowUpdate.slaStoppedAtExpression, final ? 'UTC_TIMESTAMP(3)' : 'NULL');
         assert.equal(workflowUpdate.responsibleRole, workflow.getResponsibleRoleForStatus(result.status));
-        assert.equal(workflow.resolveCurrentAssigneeForStatus.mock.calls[0].arguments[0].status, result.status);
+        if (!final) assert.equal(workflow.resolveCurrentAssigneeForStatus.mock.calls[0].arguments[0].status, result.status);
         const notification = notifications.createDocumentNotificationsForOfficialRoles.mock.calls[0].arguments[0];
-        assert.deepEqual(notification.officialRoles, [workflow.getResponsibleRoleForStatus(result.status)]);
-        assert.equal(notification.eventType, file ? 'Revision Uploaded' : 'Document Updated');
+        assert.deepEqual(notification.officialRoles, final ? ['Admin', 'Document Owner'] : [workflow.getResponsibleRoleForStatus(result.status)]);
+        assert.equal(notification.eventType, final ? 'Document Approved' : file ? 'Revision Uploaded' : 'Document Updated');
+        if (final) assert.equal(result.slaStoppedAt, 'finished-cycle');
       }
     });
   }
@@ -390,8 +601,8 @@ for (const options of [
   { status: 'Unknown' }, { lockedState: { activeRevisionId: 'REV-NEW' } },
   { lockedState: { lifecycle: 'Archived' } },
   { status: STATUS.APPROVED, lockedState: { currentAssigneeUserId: 'unexpected' } },
-  { status: STATUS.PROCESS_COMMENT, noAssignee: true },
-  { status: STATUS.PROJECT_COMMENT, workflowConflict: true },
+  { status: STATUS.PROCESS_COMMENT, file: true, noAssignee: true },
+  { status: STATUS.PROJECT_COMMENT, file: true, workflowConflict: true },
   { file: true, invalidTemporary: true },
   { file: true, storageFailure: true }, { file: true, consumed: 0 }, { file: true, commitFailure: true },
   { file: true, provenanceFailure: true },
@@ -471,14 +682,15 @@ for (const status of Object.keys(transitions)) {
     activeProjectId = 'PRJ-1';
     const response = await request(f.args.payload);
     assert.equal(response.status, 200);
-    assert.equal((await response.json()).data.status, targetStatus);
+    assert.equal((await response.json()).data.status, status.endsWith('Comment') ? status : targetStatus);
     assert.equal(f.records.revisions.length, 0);
     const filePayload = { ...f.args.payload, expectedWorkflowStatus: f.doc.status, expectedCurrentAssigneeUserId: f.doc.currentAssigneeUserId, temporaryFileId: 'TMP-1' };
     const uploadResponse = await request(filePayload);
     assert.equal(uploadResponse.status, 200);
     assert.equal((await uploadResponse.json()).data.status, targetStatus);
     assert.equal(f.records.revisions.length, 1);
-    const revisionResponse = await request({ ...filePayload, expectedActiveRevisionId: f.doc.activeRevisionId }, '/revisions', 'POST');
+    const revisionResponse = await request({ ...filePayload, expectedActiveRevisionId: f.doc.activeRevisionId,
+      expectedWorkflowStatus: f.doc.status, expectedCurrentAssigneeUserId: f.doc.currentAssigneeUserId }, '/revisions', 'POST');
     assert.equal(revisionResponse.status, 201);
     assert.equal((await revisionResponse.json()).data.status, targetStatus);
     assert.equal(f.records.revisions.length, 2);
