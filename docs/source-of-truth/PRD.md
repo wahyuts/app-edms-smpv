@@ -14428,6 +14428,21 @@ Action pada setiap document mengikuti aturan berikut.
 
 Business Workflow menentukan kapan Action Approval dapat ditampilkan.
 
+Owner-approved Revisi 2: setelah Approval B, upload file revisi baru oleh Admin atau
+Document Owner memajukan Process Comment ke Project Review / IFA-Submitted, atau
+Project Comment ke Approved / AS-Built. Tidak memerlukan/mencatat Approval A baru.
+Pending B existing memakai aturan baru pada next valid upload dengan state/evidence
+yang konsisten. Admin metadata-only pada Comment menjaga status, stage, pointers,
+assignee dan SLA timestamps; Days Until Validation tetap dievaluasi tanpa reset.
+Reject dan Approval A/C tidak berubah. Approved memakai None/NULL assignee, Done,
+Final As-Built dan tidak eligible escalation. Revision History tetap mencatat upload
+beserta identitas uploader dan snapshot stage, bukan fabricated approval event.
+Notifikasi Process B revision: Revision Uploaded ke Team Project; Project B revision:
+Document Approved ke Admin/Owner. Audit: Upload Revision dengan actual actor dan
+source/result status/stage. Tidak ada email Approval A atau notifikasi final dari
+metadata-only. Realtime revision.uploaded memperbarui monitoring secara project-scoped;
+interval Escalation dan UI/label/KPI Revisi 1 tidak berubah. Tidak ada schema migration.
+
 | Status | Action |
 |----------|---------|
 | Process Review | Team Process memperoleh Action A, B, C. |

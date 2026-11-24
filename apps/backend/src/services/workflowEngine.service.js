@@ -132,7 +132,7 @@ const getRevisionForTargetStatus = ({ currentRevision, targetStatus }) => {
   return revisionByTargetStatus[targetStatus] || currentRevision;
 };
 
-const resolveCurrentAssigneeForStatus = async ({ projectId, status }) => {
+const resolveCurrentAssigneeForStatus = async ({ projectId, status }, { connection } = {}) => {
   const responsibleRole = getResponsibleRoleForStatus(status);
 
   if (!responsibleRole || responsibleRole === DOCUMENT_RESPONSIBLE_ROLE.NONE) {
@@ -142,7 +142,7 @@ const resolveCurrentAssigneeForStatus = async ({ projectId, status }) => {
   return projectMembershipRepository.findActiveMembershipByProjectAndOfficialRole({
     officialRole: responsibleRole,
     projectId,
-  });
+  }, { connection });
 };
 
 const assertWorkflowTransition = ({ action, document }) => {
