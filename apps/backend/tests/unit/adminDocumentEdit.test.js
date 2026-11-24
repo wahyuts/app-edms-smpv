@@ -6,6 +6,7 @@ const { pool } = require('../../src/config/database');
 const repo = require('../../src/repositories/document.repository');
 const insertRevisionWithSnapshot = repo.insertRevision;
 const lockApprovalBEvidenceWithSql = repo.lockApprovalBRevisionEvidence;
+const insertCommentWithSql = repo.insertWorkflowComment;
 const findDocumentWithSql = repo.findDocumentRegisterById;
 const memberships = require('../../src/repositories/projectMembership.repository');
 const projects = require('../../src/repositories/project.repository');
@@ -44,7 +45,7 @@ const fixture = (t, options = {}) => {
     slaStartedAt: '2026-10-01T00:00:00Z', slaStoppedAt: status === STATUS.APPROVED ? '2026-10-02T00:00:00Z' : null,
   };
   const original = structuredClone(doc);
-  const records = { revisions: [], files: [], history: [] };
+  const records = { revisions: [], files: [], history: [], comments: [] };
   const physicalFiles = new Set(['historical-file']);
   for (const method of ['execute', 'query', 'getConnection']) {
     t.mock.method(pool, method, async () => { throw new Error('Unexpected database access'); });
@@ -52,7 +53,8 @@ const fixture = (t, options = {}) => {
   const role = options.role === undefined ? 'Admin' : options.role;
   t.mock.method(memberships, 'findActiveMembershipByProjectAndUser', async ({ projectId }) =>
     role && projectId === 'PRJ-1' ? { id: 'MEM-1', officialRole: role, userId: '1', projectId,
-      username: Object.hasOwn(options, 'username') ? options.username : 'synthetic-uploader' } : null);
+      username: Object.hasOwn(options, 'username') ? options.username : 'synthetic-uploader',
+      userName: options.noFullName ? '' : 'Authoritative Full Name' } : null);
   t.mock.method(projects, 'findProjectById', async () => ({ id: 'PRJ-1', status: options.projectStatus || 'Active' }));
   t.mock.method(repo, 'findDocumentRegisterById', async () => structuredClone(doc));
   require('../helpers/documentCoordinationMock')(t, repo, () => doc);
@@ -81,6 +83,12 @@ const fixture = (t, options = {}) => {
     return evidence;
   });
   let transactionQueue = Promise.resolve();
+  t.mock.method(repo, 'insertWorkflowComment', async (connection, value) => {
+    assert.equal(connection.transaction, true);
+    assert.ok(physicalFiles.has(records.files.at(-1).storageKey));
+    if (options.commentFailure) throw new Error('response insert failed');
+    records.comments.push(value);
+  });
   t.mock.method(repo, 'runInTransaction', (callback) => {
     const run = async () => {
     const before = structuredClone({ doc, records });
@@ -174,6 +182,42 @@ const fixture = (t, options = {}) => {
 };
 
 for (const role of ['Admin', 'Document Owner']) for (const status of ['Process Comment', 'Project Comment']) {
+  for (const failure of ['commentFailure', 'noFullName', 'storageFailure', 'provenanceFailure', 'snapshotFailure', 'commitFailure']) {
+    test(`Response transaction rollback: ${role}, ${status}, ${failure}`, async t => {
+      const f = fixture(t, { role, status, file: true, [failure]: true });
+      await assert.rejects(role === 'Admin' ? documents.updateDocument(f.args) : revisions.uploadRevision(f.args));
+      assert.deepEqual(f.doc, f.original);
+      for (const rows of Object.values(f.records)) assert.equal(rows.length, 0);
+      assert.deepEqual([...f.physicalFiles], ['historical-file']);
+      assert.equal(notifications.createDocumentNotificationsForOfficialRoles.mock.callCount(), 0);
+      assert.equal(realtime.publishRevisionUploaded.mock.callCount(), 0);
+    });
+  }
+}
+
+for (const status of ['Process Reject', 'Project Reject', 'Approved', 'Process Review', 'Project Review']) {
+  test(`No Response to Approval B for unrelated upload: ${status}`, async t => {
+    const f = fixture(t, { status, file: true });
+    await documents.updateDocument(f.args);
+    assert.equal(f.records.comments.length, 0);
+  });
+}
+
+test('Response repository persists plain text with DB operation time, no A/Emergency fields', async () => {
+  const calls = [];
+  await insertCommentWithSql({ execute: async (sql, params) => { calls.push({ sql, params }); } }, {
+    id: 'WFC-test', projectId: 'PRJ-test', documentId: 'DOC-test', revisionId: 'REV-new',
+    workflowAction: 'Response to Approval B', workflowComment: 'Plain text Approved.',
+    createdByUserId: 42, createdByNameSnapshot: 'Full Name', createdByOfficialRoleSnapshot: 'Document Owner',
+  });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].sql, /UTC_TIMESTAMP\(3\)/);
+  assert.doesNotMatch(calls[0].sql, /request_fingerprint|approval_target_stage_snapshot|created_by_username_snapshot/);
+  assert.deepEqual(calls[0].params, ['WFC-test', 'PRJ-test', 'DOC-test', 'REV-new', 'Response to Approval B',
+    'Plain text Approved.', 42, 'Full Name', 'Document Owner']);
+});
+
+for (const role of ['Admin', 'Document Owner']) for (const status of ['Process Comment', 'Project Comment']) {
   test(`Revision 2 pending B: ${role}, ${status}, snapshots, actual actor and post-commit effects`, async t => {
     const f = fixture(t, { role, status, file: true });
     const result = role === 'Admin' ? await documents.updateDocument(f.args) : await revisions.uploadRevision(f.args);
@@ -191,7 +235,17 @@ for (const role of ['Admin', 'Document Owner']) for (const status of ['Process C
     assert.equal(row.revisionSequence, 2);
     assert.equal(f.records.history[0].activity, 'Upload Revision');
     assert.equal(f.records.history[0].workflowEvent, 'Upload Revision Completed');
-    assert.equal(repo.insertWorkflowComment.mock, undefined, 'No synthetic approval/comment writes');
+    assert.equal(f.records.comments.length, 1);
+    const response = f.records.comments[0];
+    assert.equal(response.workflowAction, 'Response to Approval B');
+    assert.equal(response.projectId, result.projectId); assert.equal(response.documentId, result.id);
+    assert.equal(response.revisionId, row.id); assert.notEqual(response.revisionId, f.original.activeRevisionId);
+    assert.equal(response.createdByUserId, '1'); assert.equal(response.createdByOfficialRoleSnapshot, role);
+    assert.equal(response.createdByNameSnapshot, 'Authoritative Full Name');
+    assert.equal(response.workflowComment, final
+      ? 'The requirements necessary for this document to meet the criteria for Approval B have been fulfilled. The document has been re-uploaded, and its status has been changed to Approved.'
+      : 'The requirements necessary for this document to meet the criteria for Approval B have been fulfilled. The document has been re-uploaded and immediately forwarded to the Project Team for review.');
+    for (const field of ['requestFingerprint', 'approvalTargetStageSnapshot', 'attachment']) assert.equal(response[field], undefined);
     const notification = notifications.createDocumentNotificationsForOfficialRoles.mock.calls[0].arguments[0];
     assert.equal(notifications.createDocumentNotificationsForOfficialRoles.mock.callCount(), 1);
     assert.equal(notification.eventType, final ? 'Document Approved' : 'Revision Uploaded');
@@ -231,6 +285,7 @@ for (const status of ['Process Comment', 'Project Comment']) {
       assert.equal(f.doc[key], f.original[key], key);
     }
     assert.equal(f.records.revisions.length, 0); assert.equal(f.records.files.length, 0);
+    assert.equal(f.records.comments.length, 0);
     assert.equal(repo.lockApprovalBRevisionEvidence.mock.callCount(), 0);
     assert.equal(repo.updateDocumentWorkflowState.mock.callCount(), 0);
     assert.equal(notifications.createDocumentNotificationsForOfficialRoles.mock.callCount(), 0);
@@ -298,6 +353,8 @@ test('Revision 2 repeated workflow cycles create sequential uploads without dupl
   assert.deepEqual(f.records.revisions.map(row => row.sourceStatus), ['Process Comment', 'Project Comment']);
   assert.equal(f.records.history.every(row => row.activity === 'Upload Revision'), true);
   assert.equal(f.records.revisions[0].resultStatus, 'Project Review');
+  assert.equal(f.records.comments.length, 2);
+  assert.deepEqual(f.records.comments.map(row => row.revisionId), f.records.revisions.map(row => row.id));
 });
 
 for (const status of ['Process Comment', 'Project Comment']) {
@@ -307,6 +364,7 @@ for (const status of ['Process Comment', 'Project Comment']) {
     assert.equal(outcomes.filter(row => row.status === 'fulfilled').length, 1);
     assert.equal(outcomes.find(row => row.status === 'rejected').reason.statusCode, 409);
     assert.equal(f.records.revisions.length, 1); assert.equal(f.records.files.length, 1);
+    assert.equal(f.records.comments.length, 1);
     assert.equal(notifications.createDocumentNotificationsForOfficialRoles.mock.callCount(), 1);
     assert.equal(realtime.publishRevisionUploaded.mock.callCount(), 1);
     assert.ok(f.physicalFiles.has(f.records.files[0].storageKey));
@@ -390,7 +448,7 @@ for (const action of ['create', 'upload']) for (const options of [{ username: nu
       : documents.updateDocument(f.args);
     await assert.rejects(pending, options.snapshotFailure ? /snapshot insert failed/ : { code: 'REVISION_UPLOAD_SNAPSHOT_UNAVAILABLE' });
     assert.deepEqual(f.doc, f.original);
-    assert.deepEqual(f.records, { revisions: [], files: [], history: [] });
+    assert.deepEqual(f.records, { revisions: [], files: [], history: [], comments: [] });
     assert.deepEqual([...f.physicalFiles], ['historical-file']);
     assert.equal(storage.finalize.mock.callCount(), 0);
     assert.equal(realtime.publishRevisionUploaded.mock.callCount(), 0);
@@ -622,7 +680,7 @@ for (const options of [
     const f = fixture(t, options);
     await assert.rejects(documents.updateDocument(f.args));
     assert.deepEqual(f.doc, f.original);
-    assert.deepEqual(f.records, { revisions: [], files: [], history: [] });
+    assert.deepEqual(f.records, { revisions: [], files: [], history: [], comments: [] });
     assert.deepEqual([...f.physicalFiles], ['historical-file']);
     assert.equal(notifications.createDocumentNotificationsForOfficialRoles.mock.callCount(), 0);
     assert.equal(audit.recordActivitySafely.mock.callCount(), 0);
@@ -656,7 +714,7 @@ for (const status of Object.keys(transitions)) {
       permissions: [{ code: role === 'Admin' || role === 'Document Owner' ? 'document-register.edit' : 'document-register.view' }],
     }));
     memberships.findActiveMembershipByProjectAndUser.mock.mockImplementation(async () => ({
-      officialRole: role, projectId: 'PRJ-1', userId: '1', username: 'synthetic-uploader',
+      officialRole: role, projectId: 'PRJ-1', userId: '1', username: 'synthetic-uploader', userName: 'Authoritative Full Name',
     }));
     const app = express();
     app.use(express.json(), cookieParser());

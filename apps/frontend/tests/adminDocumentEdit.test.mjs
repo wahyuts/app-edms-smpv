@@ -80,6 +80,34 @@ const submit = (tree) => tree.props.footer.props.children[1].props.onClick();
 const getUploadedDateField = (tree) => nodes(tree).find((node) =>
   node.type === 'div' && node.props?.children?.[0]?.props?.children === 'DATE UPLOADED');
 
+test('Response to Approval B uses exact safe terminal bold only, existing card and author snapshots', async () => {
+  const h = await createModalHarness();
+  const prefix = 'The requirements necessary for this document to meet the criteria for Approval B have been fulfilled. ';
+  const messages = [prefix + 'The document has been re-uploaded and immediately forwarded to the Project Team for review.',
+    prefix + 'The document has been re-uploaded, and its status has been changed to Approved.'];
+  const text = node => node == null ? '' : Array.isArray(node) ? node.map(text).join('')
+    : typeof node === 'object' ? text(node.props?.children) : String(node);
+  for (const role of ['Admin', 'Document Owner']) for (const [i, message] of messages.entries()) {
+    const comment = { id: 'WFC-new', workflowAction: 'Response to Approval B', workflowComment: message,
+      createdBy: 'Full Name', createdByOfficialRole: role };
+    const tree = h.renderComments([comment]);
+    const all = nodes(tree);
+    assert.equal(all.filter(n => n.type === 'article').length, 1);
+    assert.ok(all.some(n => n.type === 'p' && n.props.children === 'Response to Approval B'));
+    const body = all.find(n => n.type === 'p' && n.props.className === 'mt-3 text-sm text-[#CBD5E1]');
+    assert.equal(text(body), message);
+    assert.equal(nodes(body).filter(n => n.type === 'strong').length, i);
+    if (i) assert.equal(nodes(body).find(n => n.type === 'strong').props.children, 'Approved');
+    assert.ok(text(tree).includes(`By Full Name (${role})`));
+    assert.equal(all.find(n => typeof n.props?.onDownload === 'function').props.attachment, undefined);
+    for (const action of ['Approval B', 'Approval C', 'Emergency Workflow Attachment']) {
+      assert.equal(nodes(h.renderComments([{ ...comment, workflowAction: action }])).filter(n => n.type === 'strong').length, 0);
+    }
+    assert.equal(nodes(h.renderComments([{ ...comment, workflowComment: message + 'extra' }])).filter(n => n.type === 'strong').length, 0);
+  }
+  assert.ok(text(h.renderComments([{ id: 'B-existing', workflowAction: 'Approval B' }])).includes('Approval B (Approved With Condition)'));
+});
+
 test('View Document renders independent REV. directly below Area with existing field styles', async () => {
   const h = await createModalHarness();
   for (const [rev, expected] of [[null, '-'], [undefined, '-'], ['', '-'], ['   ', '-'], ['A', 'A'], ['01', '01'], [' A ', ' A ']]) {

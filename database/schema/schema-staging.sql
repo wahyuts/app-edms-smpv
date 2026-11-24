@@ -383,8 +383,9 @@ CREATE TABLE workflow_comments (
   KEY idx_workflow_comments_revision_id (revision_id),
   KEY idx_workflow_comments_created_at (created_at),
   KEY idx_workflow_comments_created_by_user_id (created_by_user_id),
-  CONSTRAINT chk_workflow_comments_workflow_action CHECK (workflow_action IN ('Approval A', 'Approval B', 'Approval C', 'Emergency Workflow Attachment')),
-  CONSTRAINT chk_workflow_comments_emergency_request CHECK ((workflow_action = 'Emergency Workflow Attachment' AND request_fingerprint IS NOT NULL AND CHAR_LENGTH(request_fingerprint) = 64 AND revision_id IS NULL AND approval_target_stage_snapshot IS NULL) OR (workflow_action IN ('Approval A', 'Approval B', 'Approval C') AND request_fingerprint IS NULL)),
+  -- MySQL: revision_id FK uses SET NULL; enforce Emergency revision ownership in backend (3823).
+  CONSTRAINT chk_workflow_comments_workflow_action CHECK (workflow_action IN ('Approval A', 'Approval B', 'Approval C', 'Emergency Workflow Attachment', 'Response to Approval B')),
+  CONSTRAINT chk_workflow_comments_emergency_request CHECK (((workflow_action = 'Emergency Workflow Attachment' AND request_fingerprint IS NOT NULL AND CHAR_LENGTH(request_fingerprint) = 64 AND approval_target_stage_snapshot IS NULL) OR (workflow_action IN ('Approval A', 'Approval B', 'Approval C') AND request_fingerprint IS NULL)) OR (workflow_action = 'Response to Approval B' AND request_fingerprint IS NULL AND approval_target_stage_snapshot IS NULL)),
   CONSTRAINT chk_workflow_comments_approval_target_stage CHECK (approval_target_stage_snapshot IS NULL OR (workflow_action = 'Approval A' AND approval_target_stage_snapshot IN ('IFA-Submitted', 'AS-Built'))),
   CONSTRAINT chk_workflow_comments_created_by_official_role CHECK (created_by_official_role_snapshot IS NULL OR created_by_official_role_snapshot IN ('Admin', 'Document Owner', 'Team Process', 'Team Project', 'Viewer')),
   CONSTRAINT fk_workflow_comments_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
