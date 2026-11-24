@@ -802,7 +802,10 @@ export const CommentViewerModal = ({
                   </p>
                 </div>
                 <p className="mt-3 text-sm text-[#CBD5E1]">
-                  {comment.workflowComment}
+                  {comment.workflowAction === "Response to Approval B" &&
+                  comment.workflowComment === "The requirements necessary for this document to meet the criteria for Approval B have been fulfilled. The document has been re-uploaded, and its status has been changed to Approved."
+                    ? <>{comment.workflowComment.slice(0, -9)}<strong>Approved</strong>.</>
+                    : comment.workflowComment}
                 </p>
                 <p className="mt-3 text-xs text-[#94A3B8]">
                   By {formatCommentActor(comment)}
