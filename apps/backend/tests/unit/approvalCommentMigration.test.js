@@ -6,11 +6,14 @@ const root = path.resolve(__dirname, '../../../..');
 const prefix = '20261024_0001_approval_a_comments';
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('Canonical workflow comments preserve A/B/C and approved Emergency amendment', () => {
+test('Canonical workflow comments preserve A/B/C, Emergency and approved response amendment', () => {
   const definitions = ['dev', 'staging', 'prod'].map((environment) =>
     read(`database/schema/schema-${environment}.sql`).match(/CREATE TABLE workflow_comments \([\s\S]*?\) ENGINE=InnoDB[^;]*;/)[0]);
-  assert.equal(definitions[0], definitions[1]); assert.equal(definitions[0], definitions[2]);
-  assert.match(definitions[0], /chk_workflow_comments_workflow_action CHECK \(workflow_action IN \('Approval A', 'Approval B', 'Approval C', 'Emergency Workflow Attachment'\)\)/);
+  const common = definition => definition.replace(/^  --.*\r?\n/gm, '').replace(' AND revision_id IS NULL', '');
+  assert.equal(common(definitions[0]), common(definitions[1])); assert.equal(common(definitions[0]), common(definitions[2]));
+  for (const definition of definitions) assert.match(definition, /chk_workflow_comments_workflow_action CHECK \(workflow_action IN \('Approval A', 'Approval B', 'Approval C', 'Emergency Workflow Attachment', 'Response to Approval B'\)\)/);
+  assert.match(definitions[0], /AND revision_id IS NULL/);
+  for (const definition of definitions.slice(1)) assert.doesNotMatch(definition, /AND revision_id IS NULL/);
 });
 
 for (const [engine, syntax] of [['mysql', 'CHECK'], ['mariadb', 'CONSTRAINT']]) {

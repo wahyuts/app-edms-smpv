@@ -364,6 +364,25 @@ const saveDocumentRevision = async ({ activeProject, actorOfficialRole, actorUse
         await storageService.finalize(temporaryMetadata.storageKey, storageKey);
         finalized = true;
         await documentRepository.completeStoredFileProvenance(connection, fileId);
+        if (isApprovalBStatus(document.status) && nextStatus !== document.status) {
+          const uploader = await projectMembershipRepository.findActiveMembershipByProjectAndUser({
+            projectId: document.projectId, userId: actorUserId,
+          }, { connection });
+          const fullName = String(uploader?.userName || '').trim();
+          if (!fullName || uploader?.officialRole !== actorOfficialRole ||
+            !['Admin', 'Document Owner'].includes(uploader?.officialRole)) {
+            throw createHttpError('Identitas uploader untuk Response to Approval B tidak lengkap.', 409);
+          }
+          await documentRepository.insertWorkflowComment(connection, {
+            id: createEntityId('WFC'), projectId: document.projectId, documentId: document.id,
+            revisionId, workflowAction: 'Response to Approval B',
+            workflowComment: nextStatus === DOCUMENT_WORKFLOW_STATUS.APPROVED
+              ? 'The requirements necessary for this document to meet the criteria for Approval B have been fulfilled. The document has been re-uploaded, and its status has been changed to Approved.'
+              : 'The requirements necessary for this document to meet the criteria for Approval B have been fulfilled. The document has been re-uploaded and immediately forwarded to the Project Team for review.',
+            createdByUserId: actorUserId, createdByNameSnapshot: fullName,
+            createdByOfficialRoleSnapshot: uploader.officialRole,
+          });
+        }
       }
     });
   } catch (error) {

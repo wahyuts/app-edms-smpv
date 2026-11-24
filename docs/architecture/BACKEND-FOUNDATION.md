@@ -522,6 +522,27 @@ Project-scoped route tetap harus melakukan service-level validation terhadap act
   interval Escalation, Emergency, unread, schema dan UI tetap. SQL COMMIT-unknown cleanup
   adalah risiko deferred terpisah, tidak dianggap selesai oleh perubahan workflow ini.
 
+## 13C.1 Response to Approval B
+
+- Shared `saveDocumentRevision` menulis tepat satu `Response to Approval B` untuk
+  file baru pada Process Comment -> Project Review atau Project Comment -> Approved.
+  Source/evidence dibaca ulang di bawah coordinator/row lock dan conditional state guard.
+- Setelah finalize dan provenance completion, sebelum COMMIT, resolve kembali full name
+  dan official role Admin/Document Owner dari membership project pada connection transaksi.
+  Simpan komentar terhadap revision baru, plain text, timestamp DB UTC_TIMESTAMP(3),
+  tanpa attachment, request fingerprint atau Approval A target snapshot. Missing identity
+  atau gagal insert me-rollback transaksi dan memakai compensation storage existing.
+- Response bukan keputusan A/B/C: evidence resolver dan Revision History Approval A
+  tetap memilih action spesifik. Retry/stale concurrent request ditolak state guard;
+  setiap siklus B baru yang sah tetap mendapat response baru.
+- Existing revision.uploaded menginvalidasi register/dashboard/unread; read receipts
+  tetap per-user dan mengecualikan author. Tidak ada event, personal notification atau
+  email tambahan. Formatting JSX hanya membold terminal Approved pada exact final message.
+- Upgrade memerlukan dua CHECK-only migration 20261124_0001 per engine; belum dieksekusi.
+  MySQL tidak mereferensikan revision_id pada CHECK karena FK ON DELETE SET NULL (3823).
+  MariaDB mempertahankan Emergency revision_id IS NULL. Tidak ada FK/index/column baru.
+  COMMIT-unknown cleanup tetap DEFERRED; offline tests bukan bukti DB/runtime UAT.
+
 # 14. Engineering Principles
 
 -   Single Responsibility

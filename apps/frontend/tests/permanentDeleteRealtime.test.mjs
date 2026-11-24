@@ -208,7 +208,7 @@ for (const surface of ['sla', 'escalation']) test(`${surface} local-state datase
   }
 });
 
-for (const role of ['Team Process', 'Team Project']) test(`Emergency comment.created refreshes unread on PFD/PID without acknowledging reads: ${role}`, async t => {
+for (const role of ['Team Process', 'Team Project', 'Response to Approval B']) test(`Existing comment/revision events refresh unread on PFD/PID without acknowledging reads: ${role}`, async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const h = await harness(); t.after(h.dispose);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity, gcTime: Infinity } } });
@@ -229,7 +229,7 @@ for (const role of ['Team Process', 'Team Project']) test(`Emergency comment.cre
     './useRealtimePermanentDeleteSync': { useRealtimePermanentDeleteSync: h.deleteHook },
   });
   h.render(runtime.useRealtimeDocumentRuntimeSync);
-  const comment = event({ type: 'comment.created', eventId: `COMMENT-${role}`, actorUserId: 7, commentId: 'EWA-1', scope: 'project' });
+  const comment = event({ type: role === 'Response to Approval B' ? 'revision.uploaded' : 'comment.created', eventId: `COMMENT-${role}`, actorUserId: 7, commentId: 'EWA-1', scope: 'project' });
   h.emit({ ...comment, projectId: 'OTHER' }); t.mock.timers.tick(500); await settle(); assert.equal(reads, 0);
   unreadCount = 1; h.emit(comment); h.emit(comment); t.mock.timers.tick(500); await settle();
   assert.equal(reads, 2);

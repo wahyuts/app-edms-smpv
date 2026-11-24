@@ -5452,12 +5452,46 @@ Aturan resmi:
   atau email Approval A. Audit tetap Upload Revision oleh uploader dengan source/result status dan stage.
 - Metadata-only tidak mengirim Revision Uploaded/Document Approved. Realtime memakai existing events,
   project isolation dan coalescing; monitor menerima revision.uploaded. Interval Escalation tidak berubah.
-- Tidak ada migration/backfill. Approval A/C, permissions, Emergency, unread receipts, storage safety,
+- Transisi inti tidak memerlukan migration/backfill. Enhancement komentar Response to Approval B
+  menggunakan dua CHECK-only migration terpisah yang memerlukan approval eksekusi.
+- Approval A/C, permissions, Emergency, unread receipts, storage safety,
   dan UI Revisi 1 tetap dipertahankan. COMMIT-unknown cleanup tetap deferred dan bukan diperbaiki oleh Revisi 2.
 - Dokumen `Approved` menghasilkan revision stage `AS-Built`.
 - Archive hanya tersedia untuk Document `Approved` dengan lifecycle `Active`.
 - Restore hanya tersedia untuk Document lifecycle `Archived` pada Project berstatus `Active`.
 - Delete Document operasional tidak berlaku. Aksi resmi adalah Archive dan Restore.
+
+## Response to Approval B pada Successful Upload Revision
+
+Admin atau Document Owner yang berhasil mengunggah file baru dari Process Comment
+ke Project Review / IFA-Submitted, atau Project Comment ke Approved / AS-Built,
+menghasilkan tepat satu komentar backend dengan title/action `Response to Approval B`.
+Comment terhubung ke revision baru dalam transaksi yang sama; kegagalan mandatory
+comment membatalkan revisi/transisi, dengan rollback/compensation existing.
+
+Pesan Process Comment:
+
+`The requirements necessary for this document to meet the criteria for Approval B have been fulfilled. The document has been re-uploaded and immediately forwarded to the Project Team for review.`
+
+Pesan Project Comment:
+
+`The requirements necessary for this document to meet the criteria for Approval B have been fulfilled. The document has been re-uploaded, and its status has been changed to Approved.`
+
+Author adalah `By {full_name} ({official_role})` actual uploader dari authenticated
+user/project membership; timestamp persisten database. Tidak menggunakan nama frontend.
+Hanya terminal Approved pada pesan kedua ditampilkan bold melalui JSX; pesan disimpan
+plain text, bukan HTML/Markdown. Existing title Approval B (Approved With Condition) tetap.
+
+Response bukan Approval A/B/C atau Emergency, tidak memiliki attachment/fingerprint/target
+snapshot Approval A, tidak memalsukan event Revision History. Existing unread/read receipts
+dan author self-read exclusion tetap; revision.uploaded menyediakan realtime refresh tanpa
+email/notifikasi tambahan. D01-D05 tetap berlaku, termasuk metadata-only mempertahankan SLA.
+Tidak ada response pada metadata-only, Reject upload, create, initial A/B/C, Emergency,
+failed/stale/ambiguous/unauthorized upload, refresh/restart atau historical backfill.
+Pending B existing berlaku hanya pada next successful qualifying upload, bukan backfill.
+Migration CHECK-only disiapkan, belum dijalankan; backup, quiescence, preflight dan approval
+terpisah wajib. MySQL CHECK tidak memakai revision_id karena FK SET NULL; MariaDB menjaga
+existing Emergency revision_id NULL. COMMIT-unknown cleanup tetap DEFERRED.
 
 ## Project Workflow
 
