@@ -620,6 +620,21 @@ Permanent Delete already inventories/cleans workflow_comments, including the new
 columns in SELECT * evidence; no dependency allowlist or deletion rule changes.
 Status: PREPARED ONLY - E.2 does not execute this migration locally or on Railway.
 
+Approved Response to Approval B extension (20261124_0001, PREPARED / NOT EXECUTED):
+only `chk_workflow_comments_workflow_action` and `chk_workflow_comments_emergency_request`
+expand to allow the distinct action `Response to Approval B`. Its explicit branch requires
+NULL request_fingerprint and NULL approval_target_stage_snapshot; existing A/B/C and
+Emergency branches remain unchanged. No columns, tables, indexes or foreign keys change.
+The backend validates exact project/document/new revision and actual uploader within the
+revision transaction. Comments reuse full-name/official-role snapshots and database time;
+no additional attachment or approval-history event is generated. No historical backfill.
+Canonical schema-dev uses the MariaDB Emergency revision_id IS NULL branch. Canonical
+schema-staging/prod use the corrected MySQL branch without that FK column (Error 3823),
+matching the existing MySQL Emergency migration; FK ON DELETE SET NULL remains unchanged.
+Read-only pre/postflight scripts require same-environment saved DDL/count/distribution and
+manual backup/quiescence verification. Expanded constraints should remain on application
+rollback: old constraints cannot accept response rows; destructive rollback is not supplied.
+
 ### `workflow_attachments`
 
 | Item | Specification |

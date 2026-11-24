@@ -123,13 +123,18 @@ test('Actual comment repository preserves Emergency NULL revision/target-stage a
   }
   assert.match(readMigration('mysql'), /request_fingerprint VARCHAR\(64\) NULL DEFAULT NULL/);
 });
-test('All canonical schemas agree; new request fingerprint is only attached to Emergency actions', () => {
+test('Canonical schemas agree except approved engine-specific 3823 predicate; fingerprint stays Emergency-only', () => {
   const definitions = ['dev', 'staging', 'prod'].map(name => fs.readFileSync(path.join(root, `database/schema/schema-${name}.sql`), 'utf8')
     .match(/CREATE TABLE workflow_comments \([\s\S]*?\) ENGINE=InnoDB[^;]*;/)[0]);
-  assert.equal(definitions[0], definitions[1]); assert.equal(definitions[0], definitions[2]);
+  const common = definition => definition.replace(/^  --.*\r?\n/gm, '').replace(' AND revision_id IS NULL', '');
+  assert.equal(common(definitions[0]), common(definitions[1])); assert.equal(common(definitions[0]), common(definitions[2]));
+  assert.match(definitions[0], /AND revision_id IS NULL/);
+  for (const definition of definitions.slice(1)) assert.doesNotMatch(definition, /AND revision_id IS NULL/);
   assert.match(definitions[0], /chk_workflow_comments_emergency_request/);
   assert.match(definitions[0], /AND request_fingerprint IS NULL/);
   assert.match(definitions[0], /CHAR_LENGTH\(request_fingerprint\) = 64/);
+  for (const definition of definitions) assert.match(definition,
+    /workflow_action = 'Response to Approval B' AND request_fingerprint IS NULL AND approval_target_stage_snapshot IS NULL/);
 });
 test('Emergency repository lock/read SQL references actual schema and has no document update', async () => {
   const repo = require('../../src/repositories/emergencyAttachment.repository');

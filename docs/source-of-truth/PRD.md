@@ -14441,7 +14441,30 @@ Notifikasi Process B revision: Revision Uploaded ke Team Project; Project B revi
 Document Approved ke Admin/Owner. Audit: Upload Revision dengan actual actor dan
 source/result status/stage. Tidak ada email Approval A atau notifikasi final dari
 metadata-only. Realtime revision.uploaded memperbarui monitoring secara project-scoped;
-interval Escalation dan UI/label/KPI Revisi 1 tidak berubah. Tidak ada schema migration.
+interval Escalation dan UI/label/KPI Revisi 1 tidak berubah. Transisi inti tidak memerlukan
+migration; enhancement Response to Approval B memerlukan CHECK-only upgrade berikut.
+
+### Response to Approval B
+
+Successful qualifying Upload Revision oleh Admin atau Document Owner menghasilkan satu
+system comment `Response to Approval B`, pada transaksi yang sama dengan revisi baru.
+Author `By {full_name} ({official_role})` menggunakan actual uploader dan project membership.
+
+- Process Comment -> Project Review / IFA-Submitted:
+  `The requirements necessary for this document to meet the criteria for Approval B have been fulfilled. The document has been re-uploaded and immediately forwarded to the Project Team for review.`
+- Project Comment -> Approved / AS-Built:
+  `The requirements necessary for this document to meet the criteria for Approval B have been fulfilled. The document has been re-uploaded, and its status has been changed to Approved.`
+
+Hanya terminal Approved pada pesan kedua dibold oleh safe JSX; stored message tetap
+plain text. Title Approval B (Approved With Condition) dan desain Comment Viewer tetap.
+Response terhubung ke revision baru, bukan approval decision/event Revision History,
+tanpa attachment, Emergency fingerprint atau Approval A target snapshot. Gagal response
+berarti transaksi revisi gagal. Metadata-only, Reject upload, create, initial A/B/C,
+Emergency, failed/stale/unauthorized upload dan historical backfill tidak memicu response.
+Pending B existing tetap eligible pada next valid upload. Unread/read receipts, author
+self-read dan revision SSE existing digunakan tanpa notifikasi/email tambahan.
+Hanya dua CHECK workflow_comments diperluas; migration per-engine disiapkan, bukan
+dieksekusi. MySQL mempertahankan koreksi 3823; MariaDB mempertahankan branch Emergency.
 
 | Status | Action |
 |----------|---------|
