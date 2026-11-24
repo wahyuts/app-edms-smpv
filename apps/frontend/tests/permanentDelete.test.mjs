@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { transformWithOxc } from 'vite';
 import { reconcilePermanentDelete } from '../src/features/document-register/utils/permanentDeleteReconciliation.js';
 import { beginPermanentDeleteConfirmation, waitForPermanentDeleteConfirmations } from '../src/features/document-register/utils/permanentDeleteConfirmation.js';
+import * as documentConstants from '../src/features/document-register/constants/document.constants.js';
 
 const base = new URL('../src/features/document-register/', import.meta.url);
 const source = await readFile(new URL('components/PermanentDeleteAction.jsx', base), 'utf8');
@@ -35,6 +36,7 @@ const createHarness = async ({ role = 'Admin', status = 'Process Review', lifecy
   const module = await load(componentCode, {
     react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
     'lucide-react': { Loader2: 'Loader2', RefreshCw: 'RefreshCw', Trash2: 'Trash2' }, './DocumentActionModal': { default: 'Modal' },
+    '../constants/document.constants': documentConstants,
     '@/shared/stores/project-context.store': { useProjectContextStore: store }, '@/shared/components/toast': { useToast: () => ({ showToast: (toast) => h.toasts.push(toast) }) },
     '@/shared/api/query-client': { queryClient: { invalidateQueries: async ({ queryKey }) => h.invalidations.push(queryKey[0]) } },
     '../utils/documentRuntimeQuerySync': { synchronizeDocumentRuntimeQueries: async ({ refreshCurrentSurface }) => {

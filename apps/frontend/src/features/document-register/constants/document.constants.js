@@ -13,6 +13,14 @@ export const DOCUMENT_STATUS = {
   APPROVED: "Approved",
 };
 
+export const DOCUMENT_STATUS_LABELS = {
+  [DOCUMENT_STATUS.PROCESS_COMMENT]: "IFR Approved With Comment",
+  [DOCUMENT_STATUS.PROJECT_COMMENT]: "IFA Approved With Comment",
+};
+
+export const getDocumentStatusLabel = (status) =>
+  Object.hasOwn(DOCUMENT_STATUS_LABELS, status) ? DOCUMENT_STATUS_LABELS[status] : status;
+
 export const DOCUMENT_LIFECYCLE = {
   ACTIVE: "Active",
   ARCHIVED: "Archived",
