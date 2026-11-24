@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 
-import { DOCUMENT_STATUS } from "../constants/document.constants";
+import { DOCUMENT_STATUS, getDocumentStatusLabel } from "../constants/document.constants";
 import { MAX_UPLOAD_FILE_SIZE_MB } from "../constants/upload.constants";
 import { FILE_VALIDATION_CONFIG, FileService } from "../services/file.service";
 import {
@@ -458,7 +458,7 @@ export const DocumentSummary = ({ documentItem }) => {
       </div>
       <div>
         <p className={fieldLabelClassName}>Current Status</p>
-        <p className={valueClassName}>{documentItem.status}</p>
+        <p className={valueClassName}>{getDocumentStatusLabel(documentItem.status)}</p>
       </div>
     </div>
   );
@@ -553,7 +553,7 @@ export const ViewDocumentModal = ({
             </div>
             <div>
               <p className={fieldLabelClassName}>Status</p>
-              <p className={valueClassName}>{documentItem.status}</p>
+              <p className={valueClassName}>{getDocumentStatusLabel(documentItem.status)}</p>
             </div>
           </div>
           {metadata?.originalFileName ? (
@@ -998,7 +998,7 @@ export const HistoryModal = ({ documentItem, onClose, onRevisionHistory, timelin
                   </div>
                   <div>
                     <dt className={fieldLabelClassName}>Status</dt>
-                    <dd className={valueClassName}>{timelineItem.status}</dd>
+                    <dd className={valueClassName}>{getDocumentStatusLabel(timelineItem.status)}</dd>
                   </div>
                   <div>
                     <dt className={fieldLabelClassName}>Revision</dt>

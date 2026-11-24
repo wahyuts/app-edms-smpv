@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import DocumentActionGroup from "@/features/document-register/components/DocumentActionGroup";
 import {
   DOCUMENT_STATUS,
+  getDocumentStatusLabel,
   SLA_STATUS,
 } from "@/features/document-register/constants/document.constants";
 import {
@@ -158,7 +159,7 @@ export const SlaMonitoringTable = ({
             <option value="">All Document Status</option>
             {statusOptions.map((status) => (
               <option key={status} value={status}>
-                {status}
+                {getDocumentStatusLabel(status)}
               </option>
             ))}
           </SelectDropdown>
@@ -241,7 +242,7 @@ export const SlaMonitoringTable = ({
                           "border-[#123A5A] bg-[#08233B] text-[#CBD5E1]"
                         }
                       >
-                        {documentItem.status}
+                        {getDocumentStatusLabel(documentItem.status)}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
