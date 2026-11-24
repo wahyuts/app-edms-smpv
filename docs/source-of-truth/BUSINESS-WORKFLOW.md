@@ -1484,6 +1484,13 @@ Workflow Status berubah menjadi Process Comment atau Project Comment sesuai taha
 
 Document Owner wajib melakukan Upload Revision.
 
+Revisi 2 (owner-approved): Approval B adalah persetujuan dengan catatan minor. Setelah
+Admin atau Document Owner berhasil menyimpan file revisi baru, Process Comment maju
+ke Project Review / IFA-Submitted dan Project Comment maju ke Approved / AS-Built,
+tanpa Approval A tambahan. Admin Edit tanpa file pada kedua status Comment menjaga
+status, stage, responsible role, assignee, active pointers, sequence, dan SLA timestamps.
+Days Until Validation tetap dapat diubah dan dievaluasi tanpa reset timer.
+
 ---
 
 ## Approval C
@@ -2018,9 +2025,9 @@ Upload Revision dapat dijalankan oleh:
 
 Apabila Workflow Status sebelum Upload Revision adalah:
 
-- Process Comment → Workflow Status menjadi Process Review.
+- Process Comment + file revisi baru → Project Review / IFA-Submitted.
 - Process Reject -> Workflow Status menjadi Process Review.
-- Project Comment → Workflow Status menjadi Project Review.
+- Project Comment + file revisi baru → Approved / AS-Built.
 - Project Reject -> Workflow Status menjadi Project Review.
 
 Workflow Transition wajib mengikuti Workflow Transition Matrix.
@@ -2326,12 +2333,12 @@ Workflow hanya diperbolehkan berpindah sesuai tabel berikut.
 | Process Review | Approval A | Project Review |
 | Process Review | Approval B | Process Comment |
 | Process Review | Approval C | Process Reject |
-| Process Comment | Upload Revision | Process Review |
+| Process Comment | Upload Revision | Project Review |
 | Process Reject | Upload Revision | Process Review |
 | Project Review | Approval A | Approved |
 | Project Review | Approval B | Project Comment |
 | Project Review | Approval C | Project Reject |
-| Project Comment | Upload Revision | Project Review |
+| Project Comment | Upload Revision | Approved |
 | Project Reject | Upload Revision | Project Review |
 
 Workflow di luar tabel ini harus ditolak oleh Workflow Processing Engine.
@@ -3207,9 +3214,9 @@ Contoh:
 Setiap perubahan Workflow Status berikut:
 
 - Process Review → Process Comment
-- Process Comment → Process Review
+- Process Comment → Project Review (file revisi baru; reset SLA)
 - Project Review → Project Comment
-- Project Comment → Project Review
+- Project Comment → Approved (file revisi baru; finalisasi SLA)
 
 harus melakukan:
 
@@ -4127,7 +4134,7 @@ Process Comment
 
 Apabila Workflow berada pada Process Comment, maka Document Owner wajib melakukan Upload Revision.
 
-Upload Revision mengembalikan Workflow ke Process Review.
+Upload Revision setelah Approval B memajukan Workflow ke Project Review / IFA-Submitted.
 
 Setelah Engineering Review selesai, Workflow berpindah ke Project Review.
 
@@ -4157,7 +4164,7 @@ Approval C
 
 Project Comment
 
-Upload Revision pada Project Comment mengembalikan Workflow ke Project Review.
+Upload Revision pada Project Comment memajukan Workflow ke Approved / AS-Built.
 
 Workflow selesai ketika Status menjadi **Approved**.
 
@@ -4325,6 +4332,14 @@ Workflow Comment maupun Workflow Attachment bersifat opsional.
 # 7.6 Upload Revision Interaction
 
 Interaction Sequence.
+
+Revisi 2: current state harus dibaca ulang dalam transaksi, pada project aktif yang
+sama, dengan coordinator lock dan conditional update existing. Pending Approval B
+lama mengikuti aturan baru pada upload valid berikutnya, tanpa cutoff deployment,
+backfill, atau transisi otomatis. Revision aktif, file, latest approval decision yang
+relevan, dan workflow history harus konsisten; evidence hilang/ambigu ditolak.
+Emergency Workflow Attachment bukan approval decision. Tidak menggunakan nearest
+timestamp atau sembarang komentar B lama sebagai dasar keputusan.
 
 ```
 Document Owner
@@ -4675,12 +4690,12 @@ Revision hanya berubah melalui Workflow Processing Engine.
 | Process Review | Approval A | Project Review |
 | Process Review | Approval B | Process Comment |
 | Process Review | Approval C | Process Reject |
-| Process Comment | Upload Revision | Process Review |
+| Process Comment | Upload Revision | Project Review |
 | Process Reject | Upload Revision | Process Review |
 | Project Review | Approval A | Approved |
 | Project Review | Approval B | Project Comment |
 | Project Review | Approval C | Project Reject |
-| Project Comment | Upload Revision | Project Review |
+| Project Comment | Upload Revision | Approved |
 | Project Reject | Upload Revision | Project Review |
 
 Workflow di luar tabel ini harus ditolak.
@@ -4696,6 +4711,8 @@ Workflow di luar tabel ini harus ditolak.
 | Process Review → Process Comment | IFR-Submitted |
 | Project Review → Project Comment | IFA-Submitted |
 | Project Review → Approved | AS-Built |
+| Process Comment → Project Review (Upload Revision) | IFA-Submitted |
+| Project Comment → Approved (Upload Revision) | AS-Built |
 
 ---
 
@@ -4717,10 +4734,14 @@ SLA Status bukan Workflow Status dan bukan Document Lifecycle.
 | Trigger | Action |
 |----------|--------|
 | Process Review → Process Comment | Reset SLA |
-| Process Comment → Process Review | Reset SLA |
+| Process Comment → Project Review | Reset SLA; assignee Team Project |
 | Project Review → Project Comment | Reset SLA |
-| Project Comment → Project Review | Reset SLA |
+| Project Comment → Approved | Existing Approved reset/stop semantics; assignee NULL |
 | Workflow Status = Approved | SLA Status = Final As-Built |
+
+Revisi 2 metadata-only pada status Comment tidak mengubah SLA start/stop; perubahan
+Days Until Validation tetap dievaluasi. Metadata-only status Reject tetap existing.
+Approved memiliki responsible role None, timer Done, dan tidak eligible escalation.
 
 ---
 
@@ -5420,8 +5441,19 @@ Aturan resmi:
 - Approval B berarti dokumen dikembalikan dengan komentar. Comment wajib diisi. Attachment dapat ditambahkan sebagai pendukung.
 - Approval C berarti dokumen ditolak. Jika comment kosong, sistem menggunakan alasan default `Document is not approved`.
 - Upload Revision hanya tersedia dari status `Process Comment`, `Process Reject`, `Project Comment`, dan `Project Reject`.
-- Upload Revision dari Process-side mengembalikan dokumen ke `Process Review`.
-- Upload Revision dari Project-side mengembalikan dokumen ke `Project Review`.
+- Upload Revision dari `Process Comment` menuju `Project Review` / `IFA-Submitted`.
+- Upload Revision dari `Project Comment` menuju `Approved` / `AS-Built`.
+- Upload Revision dari `Process Reject` / `Project Reject` tetap kembali ke review tahap yang sama.
+- Admin metadata-only pada Comment mempertahankan workflow dan SLA timestamps; bukan penyelesaian Approval B.
+- Revision History mencatat UPLOAD, actual uploader, source/result status dan upload stage snapshot;
+  tidak membuat Approval A/comment palsu atau mengubah snapshots/approval history lama.
+- Process B revision memakai `Revision Uploaded` kepada Team Project dengan pesan Project Review.
+- Project B revision memakai `Document Approved` kepada Admin/Document Owner; bukan ready-for-review
+  atau email Approval A. Audit tetap Upload Revision oleh uploader dengan source/result status dan stage.
+- Metadata-only tidak mengirim Revision Uploaded/Document Approved. Realtime memakai existing events,
+  project isolation dan coalescing; monitor menerima revision.uploaded. Interval Escalation tidak berubah.
+- Tidak ada migration/backfill. Approval A/C, permissions, Emergency, unread receipts, storage safety,
+  dan UI Revisi 1 tetap dipertahankan. COMMIT-unknown cleanup tetap deferred dan bukan diperbaiki oleh Revisi 2.
 - Dokumen `Approved` menghasilkan revision stage `AS-Built`.
 - Archive hanya tersedia untuk Document `Approved` dengan lifecycle `Active`.
 - Restore hanya tersedia untuk Document lifecycle `Archived` pada Project berstatus `Active`.

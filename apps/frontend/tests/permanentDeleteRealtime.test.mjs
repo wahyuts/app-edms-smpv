@@ -174,9 +174,12 @@ for (const surface of ['sla', 'escalation']) test(`${surface} local-state datase
   h.reconnect('P1'); t.mock.timers.tick(500); await settle(); h.render(hook); await settle();
   assert.equal(loads, before + 2);
   if (surface === 'sla') {
-    for (const [index, status] of ['Project Review', 'Process Comment', 'Process Reject'].entries()) {
+    for (const [index, [type, status]] of [
+      ['workflow.changed', 'Project Review'], ['workflow.changed', 'Process Comment'], ['workflow.changed', 'Process Reject'],
+      ['revision.uploaded', 'Project Review'], ['revision.uploaded', 'Approved'],
+    ].entries()) {
       const beforeWorkflow = loads;
-      const workflow = event({ type: 'workflow.changed', eventId: `APPROVAL-${index}` });
+      const workflow = event({ type, eventId: `APPROVAL-OR-REVISION-${index}` });
       h.emit({ ...workflow, projectId: 'OTHER' });
       h.emit(event({ type: 'notification.created' }));
       t.mock.timers.tick(500); h.render(hook); await settle();

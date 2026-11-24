@@ -795,7 +795,7 @@ export const CommentViewerModal = ({
                       : comment.workflowAction === "Approval A" &&
                     ["Team Process", "Team Project"].includes(comment.createdByOfficialRole)
                       ? `Approval A By ${comment.createdByOfficialRole}`
-                      : comment.workflowAction}
+                      : comment.workflowAction ==="Approval B" ? "Approval B (Approved With Condition)" : comment.workflowAction}
                   </p>
                   <p className="text-xs text-[#94A3B8]">
                     {formatCommentDateTime(comment.createdDate)}

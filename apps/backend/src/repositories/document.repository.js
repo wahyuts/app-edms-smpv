@@ -1111,12 +1111,35 @@ const updateDocumentActivePointers = async (connection, { activeFileId, activeRe
 
 const lockDocumentForEdit = async (connection, documentId) => {
   const [rows] = await connection.execute(
-    `SELECT id, workflow_status AS status, lifecycle_status AS lifecycle,
-            active_revision_id AS activeRevisionId, current_assignee_user_id AS currentAssigneeUserId
+    `SELECT id, project_id AS projectId, workflow_status AS status, lifecycle_status AS lifecycle,
+            revision_label AS revision, responsible_role AS responsibleRole,
+            active_file_id AS activeFileId, active_revision_id AS activeRevisionId,
+            current_assignee_user_id AS currentAssigneeUserId,
+            sla_started_at AS slaStartedAt, sla_stopped_at AS slaStoppedAt
      FROM engineering_documents WHERE id = ? FOR UPDATE`,
     [documentId]
   );
   return rows[0] || null;
+};
+
+const lockApprovalBRevisionEvidence = async (connection, { documentId, projectId, revisionId }) => {
+  const [revisions] = await connection.execute(
+    `SELECT r.id,r.project_id,r.document_id,r.file_id,r.revision_label,r.is_active,
+      f.project_id AS file_project_id,f.document_id AS file_document_id,f.is_active AS file_is_active
+     FROM document_revisions r LEFT JOIN stored_files f ON f.file_id=r.file_id
+     WHERE r.id=? AND r.project_id=? AND r.document_id=? FOR UPDATE`, [revisionId, projectId, documentId]);
+  const [decisions] = await connection.execute(
+    `SELECT id,revision_id,workflow_action,created_by_user_id,created_by_official_role_snapshot,
+      DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s.%f') AS decision_time
+     FROM workflow_comments WHERE project_id=? AND document_id=? AND revision_id=?
+       AND workflow_action IN ('Approval A','Approval B','Approval C')
+     ORDER BY created_at DESC,id DESC LIMIT 2 FOR UPDATE`, [projectId, documentId, revisionId]);
+  const [history] = await connection.execute(
+    `SELECT id,workflow_event,activity,workflow_status,revision_label,created_by_user_id,
+      DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s.%f') AS history_time
+     FROM document_history WHERE project_id=? AND document_id=?
+     ORDER BY created_at DESC,id DESC LIMIT 2 FOR UPDATE`, [projectId, documentId]);
+  return { revision: revisions[0] || null, decisions, history };
 };
 
 const updateDocumentMetadata = async (connection, {
@@ -1339,8 +1362,8 @@ const updateStoredFileStorageMetadata = async (connection, {
   );
 };
 
-const getNextRevisionSequence = async (documentId) => {
-  const [rows] = await pool.execute(
+const getNextRevisionSequence = async (documentId, { connection = pool } = {}) => {
+  const [rows] = await connection.execute(
     `
       SELECT COALESCE(MAX(revision_sequence), 0) + 1 AS next_sequence
       FROM document_revisions
@@ -1567,6 +1590,7 @@ module.exports = {
   runInTransaction,
   findApprovalEmailEvent,
   lockDocumentForEdit,
+  lockApprovalBRevisionEvidence,
   updateDocumentLifecycleStatus,
   updateDocumentMetadata,
   updateDocumentWorkflowState,
